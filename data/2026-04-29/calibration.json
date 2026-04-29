@@ -1,93 +1,52 @@
 {
-  "lifetime": {
-    "status": "ok",
-    "method": "leave-one-out k-NN cross-validation",
-    "k": 50,
-    "total_samples": 8000,
-    "buckets_used": 8,
-    "n_curves_indexed": 75667,
-    "thresholds": {
-      "50": {
-        "threshold_pct": 50,
-        "n": 213,
-        "n_graduated": 185,
-        "actual_grad_rate": 0.8685446009389671
-      },
-      "60": {
-        "threshold_pct": 60,
-        "n": 168,
-        "n_graduated": 154,
-        "actual_grad_rate": 0.9166666666666666
-      },
-      "70": {
-        "threshold_pct": 70,
-        "n": 144,
-        "n_graduated": 136,
-        "actual_grad_rate": 0.9444444444444444
-      },
-      "80": {
-        "threshold_pct": 80,
-        "n": 111,
-        "n_graduated": 108,
-        "actual_grad_rate": 0.972972972972973
-      },
-      "90": {
-        "threshold_pct": 90,
-        "n": 93,
-        "n_graduated": 93,
-        "actual_grad_rate": 1.0
-      }
-    },
-    "computed_at": 1777437936,
-    "next_recompute_at": 1777459536
-  },
+  "lifetime": null,
   "forward": {
     "status": "ok",
     "method": "forward production predictions, resolved against observer flush",
     "tracking_since": 1777401979,
-    "predictions_total": 5012,
+    "predictions_total": 5396,
     "thresholds": {
       "50": {
         "threshold_pct": 50,
-        "n_total": 5012,
-        "n_pending": 1432,
-        "n_resolved": 3580,
-        "n_graduated": 2816,
-        "actual_grad_rate": 0.7865921787709497
+        "n_total": 5396,
+        "n_pending": 1608,
+        "n_resolved": 3788,
+        "n_graduated": 2978,
+        "actual_grad_rate": 0.7861668426610349
       },
       "60": {
         "threshold_pct": 60,
-        "n_total": 3748,
-        "n_pending": 1074,
-        "n_resolved": 2674,
-        "n_graduated": 2329,
-        "actual_grad_rate": 0.8709798055347794
+        "n_total": 4008,
+        "n_pending": 1178,
+        "n_resolved": 2830,
+        "n_graduated": 2465,
+        "actual_grad_rate": 0.8710247349823321
       },
       "70": {
         "threshold_pct": 70,
-        "n_total": 3035,
-        "n_pending": 888,
-        "n_resolved": 2147,
-        "n_graduated": 1972,
-        "actual_grad_rate": 0.9184909175593852
+        "n_total": 3218,
+        "n_pending": 957,
+        "n_resolved": 2261,
+        "n_graduated": 2082,
+        "actual_grad_rate": 0.9208314904909333
       },
       "80": {
         "threshold_pct": 80,
-        "n_total": 2484,
-        "n_pending": 711,
-        "n_resolved": 1773,
-        "n_graduated": 1681,
-        "actual_grad_rate": 0.9481105470953187
+        "n_total": 2627,
+        "n_pending": 759,
+        "n_resolved": 1868,
+        "n_graduated": 1776,
+        "actual_grad_rate": 0.9507494646680942
       },
       "90": {
         "threshold_pct": 90,
-        "n_total": 2114,
-        "n_pending": 610,
-        "n_resolved": 1504,
-        "n_graduated": 1455,
-        "actual_grad_rate": 0.9674202127659575
+        "n_total": 2225,
+        "n_pending": 641,
+        "n_resolved": 1584,
+        "n_graduated": 1535,
+        "actual_grad_rate": 0.9690656565656566
       }
     },
-    "computed_at": 1777437975
+    "computed_at": 1777441858
   }
 }
