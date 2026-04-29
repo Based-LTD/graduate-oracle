@@ -1,12 +1,12 @@
 # Daily snapshot · 2026-04-29
 
 ## Calibration · forward production predictions (graduation)
-- 6,324 live predictions logged since launch
-  - ≥90% predictions  →  86%  (resolved 1605/2341)
-  - ≥80% predictions  →  80%  (resolved 1889/2769)
-  - ≥70% predictions  →  75%  (resolved 2283/3422)
-  - ≥60% predictions  →  70%  (resolved 2855/4263)
-  - ≥50% predictions  →  60%  (resolved 3813/5738)
+- 6,478 live predictions logged since launch
+  - ≥90% predictions  →  86%  (resolved 1605/2351)
+  - ≥80% predictions  →  80%  (resolved 1889/2779)
+  - ≥70% predictions  →  75%  (resolved 2283/3432)
+  - ≥60% predictions  →  70%  (resolved 2855/4273)
+  - ≥50% predictions  →  60%  (resolved 3813/5750)
 
 ## Calibration · runner predictions (forward)
 How often did mints we flagged at each confidence level actually run?
@@ -17,7 +17,7 @@ How often did mints we flagged at each confidence level actually run?
 - **≥20x** runner — building (0 resolved)
 
 ## Paper trading bots · 1 SOL bankroll, real Jupiter prices
-- **≥80% · +20% TP · −25% SL** · 730 trades · 1 SOL → 1.2578 SOL · realized +0.2578 SOL
+- **≥80% · +20% TP · −25% SL** · 730 trades · 1 SOL → 1.2787 SOL · realized +0.2787 SOL
 - **≥90% · +20% TP · −25% SL** · 536 trades · 1 SOL → 0.9404 SOL · realized -0.0596 SOL
 
 ## Wallet intelligence
