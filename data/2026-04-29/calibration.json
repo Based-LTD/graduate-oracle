@@ -1,0 +1,93 @@
+{
+  "lifetime": {
+    "status": "ok",
+    "method": "leave-one-out k-NN cross-validation",
+    "k": 50,
+    "total_samples": 8000,
+    "buckets_used": 8,
+    "n_curves_indexed": 73051,
+    "thresholds": {
+      "50": {
+        "threshold_pct": 50,
+        "n": 230,
+        "n_graduated": 198,
+        "actual_grad_rate": 0.8608695652173913
+      },
+      "60": {
+        "threshold_pct": 60,
+        "n": 197,
+        "n_graduated": 176,
+        "actual_grad_rate": 0.8934010152284264
+      },
+      "70": {
+        "threshold_pct": 70,
+        "n": 165,
+        "n_graduated": 154,
+        "actual_grad_rate": 0.9333333333333333
+      },
+      "80": {
+        "threshold_pct": 80,
+        "n": 136,
+        "n_graduated": 131,
+        "actual_grad_rate": 0.9632352941176471
+      },
+      "90": {
+        "threshold_pct": 90,
+        "n": 112,
+        "n_graduated": 112,
+        "actual_grad_rate": 1.0
+      }
+    },
+    "computed_at": 1777424615,
+    "next_recompute_at": 1777446215
+  },
+  "forward": {
+    "status": "ok",
+    "method": "forward production predictions, resolved against observer flush",
+    "tracking_since": 1777401979,
+    "predictions_total": 3614,
+    "thresholds": {
+      "50": {
+        "threshold_pct": 50,
+        "n_total": 3614,
+        "n_pending": 1126,
+        "n_resolved": 2488,
+        "n_graduated": 2013,
+        "actual_grad_rate": 0.8090836012861736
+      },
+      "60": {
+        "threshold_pct": 60,
+        "n_total": 2702,
+        "n_pending": 830,
+        "n_resolved": 1872,
+        "n_graduated": 1648,
+        "actual_grad_rate": 0.8803418803418803
+      },
+      "70": {
+        "threshold_pct": 70,
+        "n_total": 2198,
+        "n_pending": 689,
+        "n_resolved": 1509,
+        "n_graduated": 1389,
+        "actual_grad_rate": 0.9204771371769384
+      },
+      "80": {
+        "threshold_pct": 80,
+        "n_total": 1811,
+        "n_pending": 569,
+        "n_resolved": 1242,
+        "n_graduated": 1175,
+        "actual_grad_rate": 0.9460547504025765
+      },
+      "90": {
+        "threshold_pct": 90,
+        "n_total": 1553,
+        "n_pending": 489,
+        "n_resolved": 1064,
+        "n_graduated": 1031,
+        "actual_grad_rate": 0.9689849624060151
+      }
+    },
+    "computed_at": 1777424653
+  }
+}
