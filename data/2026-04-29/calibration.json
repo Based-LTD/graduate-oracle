@@ -38,56 +38,56 @@
         "actual_grad_rate": 1.0
       }
     },
-    "computed_at": 1777437573,
-    "next_recompute_at": 1777459173
+    "computed_at": 1777437936,
+    "next_recompute_at": 1777459536
   },
   "forward": {
     "status": "ok",
     "method": "forward production predictions, resolved against observer flush",
     "tracking_since": 1777401979,
-    "predictions_total": 4986,
+    "predictions_total": 5012,
     "thresholds": {
       "50": {
         "threshold_pct": 50,
-        "n_total": 4986,
-        "n_pending": 1412,
-        "n_resolved": 3574,
-        "n_graduated": 2810,
-        "actual_grad_rate": 0.7862339115836597
+        "n_total": 5012,
+        "n_pending": 1432,
+        "n_resolved": 3580,
+        "n_graduated": 2816,
+        "actual_grad_rate": 0.7865921787709497
       },
       "60": {
         "threshold_pct": 60,
-        "n_total": 3724,
-        "n_pending": 1055,
-        "n_resolved": 2669,
-        "n_graduated": 2324,
-        "actual_grad_rate": 0.870738104158861
+        "n_total": 3748,
+        "n_pending": 1074,
+        "n_resolved": 2674,
+        "n_graduated": 2329,
+        "actual_grad_rate": 0.8709798055347794
       },
       "70": {
         "threshold_pct": 70,
-        "n_total": 3018,
-        "n_pending": 874,
-        "n_resolved": 2144,
-        "n_graduated": 1969,
-        "actual_grad_rate": 0.9183768656716418
+        "n_total": 3035,
+        "n_pending": 888,
+        "n_resolved": 2147,
+        "n_graduated": 1972,
+        "actual_grad_rate": 0.9184909175593852
       },
       "80": {
         "threshold_pct": 80,
-        "n_total": 2474,
-        "n_pending": 703,
-        "n_resolved": 1771,
-        "n_graduated": 1679,
-        "actual_grad_rate": 0.948051948051948
+        "n_total": 2484,
+        "n_pending": 711,
+        "n_resolved": 1773,
+        "n_graduated": 1681,
+        "actual_grad_rate": 0.9481105470953187
       },
       "90": {
         "threshold_pct": 90,
-        "n_total": 2106,
-        "n_pending": 603,
-        "n_resolved": 1503,
-        "n_graduated": 1454,
-        "actual_grad_rate": 0.9673985362608117
+        "n_total": 2114,
+        "n_pending": 610,
+        "n_resolved": 1504,
+        "n_graduated": 1455,
+        "actual_grad_rate": 0.9674202127659575
       }
     },
-    "computed_at": 1777437611
+    "computed_at": 1777437975
   }
 }

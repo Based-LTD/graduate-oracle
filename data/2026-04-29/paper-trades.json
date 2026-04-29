@@ -22,7 +22,7 @@
       "position_size_sol": 0.1,
       "bankroll_sol": 1.0788850305100226,
       "profit_sol": 0.07888503051002262,
-      "unrealized_sol": 0.009899896253520436,
+      "unrealized_sol": 0.010904872268037625,
       "recent": [
         {
           "mint": "4uP5Bhp3gmTebb2wA4BYg6qhpca5ZnR2VyXEpJ94pump",
@@ -87,7 +87,7 @@
           "entry_grad_prob": 0.84,
           "entry_vsol_sol": 36.406689568,
           "entry_price_usd": 3.4872516841744665e-06,
-          "last_price_usd": 3.832485983006883e-06,
+          "last_price_usd": 3.867532025998683e-06,
           "exit_at": null,
           "exit_reason": null,
           "exit_mult": null,
@@ -630,9 +630,7 @@
         "take_profit_pct": 0.2
       }
     ],
-    "entry_rule": "grad_prob >= threshold AND vsol < 65.0 AND mult < 1.5",
-    "entry_max_vsol_sol": 65.0,
-    "entry_max_mult": 1.5,
+    "entry_rule": "grad_prob >= threshold (no price cap, no vsol cap)",
     "default_target_profit": 0.2,
     "stale_secs": 300,
     "timeout_secs": 1800,

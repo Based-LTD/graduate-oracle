@@ -9,12 +9,12 @@
   - ≥50% predictions  →  86.9% actually graduated  (n=213)
 
 ## Calibration · forward production predictions
-- 4,986 live predictions logged since launch
-  - ≥90% predictions  →  97%  (resolved 1503/2106)
-  - ≥80% predictions  →  95%  (resolved 1771/2474)
-  - ≥70% predictions  →  92%  (resolved 2144/3018)
-  - ≥60% predictions  →  87%  (resolved 2669/3724)
-  - ≥50% predictions  →  79%  (resolved 3574/4986)
+- 5,012 live predictions logged since launch
+  - ≥90% predictions  →  97%  (resolved 1504/2114)
+  - ≥80% predictions  →  95%  (resolved 1773/2484)
+  - ≥70% predictions  →  92%  (resolved 2147/3035)
+  - ≥60% predictions  →  87%  (resolved 2674/3748)
+  - ≥50% predictions  →  79%  (resolved 3580/5012)
 
 ## Paper trading bots · 1 SOL bankroll, real Jupiter prices
 - **≥80% · +20% TP · −25% SL** · 699 trades · 1 SOL → 1.0789 SOL · realized +0.0789 SOL
