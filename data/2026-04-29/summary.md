@@ -1,12 +1,12 @@
 # Daily snapshot · 2026-04-29
 
 ## Calibration · forward production predictions (graduation)
-- 6,478 live predictions logged since launch
-  - ≥90% predictions  →  86%  (resolved 1605/2351)
-  - ≥80% predictions  →  80%  (resolved 1889/2779)
-  - ≥70% predictions  →  75%  (resolved 2283/3432)
-  - ≥60% predictions  →  70%  (resolved 2855/4273)
-  - ≥50% predictions  →  60%  (resolved 3813/5750)
+- 6,602 live predictions logged since launch
+  - ≥90% predictions  →  86%  (resolved 1605/2357)
+  - ≥80% predictions  →  80%  (resolved 1889/2785)
+  - ≥70% predictions  →  75%  (resolved 2283/3438)
+  - ≥60% predictions  →  70%  (resolved 2855/4279)
+  - ≥50% predictions  →  60%  (resolved 3813/5757)
 
 ## Calibration · runner predictions (forward)
 How often did mints we flagged at each confidence level actually run?
