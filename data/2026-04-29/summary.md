@@ -1,35 +1,31 @@
 # Daily snapshot · 2026-04-29
 
 ## Calibration · cross-validated
-- 8,000 samples from 83,702 historical curves
-  - ≥90% predictions  →  95.6% actually graduated  (n=68)
-  - ≥80% predictions  →  95.8% actually graduated  (n=72)
-  - ≥70% predictions  →  95.0% actually graduated  (n=80)
-  - ≥60% predictions  →  93.3% actually graduated  (n=90)
-  - ≥50% predictions  →  84.8% actually graduated  (n=105)
+- 8,000 samples from 86,875 historical curves
+  - ≥90% predictions  →  100.0% actually graduated  (n=73)
+  - ≥80% predictions  →  100.0% actually graduated  (n=79)
+  - ≥70% predictions  →  98.8% actually graduated  (n=82)
+  - ≥60% predictions  →  96.8% actually graduated  (n=95)
+  - ≥50% predictions  →  89.8% actually graduated  (n=118)
 
 ## Calibration · forward production predictions (graduation)
-- 22,823 live predictions logged since launch
-  - ≥90% predictions  →  90%  (resolved 2457/3392)
-  - ≥80% predictions  →  85%  (resolved 2808/3888)
-  - ≥70% predictions  →  80%  (resolved 3312/4655)
-  - ≥60% predictions  →  74%  (resolved 4122/5745)
-  - ≥50% predictions  →  64%  (resolved 5505/7642)
+- 28,573 live predictions logged since launch
+  - ≥90% predictions  →  90%  (resolved 2924/3925)
+  - ≥80% predictions  →  86%  (resolved 3298/4454)
+  - ≥70% predictions  →  82%  (resolved 3834/5263)
+  - ≥60% predictions  →  76%  (resolved 4690/6401)
+  - ≥50% predictions  →  67%  (resolved 6177/8418)
 
 ## Calibration · runner predictions (forward)
 How often did mints we flagged at each confidence level actually run?
-- **≥2x** runner  ·  predictions ≥90% prob  →  96% hit  (5349/5584 resolved)
-- **≥3x** runner  ·  predictions ≥90% prob  →  96% hit  (2301/2409 resolved)
-- **≥5x** runner  ·  predictions ≥90% prob  →  95% hit  (1060/1113 resolved)
-- **≥10x** runner  ·  predictions ≥90% prob  →  98% hit  (429/437 resolved)
+- **≥2x** runner  ·  predictions ≥90% prob  →  93% hit  (7326/7859 resolved)
+- **≥3x** runner  ·  predictions ≥90% prob  →  91% hit  (3253/3568 resolved)
+- **≥5x** runner  ·  predictions ≥90% prob  →  91% hit  (1610/1761 resolved)
+- **≥10x** runner  ·  predictions ≥90% prob  →  97% hit  (664/686 resolved)
 - **≥20x** runner  ·  predictions ≥60% prob  →  100% hit  (9/9 resolved)
 
-## Paper trading bots · 1 SOL bankroll, real Jupiter prices
-- **≥80% · +20% TP · −25% SL** · 794 trades · 1 SOL → 1.0510 SOL · realized +0.0510 SOL
-- **≥90% · +20% TP · −25% SL** · 583 trades · 1 SOL → 0.7928 SOL · realized -0.2072 SOL
-
 ## Wallet intelligence
-- Wallets indexed: **242,945**
-- Curves indexed:  **83,702**
+- Wallets indexed: **247,754**
+- Curves indexed:  **86,875**
 
 _Auto-committed by the Graduate Oracle web service. See `git log` for the full daily history._
