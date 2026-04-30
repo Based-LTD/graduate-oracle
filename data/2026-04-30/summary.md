@@ -9,12 +9,12 @@
   - ≥50% predictions  →  93.3% actually graduated  (n=89)
 
 ## Calibration · forward production predictions (graduation)
-- 45,274 live predictions logged since launch
-  - ≥90% predictions  →  81%  (resolved 4544/5106)
-  - ≥80% predictions  →  78%  (resolved 5081/5718)
-  - ≥70% predictions  →  74%  (resolved 5852/6634)
-  - ≥60% predictions  →  69%  (resolved 7084/8015)
-  - ≥50% predictions  →  61%  (resolved 9296/10504)
+- 45,416 live predictions logged since launch
+  - ≥90% predictions  →  81%  (resolved 4558/5112)
+  - ≥80% predictions  →  78%  (resolved 5102/5726)
+  - ≥70% predictions  →  74%  (resolved 5887/6642)
+  - ≥60% predictions  →  69%  (resolved 7129/8023)
+  - ≥50% predictions  →  61%  (resolved 9355/10512)
 
 ## Calibration · runner predictions (forward)
 How often did mints we flagged at each confidence level actually run?
