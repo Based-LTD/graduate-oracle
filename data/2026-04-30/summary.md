@@ -9,19 +9,19 @@
   - ≥50% predictions  →  89.2% actually graduated  (n=111)
 
 ## Calibration · forward production predictions (graduation)
-- 63,447 live predictions logged since launch
-  - ≥90% predictions  →  75%  (resolved 4926/5127)
-  - ≥80% predictions  →  72%  (resolved 5528/5743)
-  - ≥70% predictions  →  71%  (resolved 7233/7724)
-  - ≥60% predictions  →  67%  (resolved 8655/9189)
-  - ≥50% predictions  →  59%  (resolved 11192/11814)
+- 63,646 live predictions logged since launch
+  - ≥90% predictions  →  75%  (resolved 4952/5127)
+  - ≥80% predictions  →  72%  (resolved 5558/5743)
+  - ≥70% predictions  →  71%  (resolved 7264/7724)
+  - ≥60% predictions  →  66%  (resolved 8686/9198)
+  - ≥50% predictions  →  59%  (resolved 11229/11827)
 
 ## Calibration · runner predictions (forward)
 How often did mints we flagged at each confidence level actually run?
-- **≥2x** runner  ·  predictions ≥90% prob  →  81% hit  (14092/17452 resolved)
-- **≥3x** runner  ·  predictions ≥90% prob  →  78% hit  (5942/7626 resolved)
-- **≥5x** runner  ·  predictions ≥90% prob  →  78% hit  (2883/3697 resolved)
-- **≥10x** runner  ·  predictions ≥90% prob  →  81% hit  (1147/1411 resolved)
+- **≥2x** runner  ·  predictions ≥90% prob  →  80% hit  (14092/17614 resolved)
+- **≥3x** runner  ·  predictions ≥90% prob  →  77% hit  (5942/7697 resolved)
+- **≥5x** runner  ·  predictions ≥90% prob  →  77% hit  (2883/3737 resolved)
+- **≥10x** runner  ·  predictions ≥90% prob  →  80% hit  (1147/1432 resolved)
 - **≥20x** runner  ·  predictions ≥90% prob  →  100% hit  (16/16 resolved)
 
 ## Wallet intelligence
