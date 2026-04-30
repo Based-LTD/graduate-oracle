@@ -38,58 +38,58 @@
         "actual_grad_rate": 0.9859154929577465
       }
     },
-    "computed_at": 1777566255,
-    "next_recompute_at": 1777587855
+    "computed_at": 1777567456,
+    "next_recompute_at": 1777589056
   },
   "forward": {
     "status": "ok",
     "method": "forward production predictions, resolved against observer flush",
     "scope": "lifetime",
     "tracking_since": 1777401979,
-    "predictions_total": 59319,
+    "predictions_total": 59812,
     "thresholds": {
       "50": {
         "threshold_pct": 50,
-        "n_total": 11462,
-        "n_pending": 634,
-        "n_resolved": 10828,
+        "n_total": 11484,
+        "n_pending": 600,
+        "n_resolved": 10884,
         "n_graduated": 6438,
-        "actual_grad_rate": 0.5945696342814925
+        "actual_grad_rate": 0.5915104740904079
       },
       "60": {
         "threshold_pct": 60,
-        "n_total": 8898,
-        "n_pending": 536,
-        "n_resolved": 8362,
+        "n_total": 8916,
+        "n_pending": 507,
+        "n_resolved": 8409,
         "n_graduated": 5608,
-        "actual_grad_rate": 0.6706529538387945
+        "actual_grad_rate": 0.6669045070757522
       },
       "70": {
         "threshold_pct": 70,
-        "n_total": 7472,
-        "n_pending": 484,
-        "n_resolved": 6988,
+        "n_total": 7489,
+        "n_pending": 463,
+        "n_resolved": 7026,
         "n_graduated": 4985,
-        "actual_grad_rate": 0.7133657698912421
+        "actual_grad_rate": 0.7095075434101907
       },
       "80": {
         "threshold_pct": 80,
         "n_total": 5742,
-        "n_pending": 302,
-        "n_resolved": 5440,
+        "n_pending": 269,
+        "n_resolved": 5473,
         "n_graduated": 3974,
-        "actual_grad_rate": 0.7305147058823529
+        "actual_grad_rate": 0.7261099945185456
       },
       "90": {
         "threshold_pct": 90,
         "n_total": 5126,
-        "n_pending": 279,
-        "n_resolved": 4847,
+        "n_pending": 250,
+        "n_resolved": 4876,
         "n_graduated": 3691,
-        "actual_grad_rate": 0.7615019599752424
+        "actual_grad_rate": 0.7569729286300246
       }
     },
-    "computed_at": 1777566274
+    "computed_at": 1777567477
   },
   "runner": {
     "status": "ok",
@@ -101,46 +101,46 @@
         "thresholds": {
           "50": {
             "threshold_pct": 50,
-            "n_total": 53869,
-            "n_pending": 7475,
-            "n_resolved": 46394,
+            "n_total": 54361,
+            "n_pending": 7449,
+            "n_resolved": 46912,
             "n_hit": 34975,
-            "actual_hit_rate": 0.7538690347889814
+            "actual_hit_rate": 0.7455448499317872
           },
           "60": {
             "threshold_pct": 60,
-            "n_total": 44473,
-            "n_pending": 6223,
-            "n_resolved": 38250,
+            "n_total": 44886,
+            "n_pending": 6215,
+            "n_resolved": 38671,
             "n_hit": 30795,
-            "actual_hit_rate": 0.8050980392156862
+            "actual_hit_rate": 0.7963331695585839
           },
           "70": {
             "threshold_pct": 70,
-            "n_total": 37863,
-            "n_pending": 5383,
-            "n_resolved": 32480,
+            "n_total": 38204,
+            "n_pending": 5373,
+            "n_resolved": 32831,
             "n_hit": 27163,
-            "actual_hit_rate": 0.8362992610837439
+            "actual_hit_rate": 0.8273582894215833
           },
           "80": {
             "threshold_pct": 80,
-            "n_total": 31652,
-            "n_pending": 4629,
-            "n_resolved": 27023,
+            "n_total": 31940,
+            "n_pending": 4630,
+            "n_resolved": 27310,
             "n_hit": 23196,
-            "actual_hit_rate": 0.8583798986048922
+            "actual_hit_rate": 0.8493592090809228
           },
           "90": {
             "threshold_pct": 90,
-            "n_total": 19395,
-            "n_pending": 2686,
-            "n_resolved": 16709,
+            "n_total": 19397,
+            "n_pending": 2448,
+            "n_resolved": 16949,
             "n_hit": 14090,
-            "actual_hit_rate": 0.8432581243641152
+            "actual_hit_rate": 0.8313174818573367
           }
         },
-        "n_resolved_at_50pct": 46394,
+        "n_resolved_at_50pct": 46912,
         "n_hit_at_50pct": 34975
       },
       "3x": {
@@ -149,46 +149,46 @@
         "thresholds": {
           "50": {
             "threshold_pct": 50,
-            "n_total": 21617,
-            "n_pending": 3046,
-            "n_resolved": 18571,
+            "n_total": 21777,
+            "n_pending": 3050,
+            "n_resolved": 18727,
             "n_hit": 13875,
-            "actual_hit_rate": 0.7471326261375263
+            "actual_hit_rate": 0.7409088481871096
           },
           "60": {
             "threshold_pct": 60,
-            "n_total": 18298,
-            "n_pending": 2550,
-            "n_resolved": 15748,
+            "n_total": 18417,
+            "n_pending": 2529,
+            "n_resolved": 15888,
             "n_hit": 12367,
-            "actual_hit_rate": 0.7853060706121412
+            "actual_hit_rate": 0.7783862034239678
           },
           "70": {
             "threshold_pct": 70,
-            "n_total": 15472,
-            "n_pending": 2193,
-            "n_resolved": 13279,
+            "n_total": 15568,
+            "n_pending": 2168,
+            "n_resolved": 13400,
             "n_hit": 10806,
-            "actual_hit_rate": 0.813766096844642
+            "actual_hit_rate": 0.8064179104477612
           },
           "80": {
             "threshold_pct": 80,
-            "n_total": 13168,
-            "n_pending": 1923,
-            "n_resolved": 11245,
+            "n_total": 13245,
+            "n_pending": 1898,
+            "n_resolved": 11347,
             "n_hit": 9368,
-            "actual_hit_rate": 0.8330813694975545
+            "actual_hit_rate": 0.8255926676654622
           },
           "90": {
             "threshold_pct": 90,
             "n_total": 8266,
-            "n_pending": 973,
-            "n_resolved": 7293,
+            "n_pending": 880,
+            "n_resolved": 7386,
             "n_hit": 5942,
-            "actual_hit_rate": 0.814753873577403
+            "actual_hit_rate": 0.8044949905226103
           }
         },
-        "n_resolved_at_50pct": 18571,
+        "n_resolved_at_50pct": 18727,
         "n_hit_at_50pct": 13875
       },
       "5x": {
@@ -197,46 +197,46 @@
         "thresholds": {
           "50": {
             "threshold_pct": 50,
-            "n_total": 9008,
-            "n_pending": 1329,
-            "n_resolved": 7679,
+            "n_total": 9047,
+            "n_pending": 1289,
+            "n_resolved": 7758,
             "n_hit": 5787,
-            "actual_hit_rate": 0.7536137517905978
+            "actual_hit_rate": 0.7459396751740139
           },
           "60": {
             "threshold_pct": 60,
-            "n_total": 7713,
-            "n_pending": 1153,
-            "n_resolved": 6560,
+            "n_total": 7745,
+            "n_pending": 1114,
+            "n_resolved": 6631,
             "n_hit": 5169,
-            "actual_hit_rate": 0.7879573170731707
+            "actual_hit_rate": 0.7795204343236314
           },
           "70": {
             "threshold_pct": 70,
-            "n_total": 6787,
-            "n_pending": 1030,
-            "n_resolved": 5757,
+            "n_total": 6816,
+            "n_pending": 996,
+            "n_resolved": 5820,
             "n_hit": 4682,
-            "actual_hit_rate": 0.8132708007642869
+            "actual_hit_rate": 0.8044673539518901
           },
           "80": {
             "threshold_pct": 80,
-            "n_total": 5736,
-            "n_pending": 738,
-            "n_resolved": 4998,
+            "n_total": 5737,
+            "n_pending": 684,
+            "n_resolved": 5053,
             "n_hit": 4125,
-            "actual_hit_rate": 0.8253301320528211
+            "actual_hit_rate": 0.8163467247179893
           },
           "90": {
             "threshold_pct": 90,
             "n_total": 4013,
-            "n_pending": 472,
-            "n_resolved": 3541,
+            "n_pending": 425,
+            "n_resolved": 3588,
             "n_hit": 2883,
-            "actual_hit_rate": 0.8141767862185824
+            "actual_hit_rate": 0.8035117056856187
           }
         },
-        "n_resolved_at_50pct": 7679,
+        "n_resolved_at_50pct": 7758,
         "n_hit_at_50pct": 5787
       },
       "10x": {
@@ -245,46 +245,46 @@
         "thresholds": {
           "50": {
             "threshold_pct": 50,
-            "n_total": 3320,
-            "n_pending": 451,
-            "n_resolved": 2869,
+            "n_total": 3333,
+            "n_pending": 432,
+            "n_resolved": 2901,
             "n_hit": 2181,
-            "actual_hit_rate": 0.7601951899616591
+            "actual_hit_rate": 0.7518097207859359
           },
           "60": {
             "threshold_pct": 60,
-            "n_total": 2934,
-            "n_pending": 405,
-            "n_resolved": 2529,
+            "n_total": 2947,
+            "n_pending": 390,
+            "n_resolved": 2557,
             "n_hit": 2018,
-            "actual_hit_rate": 0.7979438513246342
+            "actual_hit_rate": 0.7892061008994916
           },
           "70": {
             "threshold_pct": 70,
-            "n_total": 2605,
-            "n_pending": 347,
-            "n_resolved": 2258,
+            "n_total": 2617,
+            "n_pending": 333,
+            "n_resolved": 2284,
             "n_hit": 1867,
-            "actual_hit_rate": 0.8268379096545616
+            "actual_hit_rate": 0.8174255691768827
           },
           "80": {
             "threshold_pct": 80,
-            "n_total": 2158,
-            "n_pending": 274,
-            "n_resolved": 1884,
+            "n_total": 2167,
+            "n_pending": 259,
+            "n_resolved": 1908,
             "n_hit": 1619,
-            "actual_hit_rate": 0.8593418259023354
+            "actual_hit_rate": 0.8485324947589099
           },
           "90": {
             "threshold_pct": 90,
             "n_total": 1555,
-            "n_pending": 197,
-            "n_resolved": 1358,
+            "n_pending": 176,
+            "n_resolved": 1379,
             "n_hit": 1147,
-            "actual_hit_rate": 0.8446244477172312
+            "actual_hit_rate": 0.8317621464829587
           }
         },
-        "n_resolved_at_50pct": 2869,
+        "n_resolved_at_50pct": 2901,
         "n_hit_at_50pct": 2181
       },
       "20x": {
@@ -336,8 +336,8 @@
         "n_hit_at_50pct": 83
       }
     },
-    "computed_at": 1777566274,
+    "computed_at": 1777567477,
     "tracking_since": 1777401979,
-    "predictions_total": 59319
+    "predictions_total": 59812
   }
 }
