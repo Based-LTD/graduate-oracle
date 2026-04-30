@@ -1,0 +1,35 @@
+name: SDK smoke test
+
+on:
+  schedule:
+    - cron: "37 14 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install from PyPI
+        run: pip install graduate-oracle
+
+      - name: Import + method-surface check
+        run: |
+          python - <<'PY'
+          from graduate_oracle import GradOracle, GradOracleError, __version__
+          print(f"version: {__version__}")
+          required = {"accuracy","health","leaderboard","live","mint_free_key",
+                      "probe","runners","smart_money_active","stats","wallet"}
+          got = {m for m in dir(GradOracle) if not m.startswith("_")}
+          missing = required - got
+          assert not missing, f"missing methods: {missing}"
+          print("methods OK:", sorted(got))
+          PY
+
+      - name: Live API health check
+        run: |
+          curl -fsS https://graduateoracle.fun/health | grep -q '"ok":true'
+          echo "live API responding"
