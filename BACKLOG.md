@@ -702,6 +702,29 @@ The Lane 6 candidates extracted from curve replay at age 30/60 (Lane 9 confirmed
 
 **Post-grad snapshot features (use during training only, NOT at score time):** they're in `post_grad_outcomes.feature_*` but captured at graduation. Including them in training would leak future state into prediction. Score-time analogues from Lane 9's curve replay are the proxy.
 
+### gbm_shadow sticky-load-failure fix (formally pre-registered 2026-05-05 late evening, before deploy)
+
+**Bug found by reading `web/gbm_shadow.py:42-77` after the 21h dual-write peek showed only ~94 min of clean data.** `_MODEL_LOAD_FAILED` is a module-level sticky boolean — once it flips to True (e.g., on a transient `/data` volume mount race at first call), every subsequent call short-circuits and returns None for the lifetime of the process. There's no retry. The "94 min of clean data, then 19h of nothing, then 94 min again" pattern is a process restart unlatching the bug, not a Lane 11/12 observer issue.
+
+The lazy-load-on-first-call pattern compounds it: first call timing depends on observer activity (when the first mint hits the lane gate), not deploy timing — racing with volume mount in unpredictable ways.
+
+- **Hypothesis:** the silent-failure mechanism is `_MODEL_LOAD_FAILED` latching after a transient first-call failure. Retry-with-backoff + eager warmup + status surfacing eliminate it.
+
+- **Three-part fix (all in `web/gbm_shadow.py` + one-line wire from `main.py`):**
+  1. **Replace sticky boolean with retry-with-backoff.** Track `_last_load_attempt_at` and `_consecutive_load_failures`. Backoff: 60s → 5min → 30min → 2h, capped. Never give up entirely. Worst case becomes 2h, not 19h.
+  2. **Eager `_warmup()` at app startup.** Call from `main.py` startup hook so the load attempt happens immediately, not on first prediction. Logs at startup show exactly when model became available (or didn't).
+  3. **Surface load state to `/api/status`.** Add `gbm_shadow.stats_snapshot()` fields to status response. External monitoring can verify `model_loaded=True` without querying predictions table.
+
+- **Verification (decision rule, applied at 24h post-deploy):**
+  - Monitor `/api/status` for `model_loaded=True` consistently.
+  - Run dual-write 12-24h after deploy; verify shadow conversion stays ~100% on post-deploy predicted_at filter.
+  - **PASS:** conversion >95% across at least one full 24h cycle (covers all UTC hours including catastrophic 03-06 + 16-18) → bug closed.
+  - **FAIL:** conversion drops below 95% in any 1h window during first 24h → bug not fully solved; surface and re-investigate.
+
+- **Time bound:** ~30-45 min including local syntax check + fly deploy + verification curl.
+
+- **Independent of:** the calibration-finding (Finding 2 from the 21h peek). Even with reliable dual-write, the AUC-based ship-replace gates don't catch distribution-shift over-confidence. Gate amendment is its own next-session item, not blocked by this fix.
+
 ### Dual-write conversion verification ✅ done 2026-05-05 late evening (100% on post-deploy predictions; "68%" was measurement artifact)
 
 **RESULT (per pre-registered rule, applied fresh):** ≥95% gate passes decisively. No action required.
@@ -807,6 +830,45 @@ After cutover steps 1-3 ship (pkl push + dual-write wiring + verify), GBM scores
 **Tomorrow's first action (~30 min):** review decision artifact → push pkl to Fly → wire GBM scoring path → dual-write phase → cutover.
 
 Decision artifact: [docs/research/retrain_v1_decision.md](docs/research/retrain_v1_decision.md).
+
+#### Gate 5 — calibration check (added 2026-05-04 evening, pre-registered before data lands)
+
+**Why this gate exists.** Gates 1-4 are AUC-based — they measure ranking, not absolute calibration. Late-day spot-check on the dual-write window (~21h period, mostly silently broken — see "gbm_shadow silent failure" entry) showed GBM appears over-confident vs `actual_graduated` by ~18pp on bin [0.1-0.3) and ~30pp on bin [0.3-0.5). The check used the wrong label (training was `sustained_30m`, check was `actual_graduated`), and `actual_sustained ≤ actual_graduated`, so the calibration gap vs the proper label is **at least** these magnitudes, plausibly worse. Mechanism: distribution shift between training corpus (resolved post-grad outcomes, mostly graduated) and live distribution (most live mints don't graduate). Standard ML problem; gates 1-4 don't catch it. Without Gate 5, cutover ships ranking gain plus inflated absolute probabilities — exactly the runner_prob mis-scaling pattern we already caveated today, but on the headline graduation field.
+
+**Hypothesis.** GBM's absolute probability calibration vs `sustained_30m` on dual-write resolved outcomes is within ±5pp on bins ≥0.3.
+
+**Sample.** Predictions table rows where:
+- `predicted_at >= gbm_shadow_fix_deploy_timestamp` (the post-fix clean window — pre-fix data is corrupted by silent-failure pattern)
+- `grad_prob_gbm_shadow IS NOT NULL` AND `gbm_shadow_features_complete = 1`
+- Joined to `post_grad_outcomes` on mint where `sustained_30m IS NOT NULL`
+- **Sample-size requirement: n ≥ 30 per probability bin in the analyzed range.** If bins ≥0.5 don't reach n=30 within the dual-write window, extend the window before applying the rule.
+
+**Method.**
+- Bin GBM scores into [0.0-0.1), [0.1-0.3), [0.3-0.5), [0.5-0.7), [0.7-1.0]
+- Per bin, compute mean predicted probability (avg of `grad_prob_gbm_shadow`)
+- Per bin, compute actual sustained_30m rate (mean of `sustained_30m`)
+- Compute signed delta per bin (predicted − actual)
+- Stratify by `bundle_detected` to ensure check holds across both populations (per Lane 1, ranking gain is concentrated in non-bundled — calibration could differ similarly)
+
+**Decision rule (4-branch, with Lane 14 multi-fire discipline).**
+
+- **Clean: `|delta| ≤ 5pp on all bins ≥0.3`.** GBM is well-calibrated against the live distribution. Cutover proceeds with raw GBM.
+- **Over-confident: `delta < -5pp on majority of bins ≥0.3` (predicted > actual).** GBM's absolute probabilities are inflated. Cutover requires **isotonic recalibration cascade**: train an isotonic regression layer on the dual-write resolved outcomes that maps raw GBM probabilities → calibrated probabilities. Ship raw GBM + calibration step (analogous to current k-NN + Platt step in the deployed pipeline). Preserves the ranking gain, fixes the magnitude.
+- **Under-confident: `delta > +5pp on majority of bins ≥0.3` (predicted < actual).** Same recalibration cascade, opposite direction. Action identical: ship with isotonic layer.
+- **Mixed: some bins clean, others off (≥1 bin clean AND ≥1 bin off by >5pp on bins ≥0.3).** Calibration is non-stationary or bin-dependent. Cutover BLOCKED. Ship GBM as supplementary score only (display alongside k-NN with explicit "directional only, magnitude pending" caveat — same pattern as runner_prob today). Pre-register a separate investigation into the mechanism before any further cutover attempt.
+
+**Multi-fire discipline (Lane 14 lesson).** Branches are evidence-types, not exclusive verdicts. If two branches both fire (e.g., over-confident on bins [0.1-0.3) but under-confident on bin [0.5-0.7)), the verdict is "Mixed" — even if the count of bins matches "Over-confident" majority. The asymmetric direction of error itself is a signal of distribution-shift mechanism, not a signal of overall direction.
+
+**Transition zone (Lane 13 lesson).** Crossings at the ±5pp boundary count only if magnitude > 1pp on both sides. A bin where delta is +0.2pp and another where delta is -0.3pp doesn't cross the threshold meaningfully — both are within noise of "clean."
+
+**Sample-size escape hatch.** If the dual-write window completes the 24h verification gate (gbm_shadow fix verification) but Gate 5 doesn't have n≥30 in bins ≥0.5, the calibration analysis is premature, NOT a failure. Extend the window. Don't apply the decision rule on under-powered bins.
+
+**What Gate 5 changes about the cutover sequence.** All 5 gates (1-4 AUC-based, 5 calibration-based) must pass for raw cutover. Gate 5 alternatives (recalibration cascade, supplementary-only) are explicit fallbacks with their own ship paths. Don't conflate "Gate 5 fails" with "cutover blocked" — Gate 5 specifically routes to one of three deploy patterns based on which branch fires.
+
+**Discipline contract (re-affirmed):**
+- This gate is frozen at this commit; no revising downward after seeing the result.
+- Pre-registration captures the multi-fire and transition-zone refinements from Lane 13/14 explicitly.
+- Negative or ambiguous results get the same treatment as positive ones — published in `docs/research/` regardless.
 
 #### Architecture: k-NN with full feature set is default; GBM only if it clears the ship-replace bar
 
