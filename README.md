@@ -8,7 +8,8 @@ public API. Every mint that lands on pump.fun gets a probability of graduation
 buyer-quality metrics drawn from a 200,000+ wallet reputation index.
 
 This repository is the **public face** of the project: documentation, working
-example code, daily snapshots of accuracy and leaderboards, and the
+example code, regular accuracy snapshots (paused during model transitions —
+see [`data/PAUSED.md`](data/PAUSED.md)), the active research log, and the
 methodology behind the model. The scoring engine itself is closed-source.
 
 ```

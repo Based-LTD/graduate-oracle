@@ -831,6 +831,103 @@ After cutover steps 1-3 ship (pkl push + dual-write wiring + verify), GBM scores
 
 Decision artifact: [docs/research/retrain_v1_decision.md](docs/research/retrain_v1_decision.md).
 
+#### UI threshold update — paired with calibrated-GBM cutover (formally pre-registered 2026-05-05 evening, before code/copy change)
+
+**Context.** Calibrated GBM puts 93% of predictions in [0,0.1), <0.5% above 0.3 (vs deployed k-NN's 98% in [0,0.1)). The deployed `predicted_prob ≥0.7` WATCH threshold won't translate naively — virtually nothing post-cutover crosses 0.7. UI must change at the same moment as the model cutover; otherwise alerts go silent, OR alerts are decoupled from the model semantics, OR the UI displays an absolute-probability number whose meaning has shifted under it.
+
+**Three options surveyed** (per the calibration writeup):
+1. **Lower thresholds.** Most invisible to users; quietly accepts that "70%" was always a model-scale artifact rather than a probability claim.
+2. **Ranking buckets.** "HIGH / MEDIUM / LOW" matches what the model actually does (rank). Avoids absolute-probability semantic problems entirely.
+3. **Absolute probability + base rate framing.** "calibrated probability: 0.07 (live base rate ~5%)". Maximally honest, requires more user cognitive load.
+
+**Decision (frozen):** ship a **#2+#3 hybrid**. HIGH/MED/LOW bucket is the headline (what users act on). Calibrated probability + base-rate context is supporting detail. Drop the bare "X% to graduate" framing entirely — it was a model-scale artifact even with k-NN.
+
+**Why hybrid:**
+- Headline matches the model's real capability (ranking, validated by AUC + top-N preservation).
+- Magnitude detail preserved for sophisticated users who want to size positions or compare across mints.
+- Compounds with yesterday's UX honesty pass (warming gates, runner_prob "directional only" caveat, bundle disclosure footer, n≥30 act_slice rule). "We don't show numbers that aren't calibrated" becomes "we don't show numbers that misrepresent the model's actual capability."
+- Avoids the worst case of #1 alone: "WATCH fires when graduation probability ≥0.05" reads strange in copy and quietly admits the threshold was never what users thought.
+
+**Specification (hybrid, locked here):**
+
+- **Bucket cutoffs (calibrated probability):**
+  - **HIGH:** calibrated_prob ≥ top-1% percentile of last 7-day distribution (computed daily, seeded from the post-fix dual-write window). Roughly: calibrated_prob ≥ 0.20 at current live distribution (top-1% of last 1,258 dual-write rows is ~0.20).
+  - **MEDIUM:** top-5% percentile, currently ~0.10.
+  - **LOW:** below MEDIUM. Not displayed in alerts; visible on dashboard as "low confidence."
+  - Cutoffs are dynamic (rebuilt nightly) so they self-correct as live distribution drifts. Lock the rebuild cadence at 24h to avoid Lane 13's curve-overshoot pattern from a faster rebuild.
+
+- **Alert template (TG WATCH):**
+  - Headline: `WATCH 🟢 HIGH` / `WATCH 🟡 MED` (drop bare LOW from alerts)
+  - Subline: `graduates: ~XX% (live rate ~5%)` — the calibrated_prob and the comparator base rate, both sourced from /api/scope.
+  - Drop "X% probability" as headline copy; if shown, always paired with base-rate comparator.
+
+- **Dashboard `/`:**
+  - Primary column: bucket badge (HIGH/MED/LOW with consistent color encoding).
+  - Secondary column: calibrated_prob displayed with one decimal of precision (0.07, 0.18) — never 0.0728103.
+  - Hover/expand: "calibrated probability vs live base rate" tooltip explaining the metric.
+
+- **/api/scope predictions section:**
+  - Replace `graduation_prob` description from "probability the mint graduates" to: "calibrated probability that the mint reaches the bonding-curve graduation threshold (vsol≥115). Live base rate: ~5% on in-lane mints. Display layer surfaces this as HIGH/MED/LOW ranking buckets; absolute probability available for sizing decisions."
+  - Add `calibration_layer: "isotonic_v1"` field documenting the post-2026-05-05-cutover calibration. Versioned so future calibration updates don't quietly redefine the field semantics.
+  - Keep `valid_window_s: 60`, `label_source: "vsol_threshold_115"`.
+
+- **/api/live response:**
+  - Add `grad_prob_bucket: "HIGH"|"MED"|"LOW"` field alongside existing `grad_prob`.
+  - Existing consumers reading `grad_prob` continue to work; the value is now calibrated (so absolute magnitudes shift). Document the field-meaning change in the Cutover writeup explicitly.
+
+- **Tamper-evident ledger leaf format:**
+  - Bump leaf version (V2 → V3) to record that `grad_prob` semantic moved from k-NN raw to calibrated-GBM. Old commits remain verifiable; new commits use V3.
+  - V3 leaf adds `calibration_layer` field locked into the merkle leaf.
+
+**Risk surfaces (named for transparency):**
+
+1. **Absolute-prob consumers in the wild.** External services or scripts that depend on `grad_prob ≥0.7` will silently stop firing post-cutover. Mitigation: `/api/scope` documents the field-meaning change; pre-cutover, post a notice on `/changelog` (or equivalent) flagging the semantic shift. Treat as a breaking change to the field definition, even though the schema didn't break.
+
+2. **Bucket cutoffs feel arbitrary at first.** "Top-1% percentile" is a relative measure — different from absolute thresholds. Mitigation: in /api/scope, document the cutoff method explicitly + show current cutoff values + commit to a daily rebuild log so cutoffs are auditable.
+
+3. **The bucket label distribution skews bundled.** The 88% bundled in lane-eligible predictions persists post-calibration. WATCH HIGH alerts may surface 88% bundled mints. Mitigation: name the population skew in the WATCH alert subline (or in `/api/scope`), don't pretend it's a balanced sample. "WATCH HIGH on bundled-mint slice" is honest framing.
+
+**Decision rule (post-launch validation, applied at +7 days):**
+- **Clean:** users react to bucket label, not absolute number. Alert engagement steady-or-better vs pre-cutover. /api/scope traffic shows external consumers reading the new fields. → Cutover holds.
+- **Mixed:** alert engagement drops but bucket label is being read. → Investigate copy/template; the magnitude framing may need work. Don't roll back.
+- **Regression:** alert engagement drops AND external consumers report breakage. → Roll back to k-NN scoring (the model is still wired in shadow); re-pre-register before next attempt.
+
+**Out of scope (explicitly):**
+- Replacing the underlying signal architecture (k-NN, GBM, calibration) — that's the upstream cutover.
+- Changing other product fields' display (rug_prob, runner_prob_*, post_grad_survival_prob).
+- Migration of historical predictions UI (old data displays with old framing; new data with new).
+
+**Time bound:** ~30-45 min code + copy work, when the cutover ships. Pre-registered here, locked, no scope-creep at deploy time.
+
+#### Gate 5 verdict ✅ done 2026-05-05 evening — OVER-CONFIDENT branch fires → isotonic recalibration cascade
+
+**RESULT (per Gate 5 pre-registered rule, applied fresh post-data):** OVER-CONFIDENT branch fires unambiguously.
+
+| Bin | n | predicted | actual_graduated | delta |
+|---|---:|---:|---:|---:|
+| [0.0-0.1) | 20 | 0.073 | 0.050 | -2.3pp ✓ clean |
+| [0.1-0.3) | 414 | 0.220 | 0.031 | **-18.9pp** |
+| [0.3-0.5) | 416 | 0.374 | 0.058 | **-31.7pp** |
+| [0.5-0.7) | 52 | 0.583 | 0.058 | **-52.5pp** |
+
+**Branch evaluation (12h+ post-fix dual-write, n=904 resolved):**
+- Bins ≥0.3: 2/2 fire over-confident (-31.7pp on n=416, -52.5pp on n=52). **Majority = 2/2 = 100%.**
+- Multi-fire check: zero bins fire under-confident → no Mixed verdict.
+- Transition-zone check: -31.7pp and -52.5pp are far past ±5pp threshold → no boundary noise.
+- Sample-size check: n=416, n=52 both ≥ 30 floor. Verdict is decision-grade, not premature.
+- Label-mismatch caveat: check uses `actual_graduated` (training label was `sustained_30m`, a stricter outcome). Since `actual_sustained ≤ actual_graduated`, the calibration gap vs the proper label is **at least** the magnitudes shown — possibly worse.
+
+**Pre-registered action: isotonic recalibration cascade.** Train an isotonic regression layer on the post-fix dual-write resolved outcomes mapping raw GBM probabilities → calibrated probabilities. Ship raw GBM + calibration step (analogous to k-NN + Platt step in the deployed pipeline). Preserves ranking gain (Gates 1-4 already passed), fixes magnitude.
+
+**Updated cutover sequence:**
+1. **Continue 24h gbm_shadow verification window** — already passing through catastrophic UTC windows; remaining ~4-10 hours confirmatory.
+2. **Train isotonic layer** on the 14h+ clean post-fix data. sklearn `IsotonicRegression` fit on `(raw_gbm_score, sustained_30m)` pairs from `post_grad_outcomes` join. Local train/held-out split for validation. ~30-45 min.
+3. **Re-validate Gate 5 on calibrated output.** Apply the same ±5pp threshold to the calibrated scores on held-out. PASS condition: all bins ≥0.3 within ±5pp.
+4. **Save `gbm_v1_isotonic.pkl` artifact locally** (NOT pushed to Fly until calibrated cutover sequence is ready).
+5. **Cutover sequence (calibrated GBM):** push pkl + isotonic layer to Fly → wire calibration step into gbm_shadow scoring path → brief calibrated-shadow window → fresh-eyes review → flip alerts to calibrated GBM.
+
+**On the k-NN saturation finding** (separate, durable observation): k-NN's deployed model is calling 887/904 = 98% of resolved post-fix predictions in [0,0.1). Calibrated WHERE it scores (+1.8pp clean), but the entire distribution is squished against zero. Product works today because ranking within the compressed band still fires often enough. Calibrated GBM should produce a similar overall rate distribution (isotonic maps to live rates) but with better mint-to-bucket assignment — that's where the +14pp AUC ranking gain shows up post-calibration.
+
 #### Gate 5 — calibration check (added 2026-05-04 evening, pre-registered before data lands)
 
 **Why this gate exists.** Gates 1-4 are AUC-based — they measure ranking, not absolute calibration. Late-day spot-check on the dual-write window (~21h period, mostly silently broken — see "gbm_shadow silent failure" entry) showed GBM appears over-confident vs `actual_graduated` by ~18pp on bin [0.1-0.3) and ~30pp on bin [0.3-0.5). The check used the wrong label (training was `sustained_30m`, check was `actual_graduated`), and `actual_sustained ≤ actual_graduated`, so the calibration gap vs the proper label is **at least** these magnitudes, plausibly worse. Mechanism: distribution shift between training corpus (resolved post-grad outcomes, mostly graduated) and live distribution (most live mints don't graduate). Standard ML problem; gates 1-4 don't catch it. Without Gate 5, cutover ships ranking gain plus inflated absolute probabilities — exactly the runner_prob mis-scaling pattern we already caveated today, but on the headline graduation field.
