@@ -702,6 +702,25 @@ The Lane 6 candidates extracted from curve replay at age 30/60 (Lane 9 confirmed
 
 **Post-grad snapshot features (use during training only, NOT at score time):** they're in `post_grad_outcomes.feature_*` but captured at graduation. Including them in training would leak future state into prediction. Score-time analogues from Lane 9's curve replay are the proxy.
 
+### Deployed k-NN saturation — structural alert failure diagnosed 2026-05-06 morning (pre-cutover)
+
+Discovered during Track A calibrated-shadow window @ uptime 2.14h: the deployed k-NN's absolute-threshold alert system has been structurally failing since deploy. Not transient. Not a Track A regression.
+
+**Evidence:**
+- 4h post-Track-A: 286 in-lane predictions, **zero crossed `predicted_prob >= 0.50`** (let alone the 0.70 alert threshold)
+- Pre-Track-A baseline: 3-7 alerts per 6h sometimes, zero alerts per 6h other times — irregular firing with no transparent cause
+- Calibrated GBM shadow distribution (n=151) confirms the structural cause: 74.8% of calibrated values land in [0,0.05) because the live graduation rate genuinely sits there. Any honestly-calibrated model anchors below ~0.20.
+
+**Diagnosis:** alert quality isn't a threshold-tuning problem. It's a base-rate-calibrated-bucket problem. No absolute threshold gives consistent daily alert volume because the underlying live distribution doesn't support 0.70-confidence calls.
+
+**What Track B cutover fixes:** HIGH/MED/LOW bucket framing (top-1% / top-5% percentile of calibrated scores) is the only honest way to fire alerts when live base rate is ~5%. Same predictive signal, fundamentally different alert UX. Self-correcting via 24h cutoff rebuild.
+
+**Single-user-cohort caveat:** 1 active grad_prob alert rule today (likely the developer). Felt impact n=1, structural diagnosis applies to any user on the same threshold.
+
+**Strategic implication:** Track B isn't "ship the new model" — it's "fix the alert system that's been silently failing as long as the product has existed." Cutover urgency higher than originally framed; B2B narrative sharper.
+
+Writeup: [docs/research/deployed_knn_saturation_diagnosis.md](../docs/research/deployed_knn_saturation_diagnosis.md). Timestamped pre-cutover so the receipts trail proves diagnosis preceded fix.
+
 ### gbm_shadow sticky-load-failure fix (formally pre-registered 2026-05-05 late evening, before deploy)
 
 **Bug found by reading `web/gbm_shadow.py:42-77` after the 21h dual-write peek showed only ~94 min of clean data.** `_MODEL_LOAD_FAILED` is a module-level sticky boolean — once it flips to True (e.g., on a transient `/data` volume mount race at first call), every subsequent call short-circuits and returns None for the lifetime of the process. There's no retry. The "94 min of clean data, then 19h of nothing, then 94 min again" pattern is a process restart unlatching the bug, not a Lane 11/12 observer issue.
