@@ -4,6 +4,87 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### Sixth-finding fixes — pre-registered before implementation (2026-05-07 morning)
+
+After diagnosis at `597b5ab` (sharpened from `ce7a38b`), the four fixes ship together as a single combined deploy. Each pre-registered separately so the discipline pattern's "decide criteria first, apply fresh" property holds. Rules 9 + 10 stay deactivated until verification gate passes.
+
+#### Fix 1 — snapshot field expansion (no pre-registration needed; pure additive)
+
+`web/alert_push.py:_SNAPSHOT_FIELDS` extended with: `grad_prob_bucket`, `grad_prob_gbm_calibrated`, `grad_prob_gbm_shadow`. Lets future content inspection see what fired. Tiny code change. No behavior change for rule firing — purely improves auditability of `pending_alerts.snapshot_json`.
+
+#### Fix 2 — input-quality gate in `bucket_for()` (pre-registered 2026-05-07 morning)
+
+**Hypothesis:** the bucket-MED flood includes a meaningful fraction of degenerate inputs (1-buyer fresh mints, near-zero vsol growth) that should be filtered before bucket assignment, not after. Filtering at the bucket-assignment layer prevents downstream alert noise from inputs the model has no signal on.
+
+**Method:** `bucket_for(calibrated_prob, raw_gbm_prob, m_out)` extended to accept the m_out dict. Returns "LOW" when ANY of:
+- `unique_buyers < 3` (insufficient buyer diversity to support prediction)
+- `n_trades < 5` (insufficient trade history for feature stability)
+- `vsol_growth_sol < 1.0` (mint hasn't moved meaningfully past launch)
+
+**Rationale:** these thresholds define "degenerate input" — the model has no signal to act on. Bucket assignment on degenerate inputs produces noise alerts, not predictions. The gate is a precondition check, not a model tuning. Frozen at this commit.
+
+**Decision rule (re-evaluation at +30 days):**
+- MED fire rate stays >2× design target (>20/day) post-gate → tighten further (e.g., `unique_buyers < 5`). Re-pre-register.
+- MED fire rate drops below 5/day post-gate → loosen (e.g., `unique_buyers < 2`). Re-pre-register.
+- 5-20/day → frozen criteria pass; close the iteration.
+
+**Time bound:** ~30 min implementation + tests. Pairs with Fix 4 (volume calibration) — neither alone is sufficient.
+
+#### Fix 3 — post_grad_survival_prob warming-on-loose-match (pre-registered 2026-05-07 morning)
+
+**Hypothesis:** post-grad k-NN on degenerate-input feature vectors finds 8 neighbors that all happen to sustain because the matches are loose (any random 8 mints). The output `prob: 1.0, status: live` is meaningless on such inputs. A distance-quality gate makes the predictor return `status: warming` when the neighborhood is incoherent.
+
+**Method:** `predict_survival()` returns `status: warming, prob: null` when the mean of the 8 nearest-neighbor distances exceeds a frozen quality threshold. Threshold derived from the empirical distribution of nearest-neighbor distances on the existing training data:
+- **Frozen threshold:** distance threshold matches the 75th percentile of nearest-neighbor distances on the training set
+- **Rationale:** "predictions above this threshold lack a coherent neighborhood" — the model can't distinguish meaningful matches from background noise
+
+**Output when warming:** `{prob: null, n_neighbors: 8, status: 'warming', mean_distance: X}`. Alert template skips rendering sustain when `status='warming'`.
+
+**Decision rule (re-evaluation at +30 days):**
+- Warming-rate >50% of in-lane mints → threshold too tight; relax to 90th percentile. Re-pre-register.
+- Warming-rate <5% AND degenerate inputs still showing `prob: 1.0` → tighten to 50th percentile. Re-pre-register.
+- 5-50% warming-rate AND no pathological 100%-on-degenerate cases → frozen criteria pass.
+
+**Time bound:** ~45 min implementation including the empirical threshold derivation + tests.
+
+#### Fix 4 — volume-target-driven cutoffs (pre-registered 2026-05-07 morning)
+
+**Hypothesis:** fixed percentile cutoffs (raw_gbm_p97) applied to whatever production volume comes in produces unstable alert rates. Inverting the relationship — derive percentile from a target alert rate — produces self-stabilizing cutoffs that adjust as production volume changes.
+
+**Method:** `bucket_cutoffs.rebuild()` switches from "compute fixed percentiles" to "compute percentiles that hit fixed alert-rate targets":
+- **HIGH target:** ~5/week → percentile that produces 5/week given trailing 7d volume
+- **MED target:** ~10/day → percentile that produces 10/day given trailing 7d volume
+- Volume = trailing 7d in-lane scoring rate (NOT just persisted predictions; account for LOG_THRESHOLD-fix-expanded persistence)
+
+**Rationale:** alert rate is the quantity that matters for product behavior. Volume-adjusted cutoffs self-stabilize as production volume drifts. The targets become the frozen values; the percentiles are derived.
+
+**Decision rule (post-deploy validation, applied at +7 days):**
+- HIGH 0.3-3/day rolling 7d AND MED 1-30/day → clean. Hold targets.
+- HIGH or MED systematically off design target by >2× sustained over 7d → adjust targets (not percentiles). Re-pre-register if change exceeds ±50%.
+- Target volumes interact with Fix 2 (input-quality gate): if Fix 2 filters too aggressively, volumes drop and percentiles loosen automatically. If Fix 2 filters too loosely, volumes rise and percentiles tighten automatically. The two fixes interact correctly by construction.
+
+**Time bound:** ~30 min implementation + tests.
+
+### Combined-deploy verification gate (frozen criteria, applied fresh post-deploy)
+
+Before re-activating rules 9 + 10, the combined fix must pass:
+
+1. **Re-enable rules 9 and 10** in production
+2. **Wait 4-8 hours** for production volume to surface
+3. **Pull `tg_fires` audit + sample 10 actual fires** with full snapshot inspection
+4. **Verify all five conditions:**
+   - HIGH fire rate within 0.5×-2× of 5/week target (i.e., 0-2 in 4-8h is acceptable; >2 means HIGH gate is too loose)
+   - MED fire rate within 0.5×-2× of 10/day target (i.e., 1-7 in 4-8h is acceptable; >7 means MED gate is too loose)
+   - Each sampled alert's snapshot shows bucket assignment matching the rule (post-Fix-1, snapshot fields are populated)
+   - Each sampled alert's content reads sensibly (no "0% graduate · 100% sustain" pathology — Fix 3 should produce status:warming on those, suppressing the sustain render)
+   - Each sampled alert's mint has features justifying the bucket assignment (post-Fix-2, no 1-buyer fresh-mint pathology — those should be LOW)
+
+5. **User confirms** content reads as useful, not noise. (Subjective gate — alert UX is what users actually act on.)
+
+**If all five pass:** X post can go out with the genuinely-true claim "alerts switched to HIGH/MED/LOW buckets calibrated to live rates." Sixth fix marked done.
+
+**If any fail:** another iteration. Another pre-fix-then-fix cycle. X post stays held. The receipts trail extends; that's the discipline pattern, not a failure.
+
 ### Sustains-gate validation criterion (pre-registered 2026-05-04)
 
 When `post_grad_survival_prob` has been logged on ≥30 fires under the current rule, evaluate whether to add it as a hard suppression gate on WATCH alerts. The criterion was set BEFORE measurement to prevent post-hoc fitting.
