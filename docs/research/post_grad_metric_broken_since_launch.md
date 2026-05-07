@@ -238,3 +238,115 @@ That's a sharper claim than continued iteration would produce.
 ### Cross-references (updated)
 
 - Memory: `feedback_pre_registration_branches.md` — being extended with **iteration-limit pre-registration rule** as part of this commit (a fix attempt that fails its acceptance criterion must pre-register either a refined retry OR a stop-iterating escalation; not "try fix N+1, N+2, ...")
+
+---
+
+## Path D2 validation FAILED + Finding 7d — training corpus has uniform zeros in 3/5 feature dimensions
+
+**Captured:** 2026-05-07. Path D2 (log-transform on continuous + drop sparse to post-filter) executed against the three pre-registered acceptance criteria. Two of three criteria failed. **More importantly, the validation surfaced a deeper data-plumbing finding (7d) that explains why no normalization scheme could have rescued this metric: the training corpus has been writing zeros for 3 of 5 features since the post-grad tracker was deployed.**
+
+### Path D2 validation result (frozen criteria)
+
+```
+training rows: 6286 (resolved with features)
+scales (log-z-score on continuous dims):
+  stdev_log_buyers   = 1.353080
+  stdev_log_velocity = 1.522563
+
+training signature distribution (binary smart_money / n_whales / fee_delegated):
+  (0, 0, 0): 6286 (100.0%)   ← every single resolved row
+
+live mints fetched: 24; in-lane (age 15-60s, vsol>0): 10
+sample size: 10 (target was 50; in-lane traffic was thin at validation moment)
+
+distance distribution (squared-Euclidean on log-z-scored 2D continuous):
+  min:    0.0000
+  p25:    0.0000
+  median: 0.0000
+  p75:    0.0000
+  max:    0.1588
+
+CRIT 1 — median NN distance ∈ [0.5, 3.0]:  0.0000  →  FAIL
+CRIT 2 — post-filter coverage ≥ 70%:  8/10 = 80.0%  →  PASS (spurious — see below)
+CRIT 3 — ≥5 distinct probabilities in first 20 samples: 2 distinct ({0.75, 1.0})  →  FAIL
+```
+
+Two failed, one passed spuriously. **Per pre-registered decision rule (any criterion fails → execute Path E), we execute Path E, do not iterate to D3/D4.**
+
+### Finding 7d — training corpus has uniform zeros in 3/5 feature dimensions
+
+The validation surfaced a more fundamental problem than any normalization scheme could fix:
+
+```sql
+SELECT feature_smart_money, COUNT(*) FROM post_grad_outcomes
+ WHERE feature_smart_money IS NOT NULL
+ GROUP BY feature_smart_money;
+-- (0, 6357)  -- ZERO is the only value, across all 6357 rows
+
+SELECT feature_n_whales, COUNT(*) FROM post_grad_outcomes
+ WHERE feature_n_whales IS NOT NULL
+ GROUP BY feature_n_whales;
+-- (0, 6357)  -- same
+
+SELECT feature_fee_delegated, COUNT(*) FROM post_grad_outcomes
+ WHERE feature_fee_delegated IS NOT NULL
+ GROUP BY feature_fee_delegated;
+-- (0, 6324)  -- same
+```
+
+**Every resolved post-grad row has feature_smart_money=0, feature_n_whales=0, feature_fee_delegated=0.** Not "mostly" or "sparsely" — uniformly zero across the entire history.
+
+Meanwhile, **live mints in the snapshot DO carry non-zero values** for these dimensions:
+
+```
+live mints: smart_money_in=[4, 4, 6, 8, 0, 0, ...]
+            n_whale_wallets=[7, 10, 6, 4, 0, 0, ...]
+            fee_delegation.total_bps=[0, 0, 0, 0, 0, 0, 0, 0, 0, 10000, ...]
+```
+
+So the values exist at the live snapshot layer. The bug is in `_record_graduation` (or the snapshot path the post-grad tracker reads) writing zeros at graduation moment despite the data being present elsewhere in the live API.
+
+**This explains why Path C and Path D2 both failed.** No metric over a feature dimension that's uniformly zero can produce meaningful distance signal. Path C's smart_money 1e-6-floor explosion was a downstream symptom of upstream data loss; Path D2's 80% post-filter "pass" is spurious because the binary-signature space collapsed to a single bucket.
+
+### Why CRIT 2 passing was spurious
+
+D2 criterion 2 measured "post-filter coverage" — the fraction of live mints whose binary signature has ≥3 matched neighbors in the training corpus. With training collapsed to signature (0,0,0) only, the post-filter trivially matches any live mint with signature (0,0,0), which is the modal live signature too. So 80% of the sample was "matching" against a feature space with zero discriminative signal. Pass-by-degeneracy, not pass-by-merit.
+
+### Why CRIT 1 failing the way it did is informative
+
+Squared distances cluster at 0.0000 because most in-lane live mints sit near the corpus median on (log-buyers, log-velocity) — when you log-transform and z-score, near-median rows produce near-zero z-scores, and squared distances against the K=8 nearest neighbors all collapse toward zero. The metric IS technically functional (the max sample distance was 0.1588), but the typical magnitudes never reach the [0.5, 3.0] regime that the pre-registration treated as "matches sit at meaningful distances." With only 2 of 5 features carrying signal (and those two clustered tightly), the metric can't span that range.
+
+### Why Path E is the right answer
+
+Pre-registered. The discipline pattern fired correctly. Two metric attempts (C, D2) failed pre-registered acceptance criteria; per the frozen escalation rule, sunset and architecture-review.
+
+But Path E is also independently the right call given Finding 7d. **The architecture review now has a much sharper question to answer:** before evaluating "is k-NN the right model?", we need to fix the data plumbing. Three of five features have been writing zero at graduation-time since launch — no model retrain or metric replacement helps until that's resolved.
+
+### Path E execution plan (this commit)
+
+1. **`predict_survival` returns `{prob: null, status: 'sunset_pending_architecture_review'}`** for ALL live mints. Field still exists in API response shape; no probability is published.
+2. **`/api/scope`** description updated:
+   - `calibrated:` from `"directional only — distance metric being recalibrated as of 2026-05-07"` → `"temporarily disabled pending architecture review (2026-05-07; see post_grad_metric_broken_since_launch.md)"`
+   - Description rewritten to explicitly state the sunset and link to this writeup.
+3. **Alert template** removes the sustain line entirely. Not "warming," not "100%," not rendered at all. Already not rendered during recalibration window (Finding 7), so this is a status-string update only.
+4. **Dashboard sustain card** removed from the mint detail surface (or its rendering condition tightened to never display while sunset).
+5. **Memory `project_watch_grad_vs_runner.md`** corrective note updated to reflect Path E sunset rather than "fix in flight."
+6. **Memory `feedback_pre_registration_branches.md`** extended with the iteration-limit pre-registration rule (the meta-discipline this commit codifies).
+7. **Architecture review work session scheduled** as a separate item: questions to answer include (a) why are 3 of 5 features writing zero at graduation-time? (b) once fixed, is k-NN the right model? (c) what's the right backfill / re-resolve strategy for the existing degenerate rows?
+
+### Receipts trail (seventh finding, after Path E)
+
+| Diagnosis | Fix |
+|---|---|
+| `5296351` Finding 7 (this doc, layers 7a/7b) | `2d95a5a` Path C pre-registration |
+| `2d95a5a` Path C pre-registration | (Path C deployed; validation FAILED) |
+| `c553d7f` Finding 7c — Path C failed; pre-register Path D2 + Path E | (Path D2 deployed; validation FAILED for 2 of 3 criteria) |
+| **(this commit) Finding 7d — D2 failed; training corpus has uniform zeros in 3/5 features. Executing pre-registered Path E.** | (Path E execution lands in same commit: predictor returns sunset; /api/scope updated; alert/dashboard surfaces stripped) |
+
+### Meta-pattern (this is the commit where it lands)
+
+The pre-fix-then-fix discipline now has a stopping rule. **Iteration-limit pre-registration:** when a fix attempt fails its acceptance criterion, the next pre-registered branch must include either a refined retry OR a stop-iterating escalation. Don't pre-register "try fix N, then N+1, then N+2..." — that's not discipline, it's deferred decision-making. Pre-register a hard escalation point: after K failed attempts within a defined scope, escalate to a different framing entirely (sunset, architecture review, scope reduction).
+
+Eight iterations of pre-fix-then-fix in 72 hours; eight commits; eight publicly timestamped diagnoses-before-fixes. Now with a frozen stopping rule, the receipts trail strengthens by stating publicly what's broken rather than continuing to iterate.
+
+This is being added to `feedback_pre_registration_branches.md` in this commit cycle so future Claude (and future me) inherit the rule.
