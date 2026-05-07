@@ -58,42 +58,40 @@ Status: graduateoracle.fun/status
 
 Triggers: 2026-05-09T16:45Z. Acceptance: max 1h MED ≤30, ≥1 daemon recompute without burst.
 
-```
-
-## Variant A — interim TG gate passes first (alerts back on with bucket framework)
-
-Triggers: 2026-05-09T16:45Z. Acceptance: max 1h MED ≤30, ≥1 daemon recompute without burst.
+**Posts as a quote-tweet of Variant 0** ("Status update on graduate-oracle: TG alerts are silent right now..."). Variant 0 does the silence-explanation work; Variant A claims the resolution.
 
 ```
-cutover update — TG alerts are back.
+gate verdict — alerts back on.
 
-bucket framework live: HIGH/MED/LOW alerts calibrated to live graduation
-rates with a self-stabilizing volume-target threshold. 48h interim
-acceptance gate passed clean (no recompute aliasing, max 1h MED ≤30).
-full 7d acceptance window continues through 2026-05-15.
+(quote-tweets the status post from 2026-05-07)
 
-eight findings caught and resolved across the cutover sequence.
-five pre-cutover, three in post-deploy review.
+The 48h interim acceptance gate just passed clean. No recompute
+aliasing, max 1h MED ≤30, ≥1 daemon recompute observed without
+burst — exactly the criteria pre-registered before the gate
+started running.
 
-most surprising: post_grad_survival_prob has been publishing artifacts
-since the field was deployed — 3 of 5 features were writing zero at
-graduation moment due to a snapshot-source bug. two metric replacements
-failed pre-registered acceptance criteria. Path E sunset executed.
-root cause located + corrected fix shipped. currently in clean-corpus
-auto-lift gate.
+HIGH/MED/LOW bucket alerts firing again on every pump.fun mint that
+crosses the calibrated threshold. Full 7d acceptance window continues
+through 2026-05-15.
 
-13 public commits in 28 hours. every diagnosis publicly timestamped
-before its corresponding fix or sunset.
+The silence is over. Alert silence over alert noise was the right
+call — and the data says it ships under live calibration too.
 
-receipts: github.com/Dspro-fart/graduate-oracle
+Sustain prediction (Finding 7 chain) still in clean-corpus auto-lift
+gate. Separate gate; will post when it resolves.
+
+8 findings, 13 public commits, every diagnosis timestamped before
+its fix.
+
+Receipts: github.com/Dspro-fart/graduate-oracle/commit/[FIX_LANDED_COMMIT]
+Status: graduateoracle.fun/status
 ```
 
-**Length:** ~870 chars (fits ~3 posts in a thread).
+**Length:** ~700 chars (fits ~2 posts in a thread; quote-tweet structure means the original V0 post is visible in-thread).
 
-**Thread structure (if posted as multi-post):**
-1. Lede: "cutover update — TG alerts are back" + bucket framework summary + 48h gate result
-2. Finding 7 chain summary + sunset/auto-lift state
-3. "13 public commits in 28h" + receipts link
+**What V0 absorbed (no longer in Variant A):** the silence-explanation, the Finding 7d snapshot-source bug summary, the "Bursty isn't useful" explainer. All of that lives in Variant 0 now and shows in-thread when V0 is quote-tweeted.
+
+**Continuity callback:** "Alert silence over alert noise was the right call" → this is the moat sentence from V0 returning as callback, not as fresh introduction. Reader who saw V0 recognizes it; reader who didn't sees the framing in-thread.
 
 ---
 
@@ -101,80 +99,128 @@ receipts: github.com/Dspro-fart/graduate-oracle
 
 Triggers: corpus reaches n≥60 + 3 sigs OR 72h cap (deadline 2026-05-10T16:04Z), AND validation passes the three frozen Path D2 criteria.
 
+**Posts as a quote-tweet of Variant 0.**
+
 ```
-cutover update — post_grad_survival_prob is back online.
+follow-up — sustain prediction restored.
 
-Path D2 metric (log-z-score on 2 continuous dims + binary signature
-post-filter) validated on clean-corpus k-NN at n≥60. the sunset that
-ran since 2026-05-07 is lifted. sustain predictions firing again at
-honest probabilities.
+(quote-tweets the status post from 2026-05-07)
 
-TG alerts remain paused pending a separate 48h bucket distribution
-gate (Finding 8 EMA smoothing under acceptance). expected resumption
-~2026-05-09.
+post_grad_survival_prob is back online. The Path D2 metric
+(log-z-score on 2 continuous dims + binary signature post-filter)
+validated on clean-corpus k-NN at n≥60 against the three frozen
+Finding 7c acceptance criteria. The sunset that ran since
+2026-05-07 is lifted; sustain predictions firing again at honest
+probabilities.
 
-eight findings caught and resolved across the cutover sequence.
-the Finding 7 chain — broken since launch → root cause located
+The Finding 7 chain — broken since launch → root cause located
 → metric replacement failed twice → Path E sunset → corpus rebuild
 → auto-lift validates — is itself an 8-commit demonstration of
 discipline catching pre-existing pathologies surfaced by new
 instrumentation.
 
-13 public commits in 28 hours. every diagnosis publicly timestamped
-before its corresponding fix or sunset.
+TG alerts remain paused pending the separate bucket calibration
+gate (verdict ~2026-05-09 16:45 UTC). Alert silence over alert
+noise still holds for that one.
 
-receipts: github.com/Dspro-fart/graduate-oracle
+Receipts: github.com/Dspro-fart/graduate-oracle/commit/[LIFT_COMMIT]
 ```
 
-**Length:** ~1010 chars (fits ~3 posts in a thread).
+**Length:** ~870 chars.
+
+**What V0 absorbed (no longer in Variant B):** the cutover-context preamble, the bucket-calibration explanation. V0's quote-tweet structure makes those visible in-thread; Variant B can lead directly with the sustain news.
+
+**Continuity callback:** "Alert silence over alert noise still holds for that one" — different framing of the V0 moat sentence, signals that the alert pause persists for the bucket gate while sustain is now resolved.
 
 ---
 
-## Common framing across both variants
+## Variant C — hybrid (both gates resolve cleanly in the same window)
 
-- **"Eight findings caught and resolved"** — central credibility claim, identical wording in both.
-- **"13 public commits in 28 hours"** — concrete artifact reference, citation-worthy.
-- **"every diagnosis publicly timestamped before its corresponding fix or sunset"** — the discipline pattern's distinguishing property.
-- **"receipts: github.com/Dspro-fart/graduate-oracle"** — terminal CTA. No hedging, no "thanks for following along" — direct link to the audit trail.
+Triggers: both gates resolve cleanly within ~6h of each other. Could happen if sustain corpus accumulates fast AND bucket interim verdict lands close in time.
 
-## What the X post does NOT do
-
-- Does NOT claim everything is fixed. Both variants honestly state remaining open gates.
-- Does NOT relax pre-registered criteria post-hoc. The discipline that makes these posts worth reading is exactly the same discipline that prevents post-hoc rationalization.
-- Does NOT mention "we" or "the team" — the receipts trail speaks for itself; ego in the post would dilute the credibility of the framework.
-- Does NOT promise a timeline for full resolution. "expected resumption ~2026-05-09" is the only forward-looking claim, and it's anchored to the pre-registered gate close, not a marketing window.
-
-## Quote-tweet plan (when second resolution lands)
-
-If Variant A ships first, the quote-tweet on sustain restoration:
+**Posts as a quote-tweet of Variant 0.**
 
 ```
-follow-up to ↑ — sustain prediction also restored. clean-corpus
-k-NN validated against the original Path D2 acceptance criteria.
-the Finding 7 chain is now fully closed.
+both gates resolved.
 
-receipts: [link to specific commit]
+(quote-tweets the status post from 2026-05-07)
+
+Bucket calibration interim 48h gate passed clean. HIGH/MED/LOW
+alerts firing again. Full 7d acceptance window continues through
+2026-05-15.
+
+Sustain prediction also restored. Path D2 metric (log-z-score on
+2 continuous dims + binary signature post-filter) validated on
+clean-corpus k-NN at n≥60 against the three frozen Finding 7c
+acceptance criteria. Sunset lifted; sustain firing at honest probs.
+
+Two pre-registered gates, two clean verdicts, within ~[N] hours of
+each other. Alert silence over alert noise was the right call —
+and the data says both calibrations ship clean.
+
+8 findings caught + resolved across the cutover sequence; 13 public
+commits in 28 hours; every diagnosis timestamped before its fix.
+
+Receipts: github.com/Dspro-fart/graduate-oracle
+Status: graduateoracle.fun/status
 ```
 
-If Variant B ships first, the quote-tweet on TG re-enable:
+**Length:** ~830 chars.
 
-```
-follow-up to ↑ — TG alerts back on. interim 48h bucket gate passed
-clean. full 7d acceptance window continues; rules 9+10 firing on
-HIGH/MED/LOW buckets calibrated to live rates.
+**Use this when:** both gates resolve within ~6h. Reduces the post-arc from 4 posts (V0 → A → B-quote-tweet → +7d update) to 3 (V0 → C → +7d update). Cleaner narrative; harder to schedule (depends on gate timing alignment).
 
-receipts: [link to specific commit]
-```
+---
 
-## Decision rule for which variant to ship
+## Common framing across all resolution variants (A, B, C)
+
+- **"8 findings, 13 public commits, every diagnosis timestamped before its fix"** — central credibility claim. Identical wording.
+- **"Alert silence over alert noise"** — moat sentence from Variant 0 returning as callback in resolution variants.
+- **Specific commit-link receipts** — `[FIX_LANDED_COMMIT]` or `[LIFT_COMMIT]` placeholders get filled at posting time so the receipts link points at the *exact commit* that triggered the gate verdict, not just at the repo root.
+- **Quote-tweet structure** — all three resolution variants quote V0. The status post does the framing work; the resolution variants do the verdict work.
+
+## What the resolution variants do NOT do (revised post-V0)
+
+- Do NOT re-explain the silence. V0 covered that; the quote-tweet structure surfaces V0 in-thread for any reader who didn't see it the first time.
+- Do NOT claim everything is fixed. Both A and B honestly state remaining open gates; only C claims both resolved.
+- Do NOT relax pre-registered criteria post-hoc. Same discipline as the technical work.
+- Do NOT mention "we" or "the team" — receipts trail speaks for itself; ego dilutes credibility.
+- Do NOT promise timelines beyond what the gates publicly state. The remaining gate's deadline is the only forward-looking claim.
+
+## Decision rule for which variant to ship (revised post-V0)
 
 Ship the variant matching the first gate that lands cleanly:
-- Sustain auto-lift validates with all three Path D2 criteria passing → Variant B
-- Bucket calibration interim gate passes (max 1h MED ≤30, ≥1 recompute without burst) → Variant A
-- Both gates resolve cleanly within the same ~6h window → ship a hybrid that absorbs both wins
+- **Bucket calibration interim gate passes** (max 1h MED ≤30, ≥1 recompute without burst) AND sustain still in auto-lift gate → **Variant A**
+- **Sustain auto-lift validates** (all three Path D2 criteria) AND bucket gate not yet resolved → **Variant B**
+- **Both resolve cleanly within ~6h** → **Variant C** (hybrid)
+- **Sequential resolution >6h apart** → **Variant A or B first, then a quote-tweet of the resolution variant** when the second gate lands. Quote-tweet template:
 
-If a gate ESCALATES (Path E for Finding 8, OR Finding 7g/7h for sustain) instead of passing, the variant becomes a different post entirely — those drafts will be written when the escalation triggers (per the iteration-limit pre-registration discipline applied at messaging too).
+```
+follow-up to ↑ — [sustain | TG alerts] also resolved.
+[one-sentence specific verdict description]
+[Finding chain receipts link]
+```
+
+If a gate ESCALATES (Path E for Finding 8, OR Finding 7g/7h for sustain) instead of passing, the variant becomes a **different post entirely** — those drafts will be written when the escalation triggers (per the iteration-limit pre-registration discipline applied at messaging too).
+
+## The publish-then-post sub-pattern (worth naming explicitly)
+
+Pre-drafting these variants and committing them to public github BEFORE they ship as posts is itself a discipline-pattern application — same shape as publish-the-diagnosis-before-publishing-the-fix. The arc is:
+
+```
+T-1: draft committed to docs/research/x_post_draft.md
+T+0: post goes live on X
+T+ε: anyone can verify draft existed at T-1, post matches at T+0,
+     pre-registered framing held under live conditions
+```
+
+This compounds the receipts moat at a meta level: drafts predate posts, posts predate user reactions, all timestamped publicly. A reader inspecting the trail can see that the framing was committed to before the verdict was visible — the post wasn't written under post-verdict optimism or panic, it was written ahead of time and held to a frozen criterion.
+
+Same structure as Finding 8 EMA smoothing fix predating its acceptance gate, applied to messaging.
+
+This sub-pattern goes into `feedback_pre_registration_branches.md` as a memory extension: **publish-then-post as a generalization of pre-fix-then-fix to the messaging surface.**
 
 ## Holding state until first verdict
 
-Neither variant ships now. The receipts trail is already public; the X post is the *announcement* that brings traffic to the trail. Premature posting (before either gate resolves) would commit to a state that hasn't actually verified.
+Variant 0 (status post) is shipping today. Variants A/B/C remain held until the relevant gate resolves. The receipts trail (this file) is already public; the resolution variants are the *announcement* that brings traffic to the trail at the moment of verdict.
+
+Premature posting of A/B/C (before any gate resolves) would commit to a state that hasn't actually verified. **The discipline that makes these posts worth reading is the same discipline that prevents premature posting.**
