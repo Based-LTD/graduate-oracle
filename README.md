@@ -32,6 +32,27 @@ methodology behind the model. The scoring engine itself is closed-source.
 
 ---
 
+## Current state (2026-05-07 cutover sequence)
+
+The deployed model went through a calibrated-GBM + isotonic-cascade + HIGH/MED/LOW bucket cutover. During and after that cutover, the discipline pattern caught **eight findings** — five pre-cutover, three in post-deploy/post-fix review — each with a publicly-timestamped diagnosis predating its corresponding fix or sunset.
+
+| Finding | What it was | Resolution |
+|---|---|---|
+| 1-5 | LOG_THRESHOLD validation gap, alert-rule kind mismatch, GBM bimodal cliff, kNN saturation, sixth-finding meta + multi-issue | Shipped at cutover or in post-deploy review |
+| 6 | Verification-by-content rule (alerts firing ≠ content sensible) | Memory rule + four pre-registered fixes |
+| 7 | `post_grad_survival_prob` has been publishing artifacts since launch (snapshot-source bug; 3 of 5 features uniformly zero) | Two metric replacements failed pre-registered acceptance → Path E sunset → root cause located → data-source fix → currently in clean-corpus auto-lift gate |
+| 8 | Bucket calibration aliasing during daemon recompute window (697-in-1h burst diagnosed) | EMA smoothing fix + persistence sidecar shipped; **48h interim TG re-enable gate** at 2026-05-09T16:45Z; full 7d acceptance gate at 2026-05-15T16:45Z |
+
+**Holding state right now:**
+- TG alerts paused (rules 9+10 deactivated until interim gate passes)
+- `post_grad_survival_prob` returns `warming_clean_corpus_accumulating` until auto-lift validates
+- Aggregate `/api/accuracy.post_graduation` (n≈6,800 resolved, 47% sustain) is unaffected
+- 13 commits in the last 28h, all timestamped, all with diagnoses predating fixes
+
+Full chain: [`docs/research/post_grad_metric_broken_since_launch.md`](docs/research/post_grad_metric_broken_since_launch.md), [`docs/research/bucket_calibration_aliasing.md`](docs/research/bucket_calibration_aliasing.md). Discipline rules: [`docs/research/README.md`](docs/research/README.md).
+
+---
+
 ## What's in this repo
 
 ```

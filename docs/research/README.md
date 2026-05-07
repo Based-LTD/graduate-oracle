@@ -41,6 +41,22 @@ The discipline is the moat. Anyone can run experiments; the difference is whethe
 | [retrain_v1_decision.md](retrain_v1_decision.md) | Does retrain v1 meet the frozen ship-replace gates? | All four gates pass. Single-track GBM cleared overall and stratified thresholds; bundled-AUC regression flipped from -5.9pp at small sample to +7.7pp at corpus scale. |
 | [today.md](today.md) | Day-close summary for 2026-05-04. | Started uncertain about whether the product was viable; ended with a closed diagnostic stack, pre-registered implementation workstreams, and a corrected understanding of where the leverage actually lives. |
 
+### Cutover sequence (2026-05-06 → 2026-05-07) — 8-finding chain
+
+The calibrated GBM + isotonic + bucket framework cutover surfaced eight distinct findings, five pre-deploy and three in post-deploy/post-fix review. Each has a public commit timestamp predating its corresponding fix or sunset.
+
+| Lane | Subject | Outcome |
+|---|---|---|
+| [cutover_2026_05_06.md](cutover_2026_05_06.md) | Calibrated GBM + isotonic + HIGH/MED/LOW bucket cutover landing | Shipped; subsequent findings caught in post-deploy review |
+| [log_threshold_validation_gap.md](log_threshold_validation_gap.md) | LOG_THRESHOLD filter excluded MED-bucket predictions with prob<0.5 | OR-clause expansion shipped (Finding 5) |
+| [alert_rule_post_cutover_gap.md](alert_rule_post_cutover_gap.md) | Alert rule kind mismatch post-cutover (Finding 4) | kind='bucket' rule support shipped, later diagnosed inadequate (sixth-finding) |
+| [bucket_cutoffs_bimodal_finding.md](bucket_cutoffs_bimodal_finding.md) | GBM calibrated distribution has bimodal cliff | bimodal_cliff bucket logic mode shipped |
+| [deployed_knn_saturation_diagnosis.md](deployed_knn_saturation_diagnosis.md) | Deployed kNN saturated at 1.0 in some windows | Cutover replaced kNN at high-prob; saturation diagnosis informed isotonic cascade design |
+| [alert_rule_fix_inadequate.md](alert_rule_fix_inadequate.md) | Sixth finding — alert-rule fix was verified by count, not content; firing on degenerate inputs | Verification-by-content meta-rule landed; four pre-registered fixes (input quality gate, snapshot fields, sustain warming, volume-target cutoffs) |
+| [alert_rule_fix_landed.md](alert_rule_fix_landed.md) | Sixth-finding fixes deployed | Volume-target raw_gbm_p_high cutoffs, input-quality gate, snapshot fields landed |
+| [post_grad_metric_broken_since_launch.md](post_grad_metric_broken_since_launch.md) | **Finding 7 chain** — post_grad_survival_prob has been publishing artifacts since launch (snapshot-source bug; 3 of 5 features writing zero). Path C (z-score) and Path D2 (log-transform + binary post-filter) both failed pre-registered acceptance. Path E sunset executed, root cause located, data-source fix shipped. | Currently in clean-corpus auto-lift gate (re-validation triggers at n≥60 + 3 sigs OR 72h cap). First validation: CRIT 1 PASS (metric works on clean data); CRITs 2+3 small-sample-deferred. Two-pronged escalation pre-registered. |
+| [bucket_calibration_aliasing.md](bucket_calibration_aliasing.md) | **Finding 8** — bucket calibration aliasing during daemon recompute window (697-in-1h MED burst diagnosed). | EMA smoothing + persistence sidecar shipped. Interim 48h TG re-enable gate at 2026-05-09T16:45Z; full 7d acceptance gate at 2026-05-15T16:45Z. Path E escalation (fixed-percentile cutoffs) frozen pre-registered. |
+
 ---
 
 ## How this connects to the rest of the public repo

@@ -1,45 +1,56 @@
-# Daily snapshots — paused 2026-05-04
+# Daily snapshot pause — RESUMED 2026-05-07
 
-The daily snapshot cadence (calibration metrics, leaderboards, watchlists) is **paused during the retrain transition (2026-05-04 → ~2026-05-07).** This document records the pause transparently rather than letting the cadence break silently.
+The daily snapshot cadence was paused 2026-05-04 during the calibrated-GBM cutover transition. **It resumes today (2026-05-07).**
 
-## Why paused
+This file now records the pause + resume transparently, replacing the original "paused indefinitely" framing.
 
-Two reasons, both grounded in honesty discipline:
+## Pause window
 
-1. **The deployed scoring model is in transition.** A retrained GBM v1 with isotonic calibration cascade is currently in shadow mode and approaches user-visible cutover within ~24 hours of this notice. Publishing daily snapshots from the deployed kNN during this window would produce metrics that misrepresent both the soon-to-be-replaced model AND the not-yet-live calibrated successor.
+```
+Paused:   2026-05-04
+Resumed:  2026-05-07 (this commit)
+Duration: ~3.5 days
+```
 
-2. **Recent investigations surfaced a calibration finding** ([docs/research/lane7_runner_prob_calibration.md](../docs/research/lane7_runner_prob_calibration.md), [docs/research/lane7_recent_slice_rerun.md](../docs/research/lane7_recent_slice_rerun.md)) showing `runner_prob_*_from_now` is non-stationary at high-confidence bins. The /api/scope description was updated with an honest caveat: the field is directionally accurate but magnitudes are not currently calibrated. Snapshots taken before this finding reflect that miscalibration. Republishing the same shape would compound the misleading-metric problem.
+## What happened during the pause
 
-## What's in the historical record
+The cutover sequence shipped the calibrated GBM v1 + isotonic cascade + HIGH/MED/LOW bucket framework. **Eight findings were caught** during and after the cutover, all publicly timestamped with diagnoses predating their fixes:
 
-The pre-pause snapshots in `data/2026-04-28/`, `data/2026-04-29/`, and `data/2026-04-30/` reflect:
+- **Findings 1-5** (pre-cutover): LOG_THRESHOLD validation gap, alert-rule kind mismatch, GBM bimodal cliff, kNN saturation, multi-issue surfacing.
+- **Finding 6**: verification-by-content meta-rule landed (counting alerts ≠ verifying alert content).
+- **Finding 7** (chain): `post_grad_survival_prob` discovered to have been publishing artifacts since launch (snapshot-source bug; 3 of 5 features writing zero). Two metric replacements (Path C, Path D2) failed pre-registered acceptance criteria. Path E sunset executed. Root cause located + corrected fix shipped (Finding 7f). Currently in clean-corpus auto-lift gate.
+- **Finding 8**: bucket calibration aliasing during daemon recompute window (697-in-1h MED burst diagnosed). EMA smoothing + persistence sidecar shipped. Interim 48h TG re-enable gate at 2026-05-09T16:45Z; full 7d acceptance at 2026-05-15T16:45Z.
 
-- The deployed kNN scorer's calibration at that point in time
-- Forward production hit rates including the runner_prob fields we have since flagged
-- The wallet leaderboard and sniper watchlist data per the original snapshot scope
+13 commits in the last 28 hours, all timestamped, all on `github.com/Dspro-fart/graduate-oracle`.
 
-These remain in the repo as historical record, **not** as current claims. `git log` on these directories shows the actual commit timestamps.
+## Resuming with explicit gate framing
 
-## Resuming
+Today's snapshot ([`2026-05-07/`](2026-05-07/)) ships with the receipts narrative attached: aggregate stats are independent and valid; per-mint sustain is sunset and warming on clean corpus; bucket distribution is in active acceptance gate. **The pause didn't end because everything is fixed — it ended because the receipts trail is stronger NOW than when the pause started, and continuing the pause obscures the active discipline rather than surfacing it.**
 
-Snapshots resume after Track B cutover lands — the user-visible flip from deployed kNN to calibrated GBM v1 + isotonic cascade. When they resume, scope will be revised:
+When the acceptance gates close (sustain auto-lift validates OR escalates to Finding 7g/7h; Finding 8 interim and full gates pass OR Path E executes), the disclaimers in `summary.md` retire and the cadence continues at the same shape.
 
-- **Keep:** `summary.md` and `calibration.json` — the receipts/accuracy moat. Now reflecting calibrated GBM performance.
-- **Trim:** `smart-leaderboard.json` — aggregate distributions only, no specific wallet addresses (the wallet reputation index remains proprietary per [docs/methodology.md](../docs/methodology.md)).
-- **Remove:** `sniper-watchlist.json` — real-time signal data competitors could front-run.
-- **Add:** Merkle ledger commit references — the actual cryptographic receipts trail. Live data already at https://graduateoracle.fun/api/ledger/commits.
+## Scope changes from pre-pause snapshots (per original resume plan)
 
-## For live data during the pause
+- **Keep:** `calibration.json` + `summary.md`. The receipts/accuracy moat.
+- **Trim:** `smart-leaderboard.json` — aggregate distributions only in future snapshots, no specific wallet addresses (the wallet reputation index remains proprietary). NOT included in 2026-05-07 snapshot to keep this clean.
+- **Remove:** `sniper-watchlist.json` — real-time signal data competitors could front-run. NOT included in 2026-05-07 snapshot.
+- **Add (this resume):** explicit pre-registered-gate disclosure in `summary.md`. Both the sustain auto-lift gate and the Finding 8 interim/full TG re-enable gates have public commit hashes pointing at the frozen acceptance criteria.
+
+## Pre-pause snapshots remain as historical record
+
+The snapshots in `data/2026-04-28/`, `data/2026-04-29/`, and `data/2026-04-30/` remain in the repo as historical record, **not** as current claims. They reflect the pre-cutover deployed kNN scorer's calibration at those times. `git log` on these directories shows actual commit timestamps.
+
+## For live data while gates are running
 
 - **Live calibration metrics:** https://graduateoracle.fun/api/accuracy
 - **Live ledger commits:** https://graduateoracle.fun/api/ledger/commits
 - **Live API status:** https://graduateoracle.fun/api/status
-- **Methodology:** [docs/methodology.md](../docs/methodology.md)
-- **Active research log:** [docs/research/](../docs/research/)
-- **Pre-registered decisions and frozen criteria:** [BACKLOG.md](../BACKLOG.md)
+- **Methodology:** [`docs/methodology.md`](../docs/methodology.md)
+- **Active research log:** [`docs/research/`](../docs/research/)
+- **Pre-registered decisions and frozen criteria:** [`BACKLOG.md`](../BACKLOG.md)
 
 ## Discipline note
 
-Pausing transparently rather than silently breaking the cadence is itself part of the receipts story. Same principle as pre-registering criteria, publishing negative results, and maintaining the V1→V2→V3 leaf format invariant: when the data we publish would be misleading, we don't publish it. We name what changed, why, and when it resumes.
+Pausing transparently rather than silently breaking the cadence was part of the receipts story. **Resuming transparently with active-gate framing is the same discipline applied at the un-pause point.** When the data we publish would be misleading, we don't publish it. When publishing it WITH disclosed-active-gate framing is more useful than continuing to pause, we publish it with that framing.
 
 The cadence resuming with revised scope is part of the same trail: methodology evolves, the receipts evolve with it, and the audit trail captures both.

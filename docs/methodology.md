@@ -7,6 +7,35 @@ scoring code itself are proprietary and not published here.
 
 ---
 
+## Current state — post-cutover (2026-05-07)
+
+The deployed model went through a calibrated-GBM + isotonic-cascade + HIGH/MED/LOW bucket cutover on 2026-05-06. Sections of this doc describing earlier k-NN-only architecture remain for historical context but **the live scoring pipeline is now**:
+
+```
+raw GBM (gradient-boosted trees) → isotonic calibration → bucket assignment
+                                       │                       │
+                                       ↓                       ↓
+                            calibrated probability        HIGH / MED / LOW
+                            (used as predicted_prob)      (used for alert routing)
+```
+
+- **Calibrated GBM**: produces `grad_prob_gbm_calibrated` per mint. Trained on the curve-replay feature set (Lane 9: +14.16pp AUC closure on non-bundled vs the deployed k-NN baseline).
+- **Isotonic calibration**: monotonic transform of raw GBM scores → calibrated probabilities. Address bimodal-cliff distribution (Finding 3).
+- **HIGH/MED/LOW bucket framework**: alert routing uses bucket assignment, not raw probability thresholds. Bucket cutoffs derive from a volume-target-driven recompute (TARGET_HIGH_PER_WEEK=5, TARGET_MED_PER_DAY=10) over a rolling 7d sample window. Recompute cadence: 24h. **As of 2026-05-07 the bucket cutoffs daemon also includes EMA smoothing across recomputes (Finding 8 fix) to prevent recompute-aliasing bursts.**
+- **k-NN remains live in parallel** for `predicted_prob` (the scalar probability surfaced on /api/live), for fallback when the calibrated GBM cascade has insufficient samples, and for `runner_prob_*` and other auxiliary fields. The k-NN scorer continues to use the existing curve-distance index over 200,000+ wallet reputation entries.
+
+**Active pre-registered acceptance gates** (state at the time of writing — refer to [`../BACKLOG.md`](../BACKLOG.md) and [`research/`](research/) for current state):
+
+1. **Sustain auto-lift gate (Finding 7 chain).** `post_grad_survival_prob` is a per-mint k-NN over historical post-graduation outcomes. The field has been *broken since launch* — diagnosis at [`research/post_grad_metric_broken_since_launch.md`](research/post_grad_metric_broken_since_launch.md). Two metric-replacement attempts failed pre-registered acceptance criteria; root cause was a snapshot-source bug producing 3-of-5 zero-feature training rows. Field returns `warming_clean_corpus_accumulating` until clean-corpus k-NN re-validates against the original Path D2 acceptance criteria. **The aggregate `post_graduation.sustain_rate_30m` on /api/accuracy is the independent Jupiter-price measurement and is unaffected by the per-mint sunset.**
+
+2. **Bucket calibration interim TG re-enable gate (Finding 8).** EMA smoothing fix shipped 2026-05-07T16:45Z. Pre-registered interim acceptance at 2026-05-09T16:45Z (no MED burst > 30/hour, ≥1 daemon recompute without burst); full 7-day acceptance at 2026-05-15T16:45Z. Rules 9+10 stay deactivated until interim passes content-inspection gate. Diagnosis at [`research/bucket_calibration_aliasing.md`](research/bucket_calibration_aliasing.md).
+
+**Why this section is here, today:** a quant or technical reader landing on this doc deserves to know what's running RIGHT NOW, not what was running last month. When the active acceptance gates close (or escalate to pre-registered Path E), this section retires; the architectural sections below stay.
+
+A fuller rewrite of the model section reflecting the bucket framework, ceiling values, raw_gbm_p_high cutoffs, and the full architectural picture is queued (BACKLOG: methodology.md 5b rewrite). This section bridges the gap until then.
+
+---
+
 ## The data
 
 We continuously observe the pump.fun firehose via a Solana websocket
