@@ -4,6 +4,36 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### Finding 8 — bucket calibration aliasing (pre-registered 2026-05-07)
+
+While running LOG_THRESHOLD verification + bucket distribution check post-cutover, surfaced that the MED bucket fires in 2-hour spikes (697 in -10h..-9h spike) followed by ~22 hours of zero. HIGH bucket fires zero across full 24h. This is not Poisson variance around `TARGET_MED_PER_DAY=10` — it's a calibration instability. Re-enabling rules 9+10 against this bursty distribution is **worse than the current rules-deactivated state**.
+
+**Hypothesis (H1, primary):** the `raw_gbm_p_high` daemon's 24h cutoff-recompute window produces an aliasing burst — when the cutoff drops at recompute, at-ceiling-cluster mints just-below the old cutoff briefly qualify; new cutoff stabilizes higher within hours; nothing qualifies until the next recompute.
+
+**Diagnostic (committed before any fix):** pull cutoff history (api/status snapshots, daemon logs, or reconstruct from predictions table). Cross-reference 2-hour MED spike timing with daemon rebuild events. ±15 min alignment confirms H1; no alignment opens H2/H3 sub-investigation.
+
+**Acceptance criterion (frozen):**
+1. Rolling-7d MED rate within 0.3-3× `TARGET_MED_PER_DAY`
+2. No individual hour exceeds 5× per-hour design rate (10 MED/hour cap)
+3. Continuous coverage: ≥16 of every 24 hours have ≥1 MED OR are confirmed low-volume (<50 predictions/hour)
+4. HIGH bucket within 0.3-3× `TARGET_HIGH_PER_WEEK`
+
+Check runs on rolling 7d window starting 24h after deploy.
+
+**Pre-registered iteration-limit escalation (Path E):** if first fix fails acceptance, EITHER refined-retry-with-new-mechanism (only if diagnostic surfaces something not in H1/H2/H3), OR revert to fixed-percentile cutoffs without volume-targeting. Loses self-stabilization, accepts under-firing, ships consistently. **No fix-N, fix-N+1, fix-N+2 thrashing on calibration logic.**
+
+**Holding state:** rules 9+10 stay deactivated until acceptance criterion passes. /api/scope unchanged until diagnostic confirms a finding worth surfacing publicly.
+
+**Independent of Finding 7f auto-lift gate.** Different systems; runs in parallel without competing for cycles.
+
+Full pre-registration: [`docs/research/bucket_calibration_aliasing.md`](docs/research/bucket_calibration_aliasing.md).
+
+| Diagnosis | Action |
+|---|---|
+| **(this entry) Finding 8 pre-registration** | (diagnostic ships next, before any fix) |
+
+---
+
 ### Finding 7e — post_grad data-source fix (pre-registered 2026-05-07)
 
 After Path C and Path D2 both failed pre-registered acceptance criteria and Path E (sunset) executed, a 30-min code investigation found the root cause. `post_grad_tracker._loop` reads `observer-active.json` (raw observer output) directly; the enrichment fields `smart_money_in`, `wallet_balance.n_whale_wallets`, `fee_delegation.total_bps` are computed by `_enrich_mint` in the Python web layer at /api/live request time and are NOT in the snapshot file. Sister modules (`early_grad_tracker.py:307`, `mint_checkpoints.py:62`) use the correct pattern — HTTP self-call to `http://127.0.0.1:8765/api/live` — and have **clean** feature data in their respective tables. **Blast radius is confined to `post_grad_outcomes`.**
