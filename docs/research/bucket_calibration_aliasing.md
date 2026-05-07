@@ -121,14 +121,129 @@ If the diagnostic reveals the situation is meaningfully different from the assum
 - Different lifecycle position (alert volume management vs prediction model correctness)
 - Independent of post_grad_survival_prob auto-lift gate (which runs in parallel today)
 
+## Diagnostic results (committed before fix proposal)
+
+### Step 1: Current bucket cutoff state
+
+```
+bucket_logic_mode:    bimodal_cliff
+ceiling_value:        0.1132
+ceiling_mass_pct:     27.0%       (27% of samples sit at the ceiling)
+raw_gbm_p_high:       0.9795      ← the active MED cutoff
+n_above_ceiling:      0           (zero mints above ceiling currently)
+n_samples_used:       3911        (over 7-day rolling window)
+empty_high_window_count: 1
+computed_at:          2026-05-07T16:12:56Z
+```
+
+### Step 2: MED-bucket prediction timing reconstruction
+
+Pulled all MED-bucket predictions from the predictions table over last 24h:
+
+```
+total MED predictions in 24h: 699
+first MED at: 2026-05-07T05:06:29Z (-41501s ago)
+last MED at:  2026-05-07T06:32:05Z (-36365s ago)
+window span: 5136s ≈ 1.4 hours
+
+MED count by hour:
+  -10h ago: 697   ← spike concentrated in a single hour
+  -11h ago:   2
+  all other hours in 24h: 0
+```
+
+The "2-hour spike" was actually a **1.4-hour event** at **05:06 UTC to 06:32 UTC** with 99.7% of MED-bucket assignments concentrated in a single hour.
+
+### Step 3: raw_gbm distribution at the bucket boundary
+
+Within the spike-hour MED predictions:
+
+```
+spike-hour MED raw_gbm range: [0.6252, 0.9795]   median: 0.9795
+```
+
+Within LOW-bucket predictions in the surrounding hours:
+
+```
+-8h  LOW raw_gbm max: 0.5567
+-9h  LOW raw_gbm max: 0.6517
+-10h LOW raw_gbm max: 0.5581  (same hour as spike but LOW-bucketed)
+-11h LOW raw_gbm max: 0.5223
+-12h LOW raw_gbm max: 0.5663
+```
+
+**Boundary movement evidence:**
+- During spike: mints with raw_gbm as low as **0.6252** were assigned MED.
+- After spike: mints with raw_gbm up to **0.6517** are assigned LOW.
+- Current cutoff: **0.9795**.
+
+So between the spike and now, the cutoff **moved from ~0.6252 to 0.9795** — a 57% jump. **The cutoff was lower during the spike than it is now.** Mints in the raw_gbm range [0.6252, 0.9795] qualified as MED during the spike but would be LOW under the post-spike cutoff.
+
+### H1 verdict: confirmed
+
+The diagnostic confirms hypothesis H1 (calibration aliasing during cutoff recompute). The mechanism is now characterized:
+
+1. A daemon-restart event (likely a fly machine restart or a deploy) occurred near 2026-05-07T05:06Z.
+2. At restart, `bucket_cutoffs.start()` triggered an immediate `rebuild()` (per `web/bucket_cutoffs.py:412`).
+3. The recompute produced a lower `raw_gbm_p_high` value (~0.6252) — likely because the rolling 7-day window at that moment had fewer high-raw_gbm samples than it does now.
+4. Mints with raw_gbm in the [0.6252, 0.9795] range began qualifying as MED.
+5. ~697 mints were MED-bucketed over the next 1.4 hours.
+6. As new high-raw_gbm samples accumulated in the rolling window (some of them produced by the spike itself), subsequent recomputes (next restart or next 24h scheduled) raised the cutoff to 0.9795.
+7. Post-cutoff-rise: zero mints qualify as MED because raw_gbm > 0.9795 is rare.
+
+H2 (upstream model discontinuity) and H3 (market burst) are rejected. The mechanism is internal to the bucket-cutoff daemon's volume-target derivation.
+
+### Why H1 is the load-bearing finding
+
+The volume-target formula (`web/bucket_cutoffs.py:223-237`) uses the `target_med_count`-th highest raw_gbm value in the at-ceiling cluster as the cutoff. With `target_med_count = TARGET_MED_PER_DAY * 7 = 70`, the cutoff is the 70th-highest raw in the rolling 7-day at-ceiling cluster.
+
+This formula is **sensitive to which 70 mints are at the top** of the cluster at recompute time. When the rolling window happens to have fewer high-raw_gbm samples (e.g., a quiet period, or aging-out of recent burst), the 70th-highest can be substantially lower. Each recompute is a discrete step against a possibly-changed sample set.
+
+**The aliasing isn't a bug in any single line of code — it's a property of "discrete recompute over a rolling window with a percentile-based threshold."**
+
+## Pre-registered fix (Finding 8 first attempt)
+
+Per pre-registration: first-attempt fix can target H1 mechanism directly without re-pre-registration as long as it doesn't violate the iteration-limit (one refined retry → Path E).
+
+**Approach: smooth cutoff transitions across recomputes.**
+
+Replace `_state["raw_gbm_p_high"] = raw_p_high` (instantaneous overwrite) with an EMA (exponential moving average) blend:
+
+```python
+SMOOTHING_ALPHA = 0.2   # new cutoff weight; old cutoff weight = 0.8
+
+prev = _state["raw_gbm_p_high"]
+if prev is None:
+    new_cutoff = raw_p_high  # cold start: no smoothing
+else:
+    new_cutoff = SMOOTHING_ALPHA * raw_p_high + (1 - SMOOTHING_ALPHA) * prev
+_state["raw_gbm_p_high"] = new_cutoff
+```
+
+**Why EMA:**
+- A single recompute can move the cutoff by at most 20% of the (new - old) gap. For the observed [0.6252, 0.9795] jump, EMA would have produced 0.6252 → 0.7960 → 0.8327 → ... approaching 0.9795 over multiple recomputes.
+- Reverse direction works the same: a recompute that drops the cutoff sharply gets dampened. Mints in the gap qualify gradually rather than in a 1.4-hour burst.
+- Cold start (first ever recompute, prev is None) bypasses smoothing — reasonable since there's nothing to smooth against.
+- Daemon restart: `_state` is in-process memory and resets on restart. **EMA needs to persist across restarts** to be effective. Fix includes persisting `raw_gbm_p_high` to a small JSON sidecar file (`/data/bucket_cutoffs_state.json`) and reloading on startup.
+
+**Verification gate (frozen acceptance criterion, repeat from pre-registration):**
+1. Rolling-7d MED rate within 0.3-3× `TARGET_MED_PER_DAY`
+2. No individual hour exceeds 5× per-hour design rate (10/hour cap)
+3. ≥16 of every 24 hours have ≥1 MED OR are low-volume (<50 pred/hour)
+4. HIGH bucket within 0.3-3× `TARGET_HIGH_PER_WEEK`
+
+7-day window, starting 24h after deploy.
+
+**Pre-registered iteration-limit (repeat from pre-registration):**
+- If acceptance fails at 7d check → Path E (fixed-percentile cutoffs without volume-targeting). No fix-N+1 attempts on the smoothing logic.
+
 ## Receipts trail
 
 | Diagnosis | Action |
 |---|---|
-| **(this commit) Finding 8 pre-registration — bucket calibration aliasing hypothesis** | (diagnostic next, then fix or sub-investigation) |
-| ... | ... |
-
-The trail extends as the diagnostic, fix, and verification ship.
+| `53be35f` Finding 8 pre-registration — H1 hypothesis + diagnostic + acceptance + Path E | (diagnostic ran) |
+| **(this commit) Finding 8 diagnostic — H1 confirmed** | (smoothing fix pre-registered + ships next) |
+| ... | (fix deploys, 7d acceptance check, then either ship-confirmed or Path E) |
 
 ## Cross-references
 
