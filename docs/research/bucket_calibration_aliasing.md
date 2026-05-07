@@ -257,3 +257,75 @@ _state["raw_gbm_p_high"] = new_cutoff
 - **Rules 9+10 stay deactivated.** Re-enabling against current bursty distribution is worse than current state. Stays deactivated until acceptance criterion passes.
 - **/api/scope** does NOT yet acknowledge bucket distribution issues. Not surfaced publicly until diagnostic runs. (Will be added if H1+ confirmed.)
 - **X post stays held.** Cutover narrative absorbs Finding 8 resolution.
+
+---
+
+## Finding 8 fix landed (deploy verification)
+
+**Deployed:** 2026-05-07T16:45Z. EMA smoothing + persistence sidecar shipped to `web/bucket_cutoffs.py`.
+
+### Pre-deploy seed (preventing first-deploy aliasing)
+
+Before pushing the code, seeded `/data/bucket_cutoffs_state.json` with the current `raw_gbm_p_high=0.9795`:
+```json
+{"raw_gbm_p_high": 0.9795082800150695, "saved_at": 1778171883}
+```
+
+This guards against a first-deploy aliasing event: without seeding, the freshly-deployed code would cold-start (no persisted file → no smoothing) and the rebuild could land on a different cutoff than the prior in-memory state. With seeding, the first rebuild post-deploy already smooths against the known-stable value.
+
+### Post-deploy verification
+
+```
+[bucket_cutoffs] daemon started (rebuild every 24h)
+[bucket_cutoffs] bimodal_cliff mode: ceiling=0.1132 (26.7% mass),
+                  raw_gbm_threshold=0.9795 (target_med=70/7d),
+                  above_ceiling=0 (n=3975)
+                  [EMA: prev=0.9795 computed=0.9795 → smoothed=0.9795]
+```
+
+`/api/status.bucket_cutoffs`:
+```
+raw_gbm_p_high (smoothed):    0.9795082800150695
+raw_gbm_p_high_unsmoothed:    0.9795082800150695
+ceiling_value:                0.1132
+computed_at:                  1778172354 (2026-05-07T16:45:54Z)
+n_samples_used:               3975
+status:                       ok
+```
+
+The freshly-computed unsmoothed cutoff happened to match the seed value exactly (0.9795) — both were derived from the same 7-day window with very similar membership. So the first EMA blend was identity. Future recomputes will exercise the smoothing meaningfully whenever the rolling window's 70th-highest at-ceiling raw_gbm shifts.
+
+### What ships in the fix
+
+1. `SMOOTHING_ALPHA = 0.2` — new computed cutoff weight, old cutoff weight = 0.8.
+2. `_load_persisted_cutoff()` / `_save_persisted_cutoff()` — JSON sidecar at `/data/bucket_cutoffs_state.json` survives daemon restarts.
+3. Rebuild path: load persisted previous → blend with freshly-computed → save smoothed result.
+4. `/api/status` exposes both `raw_gbm_p_high` (smoothed, used for bucket assignment) and `raw_gbm_p_high_unsmoothed` (the raw computed value, for diagnostic visibility).
+5. Daemon log line prints the EMA blend per rebuild.
+
+### Acceptance check timeline (frozen pre-registration)
+
+7-day window starting **2026-05-08T16:45Z** (24h after deploy, allowing one full rebuild cycle to settle). Acceptance criteria (frozen):
+
+1. Rolling-7d MED rate within 0.3-3× `TARGET_MED_PER_DAY=10` → window count in [21, 210]
+2. No individual hour exceeds 5× per-hour design rate → cap at 10/hour
+3. ≥16 of every 24 hours have ≥1 MED OR are low-volume (<50 predictions/hour)
+4. HIGH bucket within 0.3-3× `TARGET_HIGH_PER_WEEK=5` → window count in [1, 15]
+
+### Pre-registered Path E if acceptance fails (frozen, repeat from pre-registration)
+
+Revert to fixed-percentile cutoffs without volume-targeting. Loses self-stabilization; ships consistently. **No fix-N+1 attempts on smoothing logic.**
+
+### Receipts trail (Finding 8 chain, complete through deploy)
+
+| Diagnosis | Action |
+|---|---|
+| `53be35f` Finding 8 pre-registration | (diagnostic ran) |
+| `790c8dd` Finding 8 diagnostic — H1 confirmed; EMA fix pre-registered | (fix implemented) |
+| **(this commit) Finding 8 fix landed** | (7d acceptance window starts 2026-05-08T16:45Z) |
+
+### Holding state until 7d acceptance check
+
+- **Rules 9+10 stay deactivated.** Re-enabling gated on acceptance criterion pass at 2026-05-15T16:45Z (24h post-deploy + 7d window).
+- **/api/scope** unchanged — no public claims about bucket distribution stability until empirically verified.
+- **X post stays held** — the eight-findings narrative needs at least one of (Finding 7f auto-lift, Finding 8 acceptance) cleanly resolved before publishing. Earliest: 7f auto-lift in ~10 hours; Finding 8 in 8 days.
