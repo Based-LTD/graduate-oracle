@@ -548,3 +548,38 @@ def _record_graduation(m: dict):
 **Nine iterations of pre-fix-then-fix in 72 hours. Two of the nine were corrections of prior fixes that turned out to be insufficient.** The pattern works partly because it surfaces these. Each correction is more credible than the prior because each one explicitly owns "the previous attempt was wrong, here's specifically why."
 
 The receipts moat strengthens, not weakens, when a fix is publicly retracted with a sharper diagnosis. **A receipts trail with corrections is more trustworthy than one without** — it demonstrates the discipline holds even when the discipline catches its own work being insufficient.
+
+### Pre-deploy verification (per the new deploy-time content rule)
+
+Per the verification-by-content rule extension, applied the deploy-time check on the corrected fix BEFORE shipping: confirmed `mint_checkpoints` actually contains entries for graduating mints, with the right shape and non-zero values.
+
+```
+Recent post_grad_outcomes graduates with mint_checkpoints coverage:
+   3/12  = 25.0%  for the most recent 12 graduates (last 30 min, includes 7e churn)
+   7/44  = 15.9%  for graduates in last 1h
+  27/233 = 11.6%  for graduates in last 6h
+ 128/846 = 15.1%  for graduates in last 24h
+ 603/6782 = 8.9%  for graduates in last 7d
+
+For mints WITH a checkpoint, features are clean and meaningful:
+  smart_money={7, 4, 7}  n_whales={10, 8, 8}  fee_delegated={1, 0, 0}
+```
+
+**~10-15% coverage is systemic, not transient.** Most pump.fun graduations are bot-driven manufactured pumps that hit vsol≥115 before age 15s — too fast for any age-checkpoint to capture. The mints that DO have checkpoints are the slower-graduating subset.
+
+### Implications (publicly owned; ships with the fix)
+
+1. **The Finding 7f fix is a strict improvement (10-15% > 0%) but PARTIAL.** ~85-90% of new graduates will fall back to snapshot-only extraction, which produces zero on the 3 sparse fields (smart_money, n_whales, fee_delegated). Those rows still capture unique_buyers and vsol_velocity correctly.
+
+2. **The 10-15% covered subset is biased toward slow-graduating mints.** k-NN trained on this subset learns primarily from non-bot graduations. May or may not generalize to the full graduation population.
+
+3. **Auto-lift gate is the next decision boundary.** If the partial corpus produces a sane Path D2 distance distribution (median ∈ [0.5, 3.0]) when validation re-runs, the fix is sufficient and sustain restores. If validation fails on the partial corpus, **Finding 7g pre-registers** at that point with a sharper question: "how to enrich features for fast-graduating mints (≤15s)?" Possible answers include: capturing features at vsol-thresholds rather than age-thresholds; an in-memory cache populated from /api/live request handling; lazy-import-and-call `_enrich_mint` from within `_record_graduation`.
+
+4. **Not pre-registering Finding 7g now.** Per the iteration-limit rule, escalation is pre-registered as "if validation fails, escalate to architecture review of how to capture features for fast graduators" — not a specific implementation. Specific implementation gets pre-registered THEN, with its own verification criteria.
+
+### What this morning has demonstrated about the discipline pattern
+
+- **Eight findings in 72 hours, two of them retractions** (Path D2 failed → Path E sunset; Finding 7e mechanical wrong → Finding 7f corrected approach).
+- **Every retraction is more credible than the prior fix**, because each explicitly owns the previous attempt's specific failure.
+- **The discipline doesn't claim to ship perfect fixes.** It claims to publicly timestamp every diagnosis BEFORE the corresponding action, retract publicly when post-deploy verification surfaces a flaw, and pre-register the next escalation gate before the next action ships.
+- **Coverage of 10-15% is publicly stated.** A trustless reader can run the same SQL against prod and verify the number. That's the receipts moat in operation: every claim is checkable.
