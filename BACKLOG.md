@@ -4,6 +4,45 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### Finding 7 — Path C metric replacement (pre-registered 2026-05-07)
+
+After diagnosis at `5296351`, the post_grad k-NN distance metric is being replaced. Single deploy after this commit; verification per pre-registered acceptance criterion before re-enabling sustain rendering.
+
+**Hypothesis:** replacing max-scaling with std-dev (z-score) scaling in the post_grad k-NN distance metric produces a metric where dimensions contribute proportionally to their information content, eliminating the smart_money-dominated pathology.
+
+**Method:**
+
+```python
+# Old (max-scaling, broken):
+scales = (max(smarts), max(whales), max(buyers), max(velocity), 1)
+# Produces (1, 1, 1632, 1949, 1) — dimension imbalance
+
+# New (z-score scaling):
+scales = (stdev(smarts), stdev(whales), stdev(buyers), stdev(velocity), stdev(fee_delegated))
+# All dimensions contribute proportionally to spread/information content
+```
+
+Each dimension's contribution to distance becomes `(raw_difference / std_dev)²`. High-spread dimensions contribute more; low-spread dimensions contribute less but aren't drowned out.
+
+**Pre-registered acceptance criterion (frozen):** post-fix, sample 50 live in-lane mints, compute mean nearest-neighbor distance for each. Verify:
+
+- **Distribution spans 0.5-3.0 typical range:** tight matches sit near 0.5-1.0, genuinely loose matches sit at 2.0-3.0+. Median across 50 samples should fall in this range.
+- **No collapse to zero or explosion to >10:** if samples cluster below 0.1 or above 5, the metric still has issues.
+
+**Decision rule (post-fix):**
+- Distribution in 0.5-3.0 range → metric is sane; loose-match threshold (75th percentile) becomes meaningful; re-enable sustain rendering with proper warming gate; update /api/scope to reflect post-fix state.
+- Distribution outside range → metric still broken; re-investigate (possibly different normalization scheme — robust statistics like IQR, log-transform on heavy-tailed dimensions). Re-pre-register before any further change.
+
+**Interim state (in tree, deploys with this commit pair):**
+1. `post_grad_survival_prob` returns `{prob: null, status: 'metric_recalibration_in_progress'}` for ALL live mints during the fix window
+2. Bot alert template + dashboard skip rendering sustain when status indicates recalibration
+3. `/api/scope` description updated: `calibrated: "directional only — distance metric being recalibrated as of 2026-05-07"` + caveat naming Finding 7
+4. Memory file `project_watch_grad_vs_runner` corrective single-line update
+
+**Time bound:** ~30 min implementation + ~30 min verification. Sustain rendering stays suppressed until acceptance criterion passes.
+
+**Frozen at this commit. No revising acceptance ranges downward without re-pre-registration.**
+
 ### Sixth-finding fixes — pre-registered before implementation (2026-05-07 morning)
 
 After diagnosis at `597b5ab` (sharpened from `ce7a38b`), the four fixes ship together as a single combined deploy. Each pre-registered separately so the discipline pattern's "decide criteria first, apply fresh" property holds. Rules 9 + 10 stay deactivated until verification gate passes.
