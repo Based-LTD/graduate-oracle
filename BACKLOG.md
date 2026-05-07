@@ -24,6 +24,8 @@ Check runs on rolling 7d window starting 24h after deploy.
 
 **Holding state:** rules 9+10 stay deactivated until acceptance criterion passes. /api/scope unchanged until diagnostic confirms a finding worth surfacing publicly.
 
+**Interim 48h TG re-enable gate (sub-pre-registration, 2026-05-07):** an earlier, less strict verdict point at 2026-05-09T16:45Z (48h post-Finding-8-deploy). Acceptance: max hour-level MED ≤30, ≥1 daemon recompute without burst, HIGH any value. Pass → re-enable rules 9+10 with content gate; full 7d gate continues. Fail with burst → immediate Path E. The full 7d criterion is unchanged. See `docs/research/bucket_calibration_aliasing.md` "interim TG re-enable gate" section.
+
 **Independent of Finding 7f auto-lift gate.** Different systems; runs in parallel without competing for cycles.
 
 Full pre-registration: [`docs/research/bucket_calibration_aliasing.md`](docs/research/bucket_calibration_aliasing.md).

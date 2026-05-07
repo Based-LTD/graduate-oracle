@@ -329,3 +329,69 @@ Revert to fixed-percentile cutoffs without volume-targeting. Loses self-stabiliz
 - **Rules 9+10 stay deactivated.** Re-enabling gated on acceptance criterion pass at 2026-05-15T16:45Z (24h post-deploy + 7d window).
 - **/api/scope** unchanged — no public claims about bucket distribution stability until empirically verified.
 - **X post stays held** — the eight-findings narrative needs at least one of (Finding 7f auto-lift, Finding 8 acceptance) cleanly resolved before publishing. Earliest: 7f auto-lift in ~10 hours; Finding 8 in 8 days.
+
+---
+
+## Finding 8 — interim TG re-enable gate (pre-registered 2026-05-07, ~30 min after deploy)
+
+8 days of silent TG (waiting for full Finding 8 acceptance) is too long for product presentability. Pre-registering an interim gate that lets us re-enable rules 9+10 sooner if the EMA smoothing demonstrably prevents bursts at a shorter timeframe. The full 7d gate stays as the longer-term validator; the interim gate is a faster-but-lower-confidence path that buys back user-visible alert delivery.
+
+This is a sub-pre-registration under the parent Finding 8. Not a new finding — same hypothesis, same fix, same Path E escalation. Just an additional, earlier, more permissive verdict point.
+
+### Hypothesis (same as parent Finding 8 H1)
+
+EMA smoothing deployed at 2026-05-07T16:45:54Z prevents the cutoff-recompute aliasing burst. After ~48h post-deploy, bucket distribution should show no bursts even if total volume is below design target.
+
+### Acceptance criterion (frozen, less strict than the full 7d window)
+
+Evaluated at **2026-05-09T16:45Z** (48h post-deploy):
+
+1. **Maximum hour-level MED count in any 1h window ≤ 30.** Yesterday's burst was 636 in one hour; this allows 5× design target as ceiling. A pass means EMA smoothing successfully dampened the recompute discontinuity.
+2. **At least one daemon recompute fires within the 48h window without producing a burst.** A scheduled recompute happens at 24h post-deploy (~2026-05-08T16:45Z); the gate requires that recompute, AND any other restart-triggered recomputes in the window, to produce no burst.
+3. **HIGH count: any value (0 included).** Genuine rarity acceptable at the interim. The full 7d gate enforces HIGH coverage; interim is permissive.
+4. **No mass-coverage requirement.** The 16/24-hour-coverage criterion from the full 7d gate is NOT applied at the interim. Interim is about "no bursts," not "always firing."
+
+### Decision rules (frozen)
+
+| Outcome at 2026-05-09T16:45Z | Action |
+|---|---|
+| **PASS (no burst, no >30/hr violations)** | Re-enable rules 9+10 with content-inspection gate (sample 10 alerts post-re-enable, confirm sensible content before declaring done). Full 7d acceptance criterion CONTINUES running for full validation. |
+| **FAIL at 48h** (no burst, but some other criterion violation discovered during interim) | Rules stay disabled. Full 7d window continues. Reassess at full close 2026-05-15T16:45Z. |
+| **FAIL with burst before 48h** | Immediate re-deactivation of rules (if they had been re-enabled prematurely — currently they're already deactivated, so this is moot). Escalate to Path E (fixed-percentile cutoffs). EMA smoothing rejected as insufficient. |
+
+### Why a 48h interim gate (and not 24h or 72h)
+
+- **24h** is too short — only one scheduled recompute fires in that window; insufficient to characterize whether smoothing works across multiple recomputes.
+- **48h** captures TWO scheduled recomputes (deploy + ~24h) plus any restart-triggered recomputes from incidental fly events. Enough to surface aliasing if it persists.
+- **72h** captures three but adds 24 hours of silent TG without proportional information gain.
+
+48h is the smallest window that exercises the smoothing mechanism multiple times.
+
+### What this changes about the parent Finding 8 acceptance
+
+**Nothing.** The parent's full 7d acceptance criterion (rolling MED rate in [21, 210], no hour > 10/hr, ≥16/24 hour coverage, HIGH in [1, 15]) is unchanged. The interim gate is **strictly less strict** — passing interim does not imply passing full. The full 7d gate remains the authoritative validator.
+
+If interim PASSES and rules are re-enabled, the full 7d gate continues running. If full 7d FAILS later (e.g., persistent under-firing), rules get re-deactivated and Path E executes. Path E escalation is unchanged from the parent pre-registration.
+
+### Why the X post probably ships at the interim gate, not the sustain auto-lift
+
+- **TG re-enable is the more user-visible recovery.** "Alerts back on with bucket framing" is concrete and demoable. "Sustain feature back online" is technical and harder for outside readers to evaluate.
+- **48h interim gate ≤ ~hours-to-day for sustain auto-lift** — but sustain auto-lift verdict at this commit's writing time is "deferred not failed" (Finding 7f-validation-deferred at `ea6d5f5`); re-validation triggers at corpus adequacy or 72h.
+- The eight-findings narrative absorbs cleanly when at least one user-visible recovery has landed. Interim TG re-enable is the most likely first landing.
+
+If interim gate passes at 2026-05-09T16:45Z (~48h from now): X post becomes most publishable. Sustain may or may not be re-validated by then. If yes, both wins land in the same post. If no, sustain becomes a separate +days-later post.
+
+### Holding state until interim verdict
+
+- **Rules 9+10 stay deactivated** until 2026-05-09T16:45Z verdict.
+- **No silent re-enable.** Whatever the verdict, it gets committed publicly with the supporting data.
+- **Full 7d gate continues independently.** Interim verdict doesn't preempt the full-window check.
+
+### Receipts trail (Finding 8 chain, with interim sub-pre-reg)
+
+| Commit | Action |
+|---|---|
+| `53be35f` Finding 8 pre-registration | Diagnostic ran |
+| `790c8dd` Finding 8 diagnostic — H1 confirmed | EMA fix pre-registered |
+| `4d13430` Finding 8 EMA fix landed | 7d full gate clock starts |
+| **(this commit) Finding 8 — interim 48h TG re-enable gate pre-registered** | Interim verdict 2026-05-09T16:45Z; full verdict 2026-05-15T16:45Z |
