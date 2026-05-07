@@ -702,6 +702,37 @@ The Lane 6 candidates extracted from curve replay at age 30/60 (Lane 9 confirmed
 
 **Post-grad snapshot features (use during training only, NOT at score time):** they're in `post_grad_outcomes.feature_*` but captured at graduation. Including them in training would leak future state into prediction. Score-time analogues from Lane 9's curve replay are the proxy.
 
+### Bucket cutoffs bimodal-cliff finding — third pre-fix structural diagnosis (2026-05-06 evening, pre-cutover)
+
+Daemon's first successful rebuild fired at T+24h calibrated-shadow window with n=2,336 calibrated samples. Cutoffs populated, but `high_min ≈ med_min` (1e-9 epsilon apart) — distribution-shape collapse, not a daemon bug.
+
+**Root cause:** isotonic regression on the 14h training window produced a step-function output with a hard ceiling at `6/53 = 0.11320754716981132`. **8.60% of all calibrated predictions land at exactly this single value.** Above the ceiling: 5 distinct values, each n=1. Below: smooth 91% tail. p95 and p99 both lock onto the ceiling because 8.6% mass swallows both percentiles.
+
+**Pre-registered fallbacks (a/b/c) all fail against this data:**
+- (a) Adjust percentiles → 8.6% > top-3% > top-0.5%; both still hit ceiling
+- (b) 2-bucket at ceiling → ~30 alerts/hour, way too noisy
+- (c) Hold cutover → doesn't fix anything; training data shape won't change without retrain
+
+**Revised spec (option e, approved + implemented + tested):**
+- `HIGH = calibrated > ceiling_value` → above-ceiling outliers (~5/week)
+- `MED = calibrated == ceiling_value AND raw_GBM ≥ raw_gbm_p97` → at-ceiling top-rank (~10/day)
+- `LOW = otherwise`
+
+This respects the bimodal data shape: above-ceiling outliers (rare, "model unusually confident"), at-ceiling top-rank (daily signal "strongest in the at-ceiling cluster"), below-ceiling rest. Same volume profile as the original spec's HIGH/MED/LOW intent, achieved through a structure that matches reality.
+
+**Future simplification path:** the cliff is a 14h-training-window artifact. Post-cutover, accumulating data smooths the upper tail of isotonic. The daemon includes an automatic fallback: when no calibrated value clears 1% mass on rebuild, it switches to standard percentile cutoffs (top-1% HIGH, top-5% MED). The bimodal-cliff workaround sunsets when the data outgrows it.
+
+**Status:** spec approved, implementation in tree (`bucket_cutoffs.py` rewritten with bimodal-aware logic + `bucket_for(cal, raw_gbm)` signature; wiring updated; test suite extended with bimodal + regression-vs-old-logic + smooth-fallback tests; all passing). Track B held pending cutover deploy.
+
+**Receipts moat — third pre-fix diagnosis in 48 hours:**
+1. 2026-05-05 morning — deployed kNN saturation (committed eaab3f5)
+2. 2026-05-05 evening — calibrated GBM over-confidence vs `actual_graduated` (Gate 5 over-confident branch fires, committed 2aeba1d)
+3. **2026-05-06 evening — calibrated GBM bimodal cliff (this commit)**
+
+Each diagnosis publicly committed before the corresponding fix shipped. Single events are dismissible; consecutive ones in a tight window are evidence of the discipline pattern functioning under live conditions.
+
+Writeup: [docs/research/bucket_cutoffs_bimodal_finding.md](docs/research/bucket_cutoffs_bimodal_finding.md).
+
 ### Deployed k-NN saturation — structural alert failure diagnosed 2026-05-06 morning (pre-cutover)
 
 Discovered during Track A calibrated-shadow window @ uptime 2.14h: the deployed k-NN's absolute-threshold alert system has been structurally failing since deploy. Not transient. Not a Track A regression.
