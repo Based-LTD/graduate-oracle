@@ -458,3 +458,93 @@ The iteration-limit pre-registration rule (Path D2/Path E commit) didn't just st
 2. Stop committing to a bigger investigation than the situation requires (30-min code check vs multi-day architecture review)
 
 Both halves fired correctly. The framework caught a pre-existing pathology AND avoided over-scoping the response. **The discipline isn't just about catching issues — it's about right-sizing the response.**
+
+---
+
+## Finding 7f — Finding 7e fix was mechanically wrong; lifecycle-window mismatch
+
+**Captured:** 2026-05-07, ~15 minutes after Finding 7e fix deployed. Verification-by-content (per the rule added to `feedback_pre_registration_branches.md` after the sixth finding) caught it. **The pattern caught its own fix being insufficient. Owning the mistake publicly because the receipts moat depends on it.**
+
+### What broke (post-deploy verification)
+
+Pulled the recent post-fix rows from prod sqlite. The HTTP self-call code path was deployed and verified live (read deployed source via `inspect.getsource` over fly ssh). But:
+
+```
+recent rows graduated_at >= FIX_DEPLOY_TS (~12 within first ~6 min):
+  All 12 rows have feature_smart_money=0, feature_n_whales=0, feature_fee_delegated=0
+  (same corruption pattern as pre-fix)
+
+new rows landing in last 5 minutes: 0
+```
+
+Two phenomena in sequence:
+1. **First 6 minutes after deploy:** 12 rows landed with the same corruption (zero on the 3 sparse fields). These were written by the OLD code path that was still running until supervisord killed and restarted the web/daemon process.
+2. **After supervisord restart (~6 min after deploy):** ZERO new rows. The new code's HTTP self-call returns 0 candidates because `/api/live` doesn't include mints with vsol≥115 — they've left the prediction lane (≤60s) by the time they cross the graduation threshold.
+
+### Why the sister-module pattern doesn't transfer
+
+`early_grad_tracker._loop` and `mint_checkpoints` work because they capture features at **age-checkpoints** (15s, 30s, 60s) when mints are still well in lane and well below the graduation threshold. They use `/api/live` as the source because, **at those ages, the mints are present in the response.**
+
+`post_grad_tracker._record_graduation` is supposed to capture features at the **graduation moment** (vsol≥115). By the time a mint reaches 115, it's typically aged out of the ≤60s prediction lane — so it's NOT in `/api/live`'s response.
+
+I assumed the sister-module pattern would transfer mechanically. **It doesn't, because the lifecycle windows are different.**
+
+### The deeper diagnosis (Finding 7f)
+
+**Three things need to be separated:**
+1. **Graduation detection** (vsol≥115) — happens in the raw observer feed (`observer-active.json`), which DOES include all mints regardless of age/lane.
+2. **Feature enrichment** at graduation moment — the enrichment fields (smart_money_in, wallet_balance.n_whale_wallets, fee_delegation.total_bps) are computed during /api/live request handling. They're NOT in observer-active.json.
+3. **Feature persistence across the lifecycle window gap** — the gap between "last in-lane observation" (≤60s) and "graduation moment" (typically minutes later) means features computed during in-lane observations are the freshest available when graduation happens.
+
+**The corrected fix:** keep `_loop` reading `observer-active.json` (graduation detection works there); when graduation is detected, `_record_graduation` looks up the latest enriched feature snapshot for that mint from **`mint_checkpoints`** (sister table that already captures these features correctly, at age-checkpoints, with the correct enriched data path).
+
+### Why the Finding 7e fix was incomplete (verification-by-content gap)
+
+The Finding 7e investigation correctly identified that observer-active.json lacks Python-layer enrichment, and correctly identified that sister modules use HTTP self-call to /api/live. **It did NOT verify that graduating mints actually appear in /api/live.** I should have:
+
+1. Curl'd `/api/live` for a few minutes and grep'd for vsol≥115 mints. **Would have shown zero immediately.** 
+2. OR: traced through `_detect_new_graduates(api_live_response)` manually and confirmed it returns non-empty results before deploying.
+
+Skipping that one verification step is exactly the failure mode that the **verification-by-content rule** (added after the sixth finding) was designed to catch. I applied it to alert content but not to data-source assumptions during the Finding 7e investigation.
+
+**Meta-rule extension worth adding to `feedback_pre_registration_branches.md`:** verification-by-content applies at deploy time, not just at fix-claim time. Before declaring a data-plumbing fix correct, manually verify that the new data source CONTAINS the data the fix expects. "The new code path has the right shape" ≠ "the new data source has the right values."
+
+This is the same class of error the sixth finding caught (counting alerts ≠ verifying alert content). **The third instance of the same meta-pattern: confirming structure isn't confirming substance.** Strengthens the rule by showing it generalizes beyond alert evaluation.
+
+### Pre-registered fix decisions (Finding 7f, frozen here)
+
+1. **Revert `_loop` data source:** back to `observer-active.json` (the snapshot file). It DOES include graduating mints; that's where graduation detection has to live.
+
+2. **Replace `_record_graduation` feature extraction:** instead of `_extract_features(m)` against the (raw, unenriched) graduation snapshot mint, JOIN `mint_checkpoints` for the mint's latest checkpoint:
+```python
+def _record_graduation(m: dict):
+    feats = _features_from_checkpoints(m["mint"])
+    if feats is None:
+        # fallback: at-graduation snapshot (3 of 5 fields will be zero;
+        # better than refusing to record a graduation we observed)
+        feats = _extract_features(m)
+    ...
+```
+
+3. **`_features_from_checkpoints(mint)` queries `mint_checkpoints`** and returns the latest checkpoint row's features. mint_checkpoints already captures these features cleanly at age-checkpoints (verified clean on prod: smart_money distribution spans 0-4+, n_whales same, fee_delegated 0/1).
+
+4. **FIX_DEPLOY_TS bump:** new constant for the Finding 7f deploy. Existing pre-7f rows (including the 12 zero-feature rows from this morning's failed fix attempt) get filtered out. Training corpus rebuilds from clean Finding 7f rows onward.
+
+5. **Auto-lift gate retained.** `LIFT_ENABLED=False` until operator runs validation script against clean Finding 7f corpus and acceptance criteria pass.
+
+6. **Edge case noted:** mints that graduate so fast they have no mint_checkpoints entry (e.g., manufactured pumps that hit vsol≥115 before age 15s) will fall back to the at-graduation snapshot, which has 3 zero-fields. These edge-case rows will degrade k-NN slightly but they're a small minority and surfacing them lets us measure their fraction. Future architecture work can decide whether to drop them from training or model them separately.
+
+### Receipts trail (Finding 7 chain, complete through 7f)
+
+| Diagnosis | Action |
+|---|---|
+| `5296351` Finding 7 (layers 7a/7b) | (Path C pre-registered) |
+| `2d95a5a` Path C pre-registration | (Path C deployed; validation FAILED) |
+| `c553d7f` Finding 7c — Path C failed; pre-register Path D2 + Path E | (Path D2 deployed; validation FAILED) |
+| `707c169` Finding 7d + Path E execution receipt | (sunset shipped to prod) |
+| `45fb3b9` Finding 7e — root cause located; HTTP self-call fix pre-reg | (deployed; verification surfaced fix is mechanically wrong) |
+| **(this commit) Finding 7f — Finding 7e fix wrong; lifecycle-window mismatch; mint_checkpoints JOIN pre-registered** | (corrected fix lands next) |
+
+**Nine iterations of pre-fix-then-fix in 72 hours. Two of the nine were corrections of prior fixes that turned out to be insufficient.** The pattern works partly because it surfaces these. Each correction is more credible than the prior because each one explicitly owns "the previous attempt was wrong, here's specifically why."
+
+The receipts moat strengthens, not weakens, when a fix is publicly retracted with a sharper diagnosis. **A receipts trail with corrections is more trustworthy than one without** — it demonstrates the discipline holds even when the discipline catches its own work being insufficient.

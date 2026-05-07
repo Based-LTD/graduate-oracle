@@ -32,7 +32,33 @@ The "is the data plumbing broken" question has a one-block answer (the HTTP self
 | `2d95a5a` Path C pre-registration | (Path C deployed; validation FAILED) |
 | `c553d7f` Finding 7c — Path C failed; pre-register Path D2 + Path E | (Path D2 deployed; validation FAILED) |
 | `707c169` Finding 7d + Path E execution receipt | (sunset shipped to prod) |
-| **(this entry) Finding 7e — root cause located, fix pre-registered** | (HTTP self-call swap + filter + auto-lift; commit ships next) |
+| `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | (deployed; verification surfaced fix mechanically wrong — see 7f below) |
+
+---
+
+### Finding 7f — Finding 7e fix retracted; mint_checkpoints JOIN approach pre-registered (2026-05-07)
+
+The Finding 7e fix (`45fb3b9`) deployed cleanly but post-deploy verification revealed it was mechanically wrong. **The HTTP self-call to /api/live returns 0 graduating mints** because `/api/live`'s response window is the prediction lane (≤60s), not the post-graduation moment (vsol≥115 typically happens at age >> 60s).
+
+Sister modules (`early_grad_tracker`, `mint_checkpoints`) work because they capture features at **age-checkpoints (15s, 30s, 60s)** when mints ARE in /api/live. `post_grad_tracker` was attempting to capture at **graduation moment**, which is a different lifecycle window. The sister-module pattern doesn't transfer mechanically.
+
+**Verification-by-content gap (caught the fix being insufficient):** the Finding 7e investigation correctly identified the snapshot-source bug, but skipped manually verifying that graduating mints actually appear in /api/live. A 30-second curl test (`grep vsol >= 115`) would have shown zero immediately. **Verification-by-content applies at deploy time too, not just at fix-claim time.** This is the third instance of the same meta-pattern (confirming structure isn't confirming substance) — being added to `feedback_pre_registration_branches.md` as a generalization of the rule.
+
+**Pre-registered fix decisions (Finding 7f, frozen):**
+
+1. **Revert `_loop` data source:** back to `observer-active.json`. The snapshot file DOES include graduating mints; that's where graduation detection has to live.
+
+2. **Replace `_record_graduation` feature extraction:** JOIN `mint_checkpoints` for the mint's latest checkpoint row. mint_checkpoints captures features cleanly at age-checkpoints with the correct enriched data path; verified clean on prod (smart_money 0-4+, n_whales 0-4+, fee_delegated 0/1).
+
+3. **`_features_from_checkpoints(mint)` helper** queries mint_checkpoints; returns latest checkpoint's features, falls back to at-graduation snapshot extraction if mint has no checkpoint (rare edge case for mints that graduate before age 15s).
+
+4. **FIX_DEPLOY_TS bumped to Finding 7f deploy moment.** Existing pre-7f rows (including the 12 zero-feature rows from the 7e attempt this morning) filter out of training. Training corpus rebuilds from clean 7f rows onward.
+
+5. **Auto-lift gate retained:** `LIFT_ENABLED=False` until operator runs validation script against clean 7f corpus and acceptance criteria pass.
+
+**Edge case (noted, not blocking):** mints that graduate before age 15s have no mint_checkpoints entry. They'll fall back to the at-graduation snapshot, which has 3 zero-fields. Surfacing them lets us measure their fraction; future architecture work can decide whether to drop or model separately.
+
+**What this finding demonstrates about the receipts moat:** a discipline trail with publicly-retracted fixes is more trustworthy than one without. Each correction explicitly owns "the previous attempt was wrong, here's specifically why" — that's the discipline working at peak strength, not failing. **Nine iterations of pre-fix-then-fix in 72 hours; two of nine were corrections of prior fixes.**
 
 ---
 
