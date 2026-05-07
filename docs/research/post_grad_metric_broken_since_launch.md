@@ -138,3 +138,103 @@ Five lifecycle checkpoints, one pattern. **Single events are dismissible; consec
 - [`bucket_cutoffs_bimodal_finding.md`](bucket_cutoffs_bimodal_finding.md) — Finding 3, similar shape (model-output pathology surfaced via newly-deployed gate)
 - BACKLOG.md "Sixth-finding fixes" — pre-registration of Fix 3 (loose-match warming gate); Path C extends this with metric replacement
 - Memory: `feedback_pre_registration_branches.md` — discipline rules; lifecycle-checkpoint framing extended to include "pre-existing pathology surfaced by new instrumentation"
+
+---
+
+## Finding 7c — Path C validation FAILED; Path D2 + pre-registered Path E escalation
+
+**Captured:** 2026-05-07, immediately after Path C (z-score scaling) validation against the frozen acceptance criterion above. Path C failed catastrophically. This section pre-registers the next attempt (D2) AND the stopping rule (E) — the iteration limit is itself part of the discipline.
+
+### Path C validation result (frozen criterion)
+
+```
+training rows: 6278
+scales (z-score):  (1e-06, 1e-06, 134.78, 141.03, 1e-06)
+                    smart_money  n_whales  unique_buyers  velocity  fee_delegated
+
+sample size: 40 in-lane live mints
+
+distance distribution:
+  min:     0.0000
+  p25:     0.0000
+  median:  0.0000
+  p75:     5.0×10^13
+  max:     1.8×10^14
+
+ACCEPTANCE CRITERION (median ∈ [0.5, 3.0]): FAIL
+```
+
+### Diagnosis (sub-finding 7c)
+
+Three of the five feature dimensions — **smart_money**, **n_whales**, **fee_delegated** — have near-zero variance in the training corpus and collapse to the `1e-6` divide-by-zero floor. Once a live mint has any non-zero value on those dimensions, dividing by `1e-6` blows the squared-distance term to ~10^12 per dimension; compounded across three sparse dimensions, distances reach 10^14.
+
+Mints with all-zero values on those three dimensions (~half the live sample, the "blank" mints) compute distance 0 to every neighbor. That's the bimodal cliff: median=0 because half the population is featureless on the binary-ish dimensions, p75=5×10^13 because the other half explodes.
+
+**Path C swapped one broken metric for another.** The pathology isn't max-vs-stdev — three of five features are sparse/binary-ish and resist any linear normalization scheme that treats them as continuous Euclidean inputs.
+
+### Why D1 (IQR scaling) and D3 (mixed Hamming + Euclidean) are not the next attempt
+
+Pre-registered NOT to attempt these, with reasoning frozen here:
+
+- **D1 — IQR scaling.** Hits the same wall. With smart_money having ~80% zeros in training, the 25th and 75th percentiles are both 0, IQR=0, and we're back to the same divide-by-zero floor that produced 10^14 distances. Skip.
+- **D3 — Mixed Hamming + Euclidean.** Theoretically cleanest but introduces an unprincipled tuning knob: how to weight Hamming distance against Euclidean distance? That weighting choice has no objective answer, becomes a pre-registration debate of its own, and adds significant code surface. Higher iteration cost with uncertain payoff.
+
+### Path D2 — pre-registered (frozen here)
+
+**Hypothesis:** the data shape reality is that 3 of 5 features carry near-zero distance signal, and treating them as side-channel filters rather than distance contributors will produce a metric that operates on the actual continuous information.
+
+**Method:**
+
+1. **Continuous dimensions kept in distance metric:** `unique_buyers`, `vsol_velocity`
+   - Apply `log(1 + x)` transformation to handle heavy tails (the outliers that broke max-scaling)
+   - Z-score normalize the log-transformed values across the training corpus
+   - Distance metric: Euclidean on the 2 log-z-scored continuous dimensions
+
+2. **Sparse dimensions dropped from distance metric:** `smart_money`, `n_whales`, `fee_delegated`
+   - Become **post-filters** on nearest-neighbor results
+   - After k-NN identifies the K nearest neighbors on the 2 continuous dimensions, filter to neighbors whose binary signature `(smart_money>0, n_whales>0, fee_delegated>0)` matches the live mint's signature
+   - If post-filtering leaves <3 neighbors, return `status='warming_too_few_matches'`
+
+**Pre-registered acceptance criteria (all three must pass; frozen here):**
+
+1. **Median NN distance ∈ [0.5, 3.0]** on 50 live in-lane mints
+2. **Post-filter coverage ≥ 70%** — at least 70% of live mints retain ≥3 neighbors after binary-signature post-filter (otherwise the filter is too restrictive)
+3. **Probability output diversity** — across 20 sampled live mints, at least 5 distinct probability values (rules out "all 0.0" and "all 1.0" pathologies that would let the metric pass criterion 1 while still being broken)
+
+**Decision rule (post-D2-fix):**
+- All three pass → ship D2; re-render sustain in alerts; update /api/scope; exit `metric_recalibration_in_progress` state
+- **Any criterion fails → execute Path E (pre-registered below). DO NOT iterate to Path D3, D4, etc.**
+
+### Path E — pre-registered escalation (frozen here, before D2 outcome is known)
+
+**Trigger:** any of the three D2 acceptance criteria fails.
+
+**Action:** **temporarily sunset `post_grad_survival_prob` from public surfaces entirely** pending architecture review.
+
+1. `/api/scope` documents the field as `"temporarily disabled pending architecture review — see post_grad_metric_broken_since_launch.md"`. Field still exists in response shape (returns `{prob: null, status: 'sunset_pending_architecture_review'}`) but is no longer claimed as a signal.
+2. **Alert template** removes the sustain line entirely. Not "warming". Not "100%". Not rendered at all.
+3. **Dashboard** removes the sustain card from the mint detail surface.
+4. **Diagnosis writeup** updated with Path E execution receipt and the timestamp.
+5. **Schedule a separate architecture-review work session** (probably weeks out, post-cutover-stabilization) to evaluate whether k-NN is the right model for this prediction task at all, given that 3-of-5 nominal features can't carry distance signal under any linear normalization scheme.
+
+**Why pre-registering Path E now matters:**
+
+This is iteration 8 of pre-fix-then-fix in 72 hours. Without a pre-registered escalation, "let me try one more metric" can continue indefinitely — that's not discipline, it's deferred decision-making. **Pre-registering the stopping rule frozen-locks the iteration cycle.** If D2 fails, Path E executes; we do not propose D3, D4, etc.
+
+Sunsetting a broken feature is **forward-motion, not retreat**. The receipts trail is strengthened, not weakened, by stating publicly:
+
+> Finding 7 chain: post_grad_survival_prob has been broken since launch (distance metric never carried real signal). Two metric replacements attempted (Path C z-score, Path D2 log+drop). Both failed pre-registered acceptance criteria. Feature temporarily sunset pending architecture review. Honesty about what's broken is what makes the receipts trustworthy.
+
+That's a sharper claim than continued iteration would produce.
+
+### Receipts trail (seventh finding, updated)
+
+| Diagnosis | Fix |
+|---|---|
+| `5296351` Finding 7 (this doc, layer 7a/7b) | `2d95a5a` Path C pre-registration |
+| `2d95a5a` Path C pre-registration | (Path C deployed in code; validation FAILED) |
+| **(this commit) Finding 7c — Path C failed; Path D2 + Path E pre-registered** | (pending — Path D2 implementation, then either D2-success or Path-E-sunset) |
+
+### Cross-references (updated)
+
+- Memory: `feedback_pre_registration_branches.md` — being extended with **iteration-limit pre-registration rule** as part of this commit (a fix attempt that fails its acceptance criterion must pre-register either a refined retry OR a stop-iterating escalation; not "try fix N+1, N+2, ...")
