@@ -1,8 +1,17 @@
 # LOG_THRESHOLD validation-data gap — fourth pre-fix structural finding (post-cutover review)
 
 **Discovery:** 2026-05-06 evening, ~1h post-cutover (commit `76a3712`)
-**Status at capture:** cutover live and operational; bucket logic working as designed; predictions table is **silently filtering** the population the +7d validation rule needs to evaluate.
-**Why this artifact exists:** timestamped receipts. The fix lands in the next commit; this commit names the issue first. Same pre-fix-then-fix discipline as `eaab3f5` and `3d9b451`. **Different from those:** this one was caught in post-cutover review, not pre-implementation analysis.
+**Status:** **FIX LANDED.** Diagnosis published at the prior commit; OR-clause expansion deployed at this commit. Validation data integrity restored within hours, not the +24h budget.
+**Why this artifact exists:** timestamped receipts. Diagnosis lands first; fix lands separately, both publicly committed. Same pre-fix-then-fix discipline as `eaab3f5` and `3d9b451`. **Different from those:** this one was caught in post-cutover review, not pre-implementation analysis.
+
+## Verification (post-fix, ~5 min after deploy)
+
+Last 5 min in-lane predictions logged: **11.** HIGH/MED bucket rows: **9.** **All 9 have `predicted_prob < 0.50`** — exactly the population the previous LOG_THRESHOLD was silently filtering. Raw GBM scores on these: 0.86-0.96 (top of raw distribution), clipping to calibration ceiling 0.1132, correctly assigned MED bucket.
+
+Pre-fix: zero of these would have persisted to the predictions table.
+Post-fix: all 9 persisted.
+
+The +7d validation rule now joins on a complete dataset.
 
 ---
 
