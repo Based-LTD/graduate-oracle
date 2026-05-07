@@ -121,13 +121,20 @@ Daily snapshots of both numbers land in [`data/`](data/) on every commit.
 
 | Tier | Cost | What you get |
 |---|---|---|
-| **Free** | 0 SOL | 200 calls/day · 1 alert rule · 5 watchlist mints |
-| **Pro** | 0.1 SOL/mo | 50,000 calls/day · WebSocket · unlimited alerts/watchlist · webhooks |
+| **Free** | 0 SOL | 200 calls/day · 5-min delayed live data · 1 alert rule · 5 watchlist mints |
+| **Builder** | 0.4 SOL/mo | 5,000 calls/day · real-time data · 10 alert rules · unlimited watchlist · premium signals (`runner_dev`, `smart_in`) |
+| **Pro** ★ | 1 SOL/mo | 50,000 calls/day · real-time · unlimited alert rules · webhook delivery (push, not poll) · priority support |
+| **Enterprise** | Contact us | Custom volume (millions of calls) · websocket firehose · white-label responses · dedicated SLA |
 
 Pay in SOL via Phantom. No card. No email. Activates within ~30 seconds of
 on-chain confirmation. Cancel by not renewing.
 
 [Get a key →](https://graduateoracle.fun/api)
+
+**For B2B integration partners** (wallets, terminals, alert tools, sniper
+platforms, analytics layers): the **Enterprise tier** handles volume tiers,
+SLA requirements, and dedicated infra. Reach out via the Enterprise contact
+flow on the API page or email the address listed there.
 
 ---
 
