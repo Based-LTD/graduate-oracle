@@ -4,6 +4,24 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### `/status` page consolidation (pre-registered 2026-05-07, defer impl this week)
+
+Today's audit revealed that a B2B prospect or technical reader has to assemble "what's running right now" from `/api/scope` + `/api/accuracy` + the dashboard + research/. **The interim Fix 6 (acceptance-gates panel + dashboard banner) is the first iteration; the full consolidated page is the goal.**
+
+Pre-registered scope for the full `/status` consolidation (impl deferred to this week, after the current acceptance gates close):
+
+1. **Section 1: Deployed model architecture.** Calibrated GBM v1 + isotonic cascade + HIGH/MED/LOW bucket framework, with link to `docs/methodology.md`. Auto-derive from `/api/scope.predictions` + `/api/status.bucket_cutoffs` so the page can't go stale relative to deployed config.
+2. **Section 2: Current state of each prediction field.** Pulls from `/api/scope.predictions` calibrated/caveat fields, but renders status pills (✅ live / ⚠️ directional-only / 🔄 acceptance-gate / 🛑 sunset). One row per field. Click-through to the relevant Finding writeup.
+3. **Section 3: Active acceptance gates.** Already shipped today (Fix 6). Future iterations: graph the gate's progression — for sustain auto-lift, a corpus-size meter; for Finding 8 interim, a max-hour-MED meter against the 30/hr ceiling.
+4. **Section 4: Recent receipts trail.** Last 10 commits to `github.com/Dspro-fart/graduate-oracle` rendered with date, message, and link. Auto-pulled via GitHub API at page load. Ships the receipts trail prominently rather than burying it in `docs/research/`.
+5. **Section 5: System health (existing).** Uptime, latency, daemon heartbeats — what `/status` already shows.
+
+**Effort estimate:** ~2-3 hours when the current acceptance gates settle.
+
+**Why not now:** the current acceptance gates (Finding 7f sustain auto-lift, Finding 8 interim/full TG re-enable) are the first audience for the panel. Building the full page before they resolve risks rendering a "live state" picture that gets immediately invalidated. Better to land Section 3 (acceptance gates) now (today's Fix 6), demonstrate it works through one full gate cycle, then extend to Sections 1/2/4.
+
+---
+
 ### Finding 8 — bucket calibration aliasing (pre-registered 2026-05-07)
 
 While running LOG_THRESHOLD verification + bucket distribution check post-cutover, surfaced that the MED bucket fires in 2-hour spikes (697 in -10h..-9h spike) followed by ~22 hours of zero. HIGH bucket fires zero across full 24h. This is not Poisson variance around `TARGET_MED_PER_DAY=10` — it's a calibration instability. Re-enabling rules 9+10 against this bursty distribution is **worse than the current rules-deactivated state**.
