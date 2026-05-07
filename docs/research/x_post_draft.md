@@ -1,10 +1,64 @@
 # X post drafts (2026-05-07 cutover sequence)
 
-Two variants pre-drafted, written-on-spec for the two possible first-resolution shapes. Both target the eight-findings + thirteen-public-commits + discipline-pattern framing. Whichever gate fires first determines which variant ships; the other can be quote-tweeted as the second resolution lands.
+Three drafts now: a **status post** (stage-setting, ships before the gate resolves) and two **resolution variants** (one of which ships when the first gate resolves cleanly).
 
-Per the user direction (2026-05-07): X post arc is now better as a thread, not single posts. Each major resolution gets a quote-tweet of the cutover post.
+The arc is now: today's status post → ~47h gate resolution → resolution post (Variant A or B) → +7d full acceptance update.
+
+Per the user direction (2026-05-07): X post arc is better as a thread, not single posts. Each major resolution gets a quote-tweet of the prior post.
 
 ---
+
+## Variant 0 — status post (ships TODAY, before any gate resolves)
+
+**When this ships:** as soon as it's been greenlit. Doesn't wait for a gate. **Stage-setting, not resolution.**
+
+**Why ship a stage-setting post:** public silence about a deliberate alert pause reads worse than honest disclosure of why. Without a status post today, the audience moves on by the time the resolution post lands ~47h from now. The arc benefits from a "here's why we paused, here's the gate, here's the timeline" → "gate resolved, here's what shipped" two-post structure rather than a single resolution post that has to spend half its content explaining the silence.
+
+**Distinct from Variants A/B (below):** those are resolution posts. This is a status post. Different category; precedes them; doesn't replace them.
+
+```
+Status update on graduate-oracle:
+
+TG alerts are silent right now. Not broken — paused.
+
+Yesterday we shipped a major model cutover (calibrated GBM + isotonic
++ HIGH/MED/LOW buckets replacing absolute-threshold alerts). In post-
+cutover review, the discipline pattern caught a bucket calibration
+aliasing pattern — alerts firing 697 in one hour, then zero for the
+next 22. Bursty isn't useful.
+
+So we paused alerts. Pre-registered a 48h interim acceptance gate. The
+fix (EMA smoothing on the cutoff daemon) is deployed. Gate verdict
+~2026-05-09 16:45 UTC.
+
+Eight structural findings caught and resolved across the cutover
+sequence. All publicly committed on github with timestamps that
+predate their corresponding fixes. The discipline pattern works at
+every checkpoint.
+
+We chose alert silence over alert noise. Will post the resolution
+either way.
+
+Receipts: github.com/Dspro-fart/graduate-oracle
+Status: graduateoracle.fun/status
+```
+
+**Length:** ~200 chars in lede + ~600 chars body = ~3 posts in a thread on X.
+
+**Key sentences (the moat in plain language):**
+- "TG alerts are silent right now. Not broken — paused."
+- "Bursty isn't useful."
+- "We chose alert silence over alert noise."
+
+**Continuity callback:** the same "alert silence over alert noise" line should land in the eventual resolution post (Variant A or B) as a callback, not as a fresh introduction. Two posts, one moat.
+
+---
+
+## Variant A — interim TG gate passes first (alerts back on with bucket framework)
+
+Triggers: 2026-05-09T16:45Z. Acceptance: max 1h MED ≤30, ≥1 daemon recompute without burst.
+
+```
 
 ## Variant A — interim TG gate passes first (alerts back on with bucket framework)
 
