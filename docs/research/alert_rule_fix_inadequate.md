@@ -9,7 +9,21 @@
 
 > "Verification: rule_id=10 (kind=bucket, tier=MED) fired 44 times within minutes of the fix landing. The cutover's user-facing claim is now actually true."
 
-That claim was **correctness-by-count, not correctness-by-content.** I verified the queue was filling. I did not verify what was firing, on which mints, or whether the alert content was sensible. Meta-discipline gap I owe naming explicitly: **verification needs to check correctness of behavior, not just absence of error.**
+That claim was **correctness-by-count, not correctness-by-content.** I verified the queue was filling. I did not verify what was firing, on which mints, or whether the alert content was sensible.
+
+**Owning this explicitly:** at `49ce51f` I treated "alerts firing" as success without checking whether they were firing on the right mints or with sensible content. That was wrong. The user's review of the actual fire content within an hour caught the volume + content pathology I should have caught at deploy time. The receipts trail is only credible if methodology mistakes get the same public exposure as technical ones — that's the principle, and "I verified by count not by content" is the methodology mistake worth documenting alongside the technical fixes.
+
+**The fix I shipped at `49ce51f` did exactly what its code said.** The pre-registration was correct. The implementation matched the pre-registration. The verification step was wrong. **The discipline pattern's failure mode wasn't pre-registration or implementation — it was verification.** That's a sharper meta-lesson than this individual fix produces on its own.
+
+## Where this finding lives in the discipline pattern's lifecycle
+
+Findings 1-5 demonstrated the discipline pattern works at deploy boundaries:
+- **Findings 1-3** (kNN saturation, GBM over-confidence, bimodal cliff) — caught in pre-cutover analysis, before any user-visible flip.
+- **Findings 4-5** (LOG_THRESHOLD, alert-rule mismatch) — caught in initial post-cutover review, with operational data visible but minutes-to-hours after deploy.
+
+**Finding 6 demonstrates the discipline pattern works at the verification step too** — when a fix's success criterion was inadequate (counted alerts, didn't check content), the same pattern caught it. The discipline scales to multiple lifecycle checkpoints: pre-implementation, post-implementation review, AND verification-step review.
+
+That's a sharper demonstration than the prior five findings on their own. "Catches issues at deploy + review + verification" is harder to fake than "catches issues at deploy." The first time the pattern caught a finding inside its own previous fix's verification — the moat working at the layer most teams stop looking at.
 
 ## What's actually happening
 
