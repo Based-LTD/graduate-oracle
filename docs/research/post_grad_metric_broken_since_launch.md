@@ -350,3 +350,111 @@ The pre-fix-then-fix discipline now has a stopping rule. **Iteration-limit pre-r
 Eight iterations of pre-fix-then-fix in 72 hours; eight commits; eight publicly timestamped diagnoses-before-fixes. Now with a frozen stopping rule, the receipts trail strengthens by stating publicly what's broken rather than continuing to iterate.
 
 This is being added to `feedback_pre_registration_branches.md` in this commit cycle so future Claude (and future me) inherit the rule.
+
+---
+
+## Finding 7e — root cause located in 30 minutes; one-line snapshot-source bug
+
+**Captured:** 2026-05-07, ~30 minutes after Path E sunset shipped. Per pre-registered architecture-review scoping discipline, before committing to a multi-day review, spent 30 min investigating Finding 7d's root cause. **The simple-bug hypothesis won decisively.**
+
+### Root cause (located in 5 min of code reading + 5 min of cross-table sanity-check)
+
+`web/post_grad_tracker.py:434` reads the snapshot file directly:
+
+```python
+with open(snapshot_path) as f:
+    snap = json.load(f)
+new_grads = _detect_new_graduates(snap)
+for grad_mint in new_grads:
+    _record_graduation(grad_mint)
+```
+
+`snapshot_path` is `observer-active.json` (set at `web/main.py:67` via `SNAPSHOT_PATH = ROOT / "observer-active.json"`).
+
+That file is the **raw observer output**, written by the Rust observer daemon. Inspected on prod (`fly ssh console -a graduate-oracle -C "head -c 4000 /data/observer-active.json"`), the schema is confined to:
+
+```
+mint, age_s, n_trades, n_buys, unique_buyers, current_vsol_sol,
+first_vsol_sol, vsol_growth_sol, current_mult, max_mult,
+is_mayhem_mode, last_trade_age_s, vsol_velocity_30s
+```
+
+It does **NOT** contain:
+- `smart_money_in` (computed by `_enrich_mint` in `web/main.py:745` — `m_out["smart_money_in"] = n_smart_in` where `n_smart_in` is derived from the live wallet leaderboard)
+- `wallet_balance.n_whale_wallets` (Python enrichment, joined from a separate table)
+- `fee_delegation.total_bps` (Python enrichment, joined from `fee_delegation` table)
+
+When `_extract_features(m)` runs against the raw snapshot mint dict, those `m.get(...)` lookups all return `None`, fall through to `int(... or 0) = 0`, and write zero to the SQL row. **Always. For every graduation. Since the post-grad tracker was deployed.**
+
+### Sister-module contrast (the smoking gun)
+
+Two other modules track features at lifecycle-event time and use the **correct** pattern:
+
+`web/early_grad_tracker.py:307`:
+```python
+import urllib.request
+req = urllib.request.Request("http://127.0.0.1:8765/api/live?limit=200")
+with urllib.request.urlopen(req, timeout=5) as r:
+    live = json.loads(r.read())
+for m in (live or {}).get("mints", []):
+    record_observation(m)
+```
+
+`web/mint_checkpoints.py:62`:
+```python
+LIVE_URL = "http://127.0.0.1:8765/api/live?limit=300"
+```
+
+Both make an HTTP self-call to the locally-running web service, which serves the **enriched** payload. Both have **clean** feature data on prod:
+
+```
+early_grad_outcomes feature_smart_money:  [(0, 31896), (1, 1331), (2, 1278), (3, 1514), (4, 1476), ...]
+early_grad_outcomes feature_n_whales:     [(0, 30854), (1, 521),  (2, 575),  (3, 871),  (4, 995), ...]
+early_grad_outcomes feature_fee_delegated: [(0, 40676), (1, 4997)]
+
+mint_checkpoints   feature_smart_money:  [(0, 90642), (1, 6169), (2, 5851), (3, 6279), (4, 6041), ...]
+mint_checkpoints   feature_n_whales:     [(0, 84888), (1, 1285), (2, 1878), (3, 3095), (4, 3894), ...]
+mint_checkpoints   feature_fee_delegated: [(0, 125067), (1, 22804)]
+```
+
+Only `post_grad_outcomes` is corrupted. **Blast radius confined to one table.** No cascading impact — every other consumer of these feature names operates on its own correctly-populated table, not on the corrupted post-grad rows.
+
+### Why this is good news
+
+- The "fix the data plumbing" question has a **one-block answer** (~10 lines of code).
+- The architecture review **is cancellable or rescoped sharply.** What remains is contingent on Path D2's re-validation against clean data. If clean data produces in-range distance distributions, k-NN works fine; review fully cancelled. If clean data still produces broken distances, the architecture review re-opens with a sharper question: "model choice given clean inputs," not "diagnose the entire pipeline."
+- The discipline pattern produced its **cleanest demonstration yet**: pre-registered escalation prevented metric-tweak thrashing, **then** root-cause investigation prevented over-scoping the response. Two halves of "knowing when to stop iterating" working in sequence.
+
+### Pre-registered fix decisions (frozen here, BACKLOG also captures this)
+
+1. **Data source:** swap raw snapshot file → HTTP self-call to `/api/live?limit=300`. Mirrors sister modules. No new abstractions.
+
+2. **Corrupted-row handling: filter, not wipe.** `_refresh_training_set` adds `WHERE graduated_at >= FIX_DEPLOY_TS`. The 6,357 zero-feature rows stay in the table for forensic value (they document the bug); never enter training. Reversible.
+
+3. **`MIN_SAMPLES_FOR_PREDICTION = 30`** per existing original spec.
+
+4. **Auto-lift (operator-gated final flip):**
+   - corpus < 30 clean rows → `status='warming_clean_corpus_accumulating'`
+   - corpus ≥ 30 AND `LIFT_ENABLED=False` → `status='sunset_pending_validation_rerun'`
+   - corpus ≥ 30 AND `LIFT_ENABLED=True` → run `_predict_d2`, return live results
+   - `LIFT_ENABLED` flips True only after operator runs `scripts/validate_path_d2.py` against clean corpus and acceptance criteria pass. If validation fails on clean data, sunset stays — that becomes a different finding (architecture, not data plumbing).
+
+### Receipts trail (Finding 7 chain, complete)
+
+| Diagnosis | Action |
+|---|---|
+| `5296351` Finding 7 (layers 7a/7b) | (Path C pre-registered) |
+| `2d95a5a` Path C pre-registration | (Path C deployed; validation FAILED) |
+| `c553d7f` Finding 7c — Path C failed; pre-register Path D2 + Path E | (Path D2 deployed; validation FAILED) |
+| `707c169` Finding 7d + Path E execution receipt | (sunset shipped to prod) |
+| **(this commit) Finding 7e — root cause located; fix pre-registered** | (HTTP self-call swap + filter + auto-lift commit ships next) |
+
+### Discipline-pattern observation worth naming explicitly
+
+The iteration-limit pre-registration rule (Path D2/Path E commit) didn't just stop endless metric-tweaking. It **also forced** the "investigate root cause for 30 min before committing to multi-day review" check that prevented over-scoping the response.
+
+**Iteration-limit pre-registration works at the scope level, not just the iteration count level.** Two halves of "knowing when to stop iterating":
+1. Stop the failed-fix retry loop (Path E vs Path D3/D4)
+2. Stop committing to a bigger investigation than the situation requires (30-min code check vs multi-day architecture review)
+
+Both halves fired correctly. The framework caught a pre-existing pathology AND avoided over-scoping the response. **The discipline isn't just about catching issues — it's about right-sizing the response.**

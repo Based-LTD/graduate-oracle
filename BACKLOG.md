@@ -4,6 +4,38 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### Finding 7e — post_grad data-source fix (pre-registered 2026-05-07)
+
+After Path C and Path D2 both failed pre-registered acceptance criteria and Path E (sunset) executed, a 30-min code investigation found the root cause. `post_grad_tracker._loop` reads `observer-active.json` (raw observer output) directly; the enrichment fields `smart_money_in`, `wallet_balance.n_whale_wallets`, `fee_delegation.total_bps` are computed by `_enrich_mint` in the Python web layer at /api/live request time and are NOT in the snapshot file. Sister modules (`early_grad_tracker.py:307`, `mint_checkpoints.py:62`) use the correct pattern — HTTP self-call to `http://127.0.0.1:8765/api/live` — and have **clean** feature data in their respective tables. **Blast radius is confined to `post_grad_outcomes`.**
+
+**Fix decisions (frozen):**
+
+1. **Data source change:** `post_grad_tracker._loop` switches from `with open(snapshot_path) as f` → `urllib.request.urlopen("http://127.0.0.1:8765/api/live?limit=300")`. Mirrors `early_grad_tracker._loop`. No new abstractions. Sister modules' clean data is the proof point.
+
+2. **Corrupted-row handling: Option 2 (filter, not wipe).** `_refresh_training_set` adds `WHERE graduated_at >= FIX_DEPLOY_TS` to exclude the 6,357 zero-feature historical rows from k-NN training. `FIX_DEPLOY_TS` is a module-level constant set to the fix-deploy epoch. Reversible — corrupted rows stay in the table for forensic value (they document the bug) but never enter training. If we later decide to wipe, we can; if we wipe now and find a recovery method, we can't.
+
+3. **`MIN_SAMPLES_FOR_PREDICTION = 30`** per the existing original spec (was at 20 from prior tuning). Clean corpus at ~50/day grad rate → predictor warming exits within hours-to-day, not days.
+
+4. **Auto-lift trigger:** when ≥30 clean post-fix rows accumulate AND Path D2 distance-distribution validation passes (median NN distance ∈ [0.5, 3.0] on 50 live in-lane mints), the sunset auto-lifts. Implementation: predict_survival surfaces `status='warming_clean_corpus_accumulating'` while corpus < 30; after corpus crosses threshold, status flips to `sunset_pending_validation_rerun` until a 1-line follow-up commit flips `LIFT_ENABLED=True` (gated on operator-run validation script success). If validation still fails on clean data, sunset stays — that becomes a different finding (about model architecture, not data plumbing) and the architecture review re-opens with a sharper question.
+
+**What this means for the architecture review:**
+
+The "is the data plumbing broken" question has a one-block answer (the HTTP self-call swap). The remaining architecture question — **"once data is clean, does k-NN actually work?"** — is contingent on Path D2's re-validation against clean data. If the validation passes, the architecture review is fully cancelled. If it fails, the review re-opens with the question reduced to "model choice given clean inputs," which is a 1-hour scoping conversation, not a multi-day study.
+
+**Discipline-pattern observation (worth naming explicitly):** the iteration-limit pre-registration rule (added to `feedback_pre_registration_branches.md` as part of the Path D2/E commit) didn't just stop endless metric-tweaking. It also forced a "investigate root cause for 30 min before committing to multi-day review" check that prevented over-scoping the response. Iteration-limit pre-registration works at the **scope level**, not just the iteration count level. Two halves of "knowing when to stop iterating": stop the failed-fix retry loop, and stop committing to a bigger investigation than the situation actually requires.
+
+**Receipts trail (timestamped sequence):**
+
+| Diagnosis | Action |
+|---|---|
+| `5296351` Finding 7 layers 7a/7b | (Path C pre-registered) |
+| `2d95a5a` Path C pre-registration | (Path C deployed; validation FAILED) |
+| `c553d7f` Finding 7c — Path C failed; pre-register Path D2 + Path E | (Path D2 deployed; validation FAILED) |
+| `707c169` Finding 7d + Path E execution receipt | (sunset shipped to prod) |
+| **(this entry) Finding 7e — root cause located, fix pre-registered** | (HTTP self-call swap + filter + auto-lift; commit ships next) |
+
+---
+
 ### Finding 7 — Path C metric replacement (pre-registered 2026-05-07)
 
 After diagnosis at `5296351`, the post_grad k-NN distance metric is being replaced. Single deploy after this commit; verification per pre-registered acceptance criterion before re-enabling sustain rendering.
