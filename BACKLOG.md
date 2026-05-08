@@ -87,7 +87,21 @@ The "is the data plumbing broken" question has a one-block answer (the HTTP self
 | `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | (deployed; verification surfaced fix mechanically wrong — see 7f below) |
 | `c3a83ef` Finding 7f — corrected fix + retraction | (deployed) |
 | `ea6d5f5` Finding 7f — validation deferred (CRIT 1 PASS small-corpus) | Re-validation at n≥60 + 3 sigs OR 72h cap |
-| **(see post_grad_metric_broken_since_launch.md) Finding 7g — re-validation at n=901 FAILS CRIT 1; clean-data hypothesis rejected** | Architecture review reopens with Q1+Q2 scope; sustain stays sunset indefinitely; iteration-limit applied at model-class level |
+| `f3f1f3e` Finding 7g — re-validation at n=901 FAILS CRIT 1; clean-data hypothesis rejected | Architecture review reopens; iteration-limit at model-class level |
+| **(see post_grad_metric_broken_since_launch.md) Finding 7h — calibrated LR + interactions, one-shot architecture attempt; frozen criteria** | Pre-registration ships first; experiment runs after commit lands; ship-or-sunset per branches |
+
+**Finding 7h pre-registration summary** (full detail in writeup):
+
+- **Model:** calibrated logistic regression with explicit binary-binary and binary-continuous interaction terms (15-feature vector). L2 penalty default; isotonic calibration on out-of-fold predictions.
+- **Protocol:** stratified 5-fold CV on n=901 frozen corpus snapshot. Random seed 42.
+- **Frozen criteria:**
+  - CRIT 1: (0,0,0) base rate convergence ±5pp (`r_000 = 0.4935`)
+  - CRIT 2: Minority-signature (n≥30; only (1,1,0) qualifies) Brier improvement ≥10pp over per-signature baseline (`r_(1,1,0) = 0.3925`)
+  - CRIT 3: Coverage ≥95% on live in-lane sample (≥50 mints)
+- **PASS branch:** ship as conditional sustain — (0,0,0) returns baseline, non-(0,0,0) returns calibrated LR. `LIFT_ENABLED` flips True. Public framing: "we predict sustain when signature signal exists; we don't pretend when it doesn't."
+- **FAIL branch:** permanent sunset. Status `'sunset_lane_60s_structural_limit'`. Three-attempt structural-boundary verdict documented. Dashboard sustain card removed.
+- **Strategic context (frozen):** sustain is upside, not required. Bias toward strict criteria. No softening at the margin.
+- **Iteration-limit:** ONE attempt only. FAIL = permanent sunset; no further model-class iterations.
 
 ---
 

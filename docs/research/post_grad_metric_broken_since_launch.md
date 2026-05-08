@@ -800,3 +800,205 @@ The implication for future pre-registrations: **specifying the corpus size expli
 Today's case: yesterday's CRIT 1 check at n=19 was a single-point measurement that didn't predict n=901 behavior. A more disciplined criterion would have included "validate at multiple corpus sizes during accumulation, not just first-trigger" — but that wasn't pre-registered, and we shouldn't post-hoc rationalize having checked it. The pre-registration was what it was; the verdict stands.
 
 The lesson for next time: when validating a model on a growing corpus, the criterion should specify behavior across corpus-size ranges, not at a single point. **Adding to memory as a refinement of the verification-by-content rule.**
+
+---
+
+## Finding 7h — calibrated logistic regression with interaction terms (one-shot architecture-review attempt)
+
+**Captured:** 2026-05-08, after the architecture review session that Finding 7g pre-registered. **Pre-registration commits publicly before the experiment runs.** Same publish-then-post discipline as Finding 8 amendment — the protocol commits before any data resolves it.
+
+### What the architecture review concluded (from Q1 + Q2)
+
+Q1 (k-NN viability on signature-dominated corpus): **rejected.** k-NN's distance metric collapses on dense (0,0,0)-signature corpus regardless of normalization scheme. Increasing K, RBF kernels, dimensional reduction were all considered; none address the underlying issue that 85% of the corpus shares one signature with only the 2D continuous features differentiating within it.
+
+Q2 (different model shape OR accept non-predictability): **one-shot attempt before sunset.** A model class that explicitly handles signature × continuous interactions — calibrated logistic regression with explicit interaction terms — is the single permitted attempt. If it fails the frozen criteria below, lane-60s sustain prediction is **permanently sunset** and the structural-boundary verdict is documented.
+
+**Iteration-limit at model-class level applies** (frozen at Finding 7g): at most ONE new model-class attempt; if it fails, the feature is permanently sunset. This is that one attempt.
+
+### Strategic context (frozen)
+
+Sustain is **upside, not required.** Bias toward strict criteria. Soft thresholds at the margin would be discipline-pattern violation; the criteria below stay strict regardless of how close the experiment lands.
+
+### Model specification (frozen)
+
+**Model class:** calibrated logistic regression with explicit interaction terms.
+
+**Feature engineering:**
+
+```
+Continuous features (apply log(1+x) then z-score normalization across training fold):
+  - unique_buyers
+  - vsol_velocity
+
+Binary indicators (use as-is):
+  - smart_money     := (smart_money_count > 0)
+  - n_whales        := (n_whale_wallets > 0)
+  - fee_delegated   := (fee_delegation_total_bps > 0)
+
+Interaction terms:
+  Binary × binary (3 pairwise + 1 triple):
+    - smart_money × n_whales
+    - smart_money × fee_delegated
+    - n_whales × fee_delegated
+    - smart_money × n_whales × fee_delegated
+
+  Binary × continuous (6 pairs):
+    - smart_money × log_unique_buyers_z
+    - smart_money × log_vsol_velocity_z
+    - n_whales × log_unique_buyers_z
+    - n_whales × log_vsol_velocity_z
+    - fee_delegated × log_unique_buyers_z
+    - fee_delegated × log_vsol_velocity_z
+
+Total feature vector: 5 main effects + 4 binary-binary + 6 binary-continuous = 15 features.
+```
+
+**Logistic regression:** standard `LogisticRegression(penalty='l2', C=1.0)` from sklearn (or equivalent — the choice of L2 vs L1 vs none does not change the pre-registration; if the implementer prefers L1 or no penalty for interpretability, that's allowed; the criterion evaluates output predictions, not coefficients).
+
+**Calibration:** isotonic regression fit on out-of-fold predictions, applied to held-out fold predictions before evaluation. This matches the existing calibrated-GBM pipeline pattern.
+
+### Experimental protocol (frozen)
+
+**Cross-validation:** stratified 5-fold cross-validation on the resolved post-7f corpus. Stratification key: binary signature (so each fold has proportional signature representation, modulo signatures with n<5 which can't be evenly distributed across 5 folds — those go to whichever fold the random seed picks).
+
+**Random seed:** `42`. Frozen so the experiment is reproducible.
+
+**Per fold:** fit LR + isotonic on training fold (4/5 of corpus), predict on held-out fold (1/5 of corpus). Aggregate held-out predictions across all folds.
+
+**Corpus state at pre-registration time** (frozen here so the experiment uses the same data the criteria are anchored to):
+
+```
+post-7f resolved corpus (graduated_at >= FIX_DEPLOY_TS=1778169865, sustained_30m IS NOT NULL):
+
+  signature   n     n_sustained   base_rate   qualifier
+  (0,0,0)     766   378           0.4935      modal
+  (1,1,0)     107    42           0.3925      ≥30 minority (CRIT 2 evaluable)
+  (1,1,1)      18     6           0.3333      <30 (excluded from CRIT 2)
+  (0,1,0)       7     5           0.7143      <30 (excluded from CRIT 2)
+  (0,0,1)       3     1           0.3333      <30 (excluded from CRIT 2)
+  TOTAL       901   432           0.4795      overall corpus base rate
+```
+
+The experiment runs on a frozen snapshot of this corpus. If the corpus has grown since this commit, the experiment uses the snapshot at commit-time, not the live corpus, to keep the criteria anchored.
+
+### Three frozen acceptance criteria
+
+**CRITERION 1 — (0,0,0) base rate convergence (sanity):**
+
+Aggregate held-out predictions across all 5 folds for rows with binary signature (0,0,0). Compute mean prediction `p_000`. Compare against (0,0,0) base rate `r_000 = 0.4935`.
+
+PASS if `|p_000 - r_000| ≤ 0.05` (5pp tolerance).
+
+This is a sanity check. The model must be honest about the modal 85% case — predicting roughly the base rate on (0,0,0)-sig mints, not pretending to predict noise. A model that produces wildly varying predictions on (0,0,0) rows but happens to average near the base rate would *also* pass this criterion; that's by design — the criterion tests calibration on the modal case, not within-modal-signature discrimination.
+
+**CRITERION 2 — Minority-signature Brier improvement:**
+
+Identify minority signatures with n ≥ 30 in the corpus. **At commit-time, this is exactly one signature: (1,1,0) with n=107.** No other minority signature qualifies.
+
+For all held-out predictions on rows with qualifying-minority signatures (i.e., (1,1,0) at this commit-time):
+
+- `Brier_model = mean((p_model - actual)²)` — model's Brier score on these rows
+- `Brier_baseline = mean((r_signature_baseline - actual)²)` — baseline Brier using **per-signature base rate** as the prediction. For (1,1,0), `r_signature_baseline = 0.3925`.
+
+PASS if `Brier_baseline - Brier_model ≥ 0.10` on the aggregate.
+
+**Per-signature** baseline (not overall corpus base rate): the model has to find structure WITHIN the signature, not just learn the signature average. A model that predicts the per-signature base rate on every (1,1,0) row would have `Brier_model = Brier_baseline` and fail this criterion — exactly the right failure shape.
+
+**CRITERION 3 — Coverage gate:**
+
+After the model is fitted, run it against a sample of in-lane live mints from `/api/live` (at least 50 mints, sampled within a 24h window starting from when the experiment runs). Count:
+
+- `n_total` = total in-lane mints sampled (where in-lane = age 15-60s, current_vsol_sol > 0)
+- `n_predicted` = mints that get a numeric prediction from the model (any non-null `p_model` in [0, 1])
+
+PASS if `n_predicted / n_total ≥ 0.95`.
+
+A mint fails to get a prediction only if a required feature is unavailable, or the model produces a NaN/Inf. Silent dropouts (try/except swallowing errors) count as failures.
+
+### Pre-registered branches (frozen)
+
+| Outcome | Action |
+|---|---|
+| **PASS all 3 criteria** | Ship as conditional sustain prediction. Detail spec below. |
+| **FAIL any 1 criterion** | Permanent sunset. Detail spec below. |
+
+**PASS branch — conditional sustain prediction:**
+
+Sustain field returns calibrated predictions, with explicit signature-dependent behavior:
+
+```
+For (0,0,0)-signature live mints:
+  predict_survival returns:
+    {prob: <p_000_corpus_baseline>,           # the modal-signature base rate
+     status: 'baseline_no_signature_signal',
+     n_neighbors: null,
+     fix_deploy_ts: <FIX_DEPLOY_TS>}
+
+For non-(0,0,0)-signature live mints:
+  predict_survival returns:
+    {prob: <calibrated LR output>,
+     status: 'live',
+     signature: '(s,w,f)',
+     n_neighbors: null,
+     fix_deploy_ts: <FIX_DEPLOY_TS>}
+```
+
+Public framing: **"we predict sustain when signature signal exists; we don't pretend when it doesn't."** The (0,0,0) case explicitly returns the corpus baseline rather than a fake-precise per-mint prediction. Honest about what we know AND what we don't.
+
+`LIFT_ENABLED` flips True. `/api/scope` updates: `calibrated: "directional only — calibrated logistic regression with signature-dependent precision"`. Caveat retains the Finding 7 chain receipts for transparency.
+
+Dashboard alert template + bot follow-up resume rendering sustain on non-(0,0,0) mints; (0,0,0) mints render `sustain ~baseline (no signature signal)` or omit the line (display detail open for refinement post-PASS).
+
+**FAIL branch — permanent sunset:**
+
+`predict_survival` returns:
+
+```
+{prob: null,
+ status: 'sunset_lane_60s_structural_limit',
+ fix_deploy_ts: <FIX_DEPLOY_TS>}
+```
+
+Permanent. `LIFT_ENABLED` stays False. The status enum value `'sunset_lane_60s_structural_limit'` documents the verdict at the API surface.
+
+`/api/scope` post_grad_survival_prob entry rewritten:
+
+> "PERMANENTLY SUNSET 2026-05-XX after three model-class attempts (Path C max-scaling, Path D2 log-z-score + binary post-filter, calibrated LR with interaction terms) all failed pre-registered acceptance criteria. The structural finding: lane-60s sustain prediction is not viable from the available features given the signature distribution of resolved graduates. Aggregate post_graduation.sustain_rate_30m on /api/accuracy continues as the only sustain claim — that's the independent Jupiter measurement, unaffected by per-mint sunset."
+
+Architecture review verdict gets its own writeup section "Finding 7i — sustain not predictable at lane-60s, structural boundary documented" added to this file at sunset time.
+
+Dashboard sustain card removed entirely (was already conditionally hidden during sunset; this makes it permanent).
+
+Aggregate `post_graduation.sustain_rate_30m` continues unchanged — independent Jupiter measurement, never touched the per-mint k-NN.
+
+### What this commit does NOT do
+
+- Does NOT run the experiment. Pre-registration ships first; experiment runs after this commit lands per publish-then-post.
+- Does NOT introduce escape hatches or "wait for more data" branches. Iteration-limit at model-class level applies; one attempt, frozen criteria, ship-or-sunset.
+- Does NOT relax thresholds. ±5pp on CRIT 1, ≥10pp Brier improvement on CRIT 2, ≥95% coverage on CRIT 3 are the bars. Sustain is upside, not required; soft thresholds would betray the bias-toward-strict instruction.
+- Does NOT predict success or failure. The corpus signature distribution (85% (0,0,0)) makes CRIT 1 likely-passable (model can learn the modal base rate). CRIT 2 is harder: the LR has to find signal WITHIN (1,1,0) on continuous features, which density-collapse-on-k-NN suggests is structurally absent. CRIT 3 is mechanically simple. The actual outcome depends on what the data reveals.
+
+### Implementation plan after this commit lands
+
+1. Push this commit publicly. Wait for it to land on github (verifiable timestamp).
+2. Implement the experiment script: `scripts/finding_7h_lr_experiment.py`. Frozen feature engineering, frozen 5-fold stratified CV, frozen random seed, frozen criteria evaluation.
+3. Run the experiment. Capture output in `docs/research/post_grad_metric_broken_since_launch.md` as a "Finding 7h experiment results" section.
+4. Apply CRIT 3 (coverage) by deploying a candidate prediction endpoint or running the fitted model against a sample of /api/live in-lane mints.
+5. Per pre-registered branch: ship-or-sunset. Both paths are committed as part of the same discipline cycle — the experiment-results commit also includes the implementation that ships PASS or executes FAIL.
+
+### Receipts trail (Finding 7 chain, complete through 7h pre-registration)
+
+| Diagnosis | Action |
+|---|---|
+| `5296351` Finding 7 (layers 7a/7b) | Path C pre-registered |
+| `2d95a5a` Path C pre-reg | Path C deployed; validation FAILED |
+| `c553d7f` Finding 7c — Path C failed; Path D2 + Path E pre-reg | Path D2 deployed; validation FAILED |
+| `707c169` Finding 7d + Path E execution receipt | Sunset shipped |
+| `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | Deployed; verification surfaced fix wrong |
+| `2e615f4` Finding 7f deploy-time verification | 10-15% coverage acknowledged |
+| `c3a83ef` Finding 7f — corrected fix + retraction | Deployed |
+| `ea6d5f5` Finding 7f validation deferred — CRIT 1 PASS small-corpus | Re-validation pre-registered |
+| `f3f1f3e` Finding 7g — re-validation FAILS CRIT 1 at n=901; clean-data hypothesis rejected | Architecture review reopens; iteration-limit at model-class level |
+| **(this commit) Finding 7h — calibrated LR with interactions; one-shot model-class attempt; frozen criteria** | Experiment runs after commit lands; ship-or-sunset per branches |
+
+The trail extends with the experiment-results commit as Finding 7h-result (PASS) or Finding 7i-sunset (FAIL).
