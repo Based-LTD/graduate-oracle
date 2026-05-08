@@ -673,4 +673,130 @@ When the data is decisive, the framework accepts the verdict. When the data is a
 | `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | Deployed; verification surfaced fix wrong |
 | `2e615f4` Finding 7f deploy-time verification | 10-15% coverage acknowledged |
 | `c3a83ef` Finding 7f — corrected fix pre-reg + retraction | Deployed |
-| **(this commit) Finding 7f validation deferred — CRIT 1 PASS, CRITs 2+3 small-sample-deferred** | Re-validation at n≥60 + 3 sigs OR 72h cap |
+| `ea6d5f5` Finding 7f validation deferred — CRIT 1 PASS, CRITs 2+3 small-sample-deferred | Re-validation at n≥60 + 3 sigs OR 72h cap |
+| **(this commit) Finding 7g — re-validation at n=901 FAILS CRIT 1; pre-registered architecture review reopens** | Sustain stays sunset; clean-data hypothesis rejected |
+
+---
+
+## Finding 7g — re-validation at n=901; CRIT 1 fails by density collapse; architecture review reopens
+
+**Captured:** 2026-05-08T18:01Z, ~26h after the Finding 7f deploy clock started. Re-validation triggered when corpus reached the pre-registered threshold (n=901 resolved post-7f rows ≥ 60; 5 distinct binary signatures each with ≥3 rows ≥ 3). Pre-registered Finding 7g escalation **executes** per the frozen branch at `c553d7f`.
+
+### Re-validation result
+
+```
+training rows: 901 resolved (post-7f, sustained_30m present, FIX_DEPLOY_TS=1778169865)
+sample size:   11 in-lane live mints (live traffic was thin at run-time)
+
+distance distribution (squared-Euclidean on log-z-scored 2D continuous):
+  min:    0.0000
+  p25:    0.0000
+  median: 0.0000
+  p75:    0.0000
+  max:    0.0663
+
+CRIT 1 — median NN distance ∈ [0.5, 3.0]:    0.0000  →  FAIL
+CRIT 2 — post-filter coverage ≥ 70%:           72.7% (8/11)  →  PASS
+CRIT 3 — ≥5 distinct probabilities (n=20):     2 ({0.875, 1.0})  →  FAIL
+```
+
+### The verdict flip from yesterday is the load-bearing finding
+
+| | Yesterday (n=19) | Today (n=901) |
+|---|---|---|
+| CRIT 1 — median NN distance | **2.2782 (PASS)** | **0.0000 (FAIL)** |
+| CRIT 2 — post-filter coverage | 61.9% (FAIL) | 72.7% (PASS) |
+| CRIT 3 — ≥5 distinct probs | 1 distinct (FAIL) | 2 distinct (FAIL) |
+
+Yesterday's qualitative read was: *"CRITs 2+3 are small-sample artifacts that resolve naturally as corpus grows."* The corpus grew. CRIT 2 did pass at scale (the qualitative read held there). CRIT 3 partially improved (1→2 distinct probs) but still fails. **CRIT 1 — the load-bearing criterion — REVERSED, going from PASS at small corpus to FAIL at large corpus.**
+
+This is a non-monotonic failure shape. The metric was claimed to "work on clean data" based on the small-corpus result. At larger corpus, the metric fails for a *different* reason than Path C/D2 attempts failed.
+
+### Failure mechanism: density collapse on dense (0,0,0)-signature corpus
+
+The training corpus distribution at n=901:
+
+```
+  (0,0,0): 766  (85.0%)   ← dominant signature
+  (1,1,0): 107  (11.9%)
+  (1,1,1):  18   (2.0%)
+  (0,1,0):   7   (0.8%)
+  (0,0,1):   3   (0.3%)
+```
+
+The 766 (0,0,0)-signature training rows occupy the same 2D continuous-feature region (log-z-scored unique_buyers + vsol_velocity). With that many rows in a constrained space, **any live (0,0,0)-signature mint finds 8 nearest neighbors that are essentially co-located — distance to each of the K=8 nearest is ≤0.0663, median 0.0000.**
+
+The metric is mathematically functional (it computes distances). But the distances are not informative — the corpus is too dense in the dominant signature region for K-nearest-neighbor distances to discriminate.
+
+**Yesterday at n=19:** training rows were sparse; live mints found 8 neighbors at meaningfully-different distances; median was in the [0.5, 3.0] range as the pre-registration anticipated. The criterion was specced for sparse-corpus k-NN behavior, which is the regime we're never going to operate in once the corpus accumulates.
+
+**Today at n=901:** training rows are dense in the (0,0,0) region; distances collapse; the criterion's frozen [0.5, 3.0] range no longer matches the regime k-NN actually produces under realistic corpus sizes.
+
+### Why this rejects the clean-data hypothesis cleanly
+
+The clean-data hypothesis (formalized at `ea6d5f5`): *"Path D2 metric design works on clean data; Finding 7d (snapshot-source bug) was the actual root cause; once data is clean, k-NN works."*
+
+The hypothesis is now **rejected** by the n=901 data. With clean training data, the metric still fails CRIT 1 — but for a different reason than the dirty-data attempts (Path C, Path D2 at small clean-corpus). Density collapse is a property of K-nearest-neighbor on a corpus dominated by one signature, independent of feature-data cleanliness.
+
+The hypothesis was checkable; it was checked; it failed. Per pre-registration, **architecture review reopens** with a sharper question.
+
+### Architecture review questions (pre-registered scope)
+
+The reopening narrows to two specific questions:
+
+**Q1: Is K-nearest-neighbor viable as the model class** for sustain prediction on a corpus that's structurally dominated by one binary signature (~85% (0,0,0) at n=901, projected to stay roughly proportional as corpus grows)?
+
+Sub-questions:
+- Does increasing K (8 → 50 → 200) help at scale, or does the density problem persist at any K?
+- Does shifting to weighted-distance kernels (e.g., RBF instead of vanilla Euclidean) recover discrimination?
+- Does dimensional reduction or alternative scaling help?
+
+If Q1 is "no, k-NN is unsuitable for this data shape": move to Q2.
+
+**Q2: Does lane-60s sustain prediction need a different model shape entirely**, or should it be **accepted as not predictable at this lane**?
+
+Sub-questions:
+- Is there a model class (logistic regression, gradient boosting, calibrated neural network) that can produce calibrated probabilities on this corpus shape, where K-NN cannot?
+- Is the prediction problem itself well-posed, given that 85% of resolved sustain outcomes share a (0,0,0) signature with only the 2D continuous features differentiating them?
+- Should the "lane-60s post-graduation sustain" concept be retired from the prediction surface entirely, with the aggregate `/api/accuracy.post_graduation.sustain_rate_30m` (independent Jupiter measurement) becoming the only sustain claim graduate-oracle makes?
+
+### What ships in this commit (per user direction)
+
+- **Public commit marking the trigger.** This writeup. The architecture review questions are pre-registered above.
+- **Sustain field stays sunset.** `predict_survival()` continues returning `warming_clean_corpus_accumulating` until corpus accumulates further, then transitions to `sunset_pending_validation_rerun` at the LIFT_ENABLED gate; `LIFT_ENABLED` stays False indefinitely until architecture review delivers a different model OR formally accepts non-predictability.
+- **Downstream surfaces unchanged.** Dashboard, /api/scope, alert template, /status acceptance-gates panel — all already render the sunset state honestly. No edits needed.
+- **Aggregate `post_graduation.sustain_rate_30m` continues to publish on /api/accuracy** (the independent Jupiter measurement). That number is unaffected by Finding 7g; the per-mint sunset is the only thing changed.
+
+### Pre-registered iteration-limit (frozen at this commit)
+
+The architecture review **does not pre-register specific model-class attempts** ahead of time. That would re-introduce the iteration thrashing the discipline pattern was designed to prevent. Instead:
+
+- **The architecture review is pre-registered as a single thinking session**, scoped to answer Q1 + Q2 above. Output: ONE proposed approach (or a "not predictable at this lane" verdict) with its own pre-registered acceptance criterion.
+- **That proposal commits publicly before any code changes.** Same publish-then-post discipline that's caught the prior 7c→7d→7e→7f chain issues.
+- **If the proposed approach fails its pre-registered acceptance**: the field is permanently sunset (the "accept as not predictable at this lane" branch fires). No iteration to a Path-D3-on-the-new-architecture chain.
+
+This is iteration-limit pre-registration applied at the model-class level: **at most one new model-class attempt; if it fails, the feature is retired.** Same shape as Path D2 pre-registering Path E as the stop-iterating escalation — applied one level higher.
+
+### Receipts trail (Finding 7 chain, complete through 7g)
+
+| Diagnosis | Action |
+|---|---|
+| `5296351` Finding 7 (layers 7a/7b) | Path C pre-registered |
+| `2d95a5a` Path C pre-reg | Path C deployed; validation FAILED |
+| `c553d7f` Finding 7c — Path C failed; Path D2 + Path E pre-reg | Path D2 deployed; validation FAILED |
+| `707c169` Finding 7d + Path E execution receipt | Sunset shipped |
+| `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | Deployed; verification surfaced fix wrong |
+| `2e615f4` Finding 7f deploy-time verification | 10-15% coverage acknowledged |
+| `c3a83ef` Finding 7f — corrected fix pre-reg + retraction | Deployed |
+| `ea6d5f5` Finding 7f validation deferred — CRIT 1 PASS small-corpus | Re-validation at n≥60 + 3 sigs OR 72h cap |
+| **(this commit) Finding 7g — re-validation at n=901 FAILS CRIT 1; clean-data hypothesis rejected; architecture review reopens** | Sustain stays sunset indefinitely; architecture review scoped to Q1+Q2 above; iteration-limit applied at model-class level |
+
+### A meta-observation worth naming (non-monotonic failure shape)
+
+The Finding 7 chain demonstrates a failure shape that the discipline pattern hasn't surfaced before: **a metric that PASSES a pre-registered criterion at one corpus size and FAILS the same criterion at a larger corpus size of the same data quality.**
+
+The implication for future pre-registrations: **specifying the corpus size explicitly in the criterion** matters more than just "validate at n≥X." A criterion like `median NN distance ∈ [0.5, 3.0] at n_train ∈ [60, ∞)` should ideally include the corpus-size sensitivity check — does the criterion hold across the corpus-size range, or only at one point?
+
+Today's case: yesterday's CRIT 1 check at n=19 was a single-point measurement that didn't predict n=901 behavior. A more disciplined criterion would have included "validate at multiple corpus sizes during accumulation, not just first-trigger" — but that wasn't pre-registered, and we shouldn't post-hoc rationalize having checked it. The pre-registration was what it was; the verdict stands.
+
+The lesson for next time: when validating a model on a growing corpus, the criterion should specify behavior across corpus-size ranges, not at a single point. **Adding to memory as a refinement of the verification-by-content rule.**

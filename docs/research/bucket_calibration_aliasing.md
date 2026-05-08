@@ -394,4 +394,138 @@ If interim gate passes at 2026-05-09T16:45Z (~48h from now): X post becomes most
 | `53be35f` Finding 8 pre-registration | Diagnostic ran |
 | `790c8dd` Finding 8 diagnostic — H1 confirmed | EMA fix pre-registered |
 | `4d13430` Finding 8 EMA fix landed | 7d full gate clock starts |
-| **(this commit) Finding 8 — interim 48h TG re-enable gate pre-registered** | Interim verdict 2026-05-09T16:45Z; full verdict 2026-05-15T16:45Z |
+| `70b4baf` Finding 8 — interim 48h TG re-enable gate pre-registered | Interim verdict 2026-05-09T16:45Z; full verdict 2026-05-15T16:45Z |
+| **(this commit) Finding 8 — interim criterion AMENDED pre-verdict; split EMA-verification from alert-volume** | Amendment commits at T+25.93h; verdict at T+48h; ~22h before verdict data resolves the criterion |
+
+---
+
+## Finding 8 — interim criterion amendment (committed pre-verdict)
+
+**Captured:** 2026-05-08T18:01Z, 25.93h post-Finding-8-deploy. Verdict at 48h post-deploy is ~22h away. **This amendment commits before verdict data resolves the original criterion**, per the publish-then-post discipline rule: frozen criteria can be amended IF the amendment commits publicly before the verdict data is in.
+
+### What the original interim criterion missed
+
+The original interim criterion (frozen at `70b4baf`) had four sub-criteria:
+
+1. Maximum hour-level MED count in any 1h window ≤ 30
+2. ≥1 daemon recompute fires within 48h window without producing a burst
+3. HIGH count: any value (0 included)
+4. No mass-coverage requirement at interim
+
+**The criterion conflated two distinct concerns into one verdict:**
+
+- **Concern A — EMA-fix verification:** does the smoothing fix prevent recompute aliasing bursts? Sub-criteria 1, 2, and `rebuild_failures=0` directly test this.
+- **Concern B — alert-volume verification:** does the volume-target calibration produce enough MED predictions to make rules 9+10 worth re-enabling? **The original criterion does NOT test this.** It only requires that bursts not happen. An interim PASS under the original criterion is consistent with both:
+  - (a) EMA fix works AND alerts fire at design rate → re-enable rules 9+10 → users see alerts
+  - (b) EMA fix works AND zero MED predictions are produced → re-enable rules 9+10 → users see silence
+
+The current state at T+25.93h is shape (b): cumulative MED=0, max 1h MED=0, no bursts (because no MED at all). The original criterion would PASS at verdict trivially. Re-enabling rules 9+10 against this distribution would ship into ~6 days of silent rules until the full 7d gate fails for the rolling-7d MED < 21 reason and Path E executes.
+
+**That's a verification-by-structure-not-substance failure** at the criterion-design level — same shape as the LOG_THRESHOLD framing-check (counting alerts isn't verifying alert content). The original criterion verified that bursts didn't happen, not that the system is in a state worth re-enabling rules under.
+
+### The amendment (frozen here, splits Concern A from Concern B)
+
+**EMA-fix-verified gate (subset of original criterion 1+2 + rebuild_failures):**
+
+1. Maximum hour-level MED count in any 1h window ≤ 30
+2. ≥1 daemon recompute fires within 48h window without producing a burst
+3. `rebuild_failures = 0`
+
+PASS = EMA smoothing fix is verified to prevent aliasing bursts. **This is the EMA fix's verdict.**
+
+**Alert-volume gate (NEW, additional):**
+
+4. ≥1 MED prediction observed in the 48h window (`COUNT(MED) WHERE predicted_at >= deploy AND predicted_at < deploy + 48h ≥ 1`)
+
+PASS = the volume-target calibration is producing at least minimal alert flow. **This is rules-9+10's re-enable gate.**
+
+### Decision rules (frozen)
+
+At interim verdict (2026-05-09T16:45Z):
+
+| EMA-fix-verified | Alert-volume gate | Action |
+|---|---|---|
+| PASS | PASS | Re-enable rules 9+10 with content-inspection sample of 10 alerts. EMA fix verified. Full 7d acceptance window continues. |
+| PASS | FAIL | **Do NOT re-enable rules 9+10.** EMA fix verified independently. Trigger one of two pre-registered branches (chosen at verdict time based on diagnostic): (a) pre-register a cutoff-recalibration analysis (separate from EMA fix; investigates *why* 0 MED is produced), OR (b) trigger Path E early (revert to fixed-percentile cutoffs that produce alerts at known rate). |
+| FAIL (burst) | n/a | Path E executes immediately per parent Finding 8 pre-registration. EMA fix rejected. |
+| FAIL (other) | n/a | Stay in current state; reassess at full 7d window close. |
+
+### What this amendment is NOT
+
+**This is NOT a relaxation of the original criterion.** It's the opposite: it ADDS a gate (alert-volume) that the original criterion didn't include. Original criterion's bar to re-enable rules 9+10 was "no bursts." Amendment's bar to re-enable rules 9+10 is "no bursts AND ≥1 MED actually fired." Strictly higher bar.
+
+**This is NOT a post-hoc rationalization.** The amendment commits at T+25.93h; the verdict is at T+48h; **22.07h remain before the verdict data resolves the criterion**. A reader inspecting the receipts trail can verify:
+
+- Original interim criterion: committed at `70b4baf` (2026-05-07T17:30Z)
+- Amendment: this commit (2026-05-08T18:01Z)
+- Verdict event: 2026-05-09T16:45Z (~22h after this amendment)
+- The amendment predates the verdict by a meaningful margin; the change isn't being made to fit a result that's already in.
+
+**This is NOT a precedent for arbitrary amendments.** The discipline applied here is narrow: **a frozen criterion can be amended IF the amendment commits publicly BEFORE the verdict data resolves the original criterion**, AND the amendment refines/splits the criterion (not relaxes it), AND the amendment surfaces a conflation in the original criterion explicitly.
+
+### The pattern this names
+
+**Pre-verdict amendment of frozen criteria** is itself a discipline-pattern application — the publish-then-post rule applied to pre-registered acceptance criteria. The arc:
+
+```
+T-N: criterion committed publicly (frozen)
+T-K (K>0): criterion examined for design flaws (e.g., conflation) before verdict data is in
+T-K+ε: amendment committed publicly
+T+0: verdict event happens; data interpreted under amended criterion
+T+ε: reader can verify amendment predates verdict; criterion change wasn't post-hoc
+```
+
+This is a **strictly narrower** rule than "criteria can be amended whenever you want." It only fires when:
+1. The amendment is committed publicly (verifiable timestamp).
+2. The amendment commits before the verdict data is in (genuinely pre-verdict, not "before the deadline but after we've seen partial data").
+3. The amendment refines or splits an existing criterion (catches a conflation), rather than relaxing it.
+
+The 2026-05-07 LOG_THRESHOLD case had the same shape: an alert path's verification was found to conflate "alerts firing" with "alerts firing on sensible content" — the verification-by-content rule was added to memory as the refinement. The Finding 8 case applies the same shape to acceptance criteria themselves, not just to verification methodology.
+
+**Adding to memory as a generalization:** verification-by-content applies recursively to the criteria themselves, not just to the system being tested.
+
+### What changes operationally as a result
+
+- `/api/status.acceptance_gates` already exposes the gate state. The `summary` field is updated to reflect the amended criterion (separate edit; deploys with next push).
+- The TG pinned message + Variant 0 X post (already drafted) reference the original criterion. Both remain accurate at the EMA-fix-verification level; the alert-volume gate is a refinement that doesn't contradict their framing. **The drafted posts still ship as-is when their respective gates resolve.**
+- The TG follow-up templates (`tg_pinned_message.md`) for "PASS" and "Path E" outcomes need a third template for "PASS-on-EMA-but-FAIL-on-alert-volume" — drafted next.
+
+### Pre-drafted TG follow-up for the new branch
+
+For the case where EMA-fix-verified PASSES but alert-volume FAILS (rules 9+10 stay deactivated; cutoff-recalibration or Path E to be chosen):
+
+```
+🔧 EMA fix verified — alerts still paused
+
+The 48h interim acceptance gate split into two checks: (1) does the
+EMA smoothing fix prevent calibration aliasing bursts? (2) does the
+volume-target calibration produce enough MED alerts to be worth
+re-enabling rules 9+10?
+
+Check 1 PASSED — no bursts in 48h, ≥1 daemon recompute observed
+without aliasing, rebuild_failures=0. The EMA fix works as designed.
+
+Check 2 FAILED — 0 MED predictions in 48h. Re-enabling alerts now
+would ship users into ~6 days of silence until the full 7d gate
+closes. Not worth it.
+
+Pre-registered next step: investigate WHY the cutoff is producing
+zero MED, separate from the EMA-fix verification. OR execute the
+parent Path E (fixed-percentile cutoffs) directly. Decision lands
+within 24h.
+
+Alert silence over alert noise still holds. Receipts updated:
+github.com/Dspro-fart/graduate-oracle
+```
+
+This template lands in `pump-jito-sniper/docs/strategy/tg_pinned_message.md` (private artifact, separate edit).
+
+### Receipts trail (Finding 8 chain, with amendment)
+
+| Commit | Action |
+|---|---|
+| `53be35f` Finding 8 pre-registration | Diagnostic ran |
+| `790c8dd` Finding 8 diagnostic — H1 confirmed | EMA fix pre-registered |
+| `4d13430` Finding 8 EMA fix landed | 7d full gate clock starts |
+| `70b4baf` Finding 8 — interim 48h TG re-enable gate pre-registered | Original criterion conflated EMA-verification with alert-volume |
+| **(this commit) Finding 8 — interim criterion amended pre-verdict; split EMA-verification from alert-volume** | Amendment commits at T+25.93h; verdict at T+48h; criterion is strictly higher bar than original |

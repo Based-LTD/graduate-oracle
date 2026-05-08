@@ -44,6 +44,8 @@ Check runs on rolling 7d window starting 24h after deploy.
 
 **Interim 48h TG re-enable gate (sub-pre-registration, 2026-05-07):** an earlier, less strict verdict point at 2026-05-09T16:45Z (48h post-Finding-8-deploy). Acceptance: max hour-level MED ≤30, ≥1 daemon recompute without burst, HIGH any value. Pass → re-enable rules 9+10 with content gate; full 7d gate continues. Fail with burst → immediate Path E. The full 7d criterion is unchanged. See `docs/research/bucket_calibration_aliasing.md` "interim TG re-enable gate" section.
 
+**Interim criterion AMENDMENT (pre-verdict, 2026-05-08):** the original interim criterion conflated EMA-fix-verification with alert-volume verification. Amendment splits them — EMA-fix-verified gate (max 1h MED ≤30, ≥1 recompute without burst, rebuild_failures=0) is one verdict; alert-volume gate (≥1 MED in the 48h window) is a separate gate. Re-enable rules 9+10 only when BOTH pass. If EMA-fix passes but alert-volume fails, do NOT re-enable; pre-register cutoff-recalibration analysis OR trigger Path E early (decision at verdict time based on diagnostic). Amendment commits T+25.93h, verdict at T+48h — ~22h before verdict data resolves the criterion. **Strictly higher bar than original**; not a relaxation. See `docs/research/bucket_calibration_aliasing.md` "interim criterion amendment" section.
+
 **Independent of Finding 7f auto-lift gate.** Different systems; runs in parallel without competing for cycles.
 
 Full pre-registration: [`docs/research/bucket_calibration_aliasing.md`](docs/research/bucket_calibration_aliasing.md).
@@ -83,6 +85,9 @@ The "is the data plumbing broken" question has a one-block answer (the HTTP self
 | `c553d7f` Finding 7c — Path C failed; pre-register Path D2 + Path E | (Path D2 deployed; validation FAILED) |
 | `707c169` Finding 7d + Path E execution receipt | (sunset shipped to prod) |
 | `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | (deployed; verification surfaced fix mechanically wrong — see 7f below) |
+| `c3a83ef` Finding 7f — corrected fix + retraction | (deployed) |
+| `ea6d5f5` Finding 7f — validation deferred (CRIT 1 PASS small-corpus) | Re-validation at n≥60 + 3 sigs OR 72h cap |
+| **(see post_grad_metric_broken_since_launch.md) Finding 7g — re-validation at n=901 FAILS CRIT 1; clean-data hypothesis rejected** | Architecture review reopens with Q1+Q2 scope; sustain stays sunset indefinitely; iteration-limit applied at model-class level |
 
 ---
 
