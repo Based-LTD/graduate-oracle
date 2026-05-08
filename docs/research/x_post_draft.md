@@ -8,7 +8,20 @@ Per the user direction (2026-05-07): X post arc is better as a thread, not singl
 
 ---
 
-## Variant 0 — status post (ships TODAY, before any gate resolves)
+## ⚠️ V0 staleness note (2026-05-08)
+
+The Variant 0 status post (drafted 2026-05-07, commit `442e4b9`) references the sustain auto-lift gate as "corpus rebuilding on clean data; auto-lift gate accumulating samples." **As of 2026-05-08, that claim is stale** — the sustain feature has now permanently sunset (Finding 7i, see `post_grad_metric_broken_since_launch.md`).
+
+If V0 ships as-is today, it would be inaccurate on the sustain reference. Two options for the user:
+
+- **(a) Update V0 to drop the sustain reference**, leaving only the bucket-calibration gate as the topic. Cleanest if shipping V0 alone.
+- **(b) Skip V0; ship Variant D (below) directly.** Variant D claims the sustain sunset and absorbs the "honest about what's broken" framing without needing V0's stage-setting first.
+
+Recommend option (b). The Variant 0 framing was about explaining a temporary pause; sustain is now permanently retired, which is a different (stronger) post category. Variant D leads with the verdict; the bucket-calibration gate gets covered in Variant A/B/C when its verdict lands.
+
+---
+
+## Variant 0 — status post (drafted 2026-05-07; SEE STALENESS NOTE ABOVE)
 
 **When this ships:** as soon as it's been greenlit. Doesn't wait for a gate. **Stage-setting, not resolution.**
 
@@ -51,6 +64,59 @@ Status: graduateoracle.fun/status
 - "We chose alert silence over alert noise."
 
 **Continuity callback:** the same "alert silence over alert noise" line should land in the eventual resolution post (Variant A or B) as a callback, not as a fresh introduction. Two posts, one moat.
+
+---
+
+## Variant D — sustain permanently sunset (ships TODAY after Finding 7i)
+
+**When this ships:** as soon as it's been greenlit, today. Doesn't replace V0; **replaces V0 if V0 hasn't shipped yet.** Different post category — claims a permanent retirement, not a temporary pause.
+
+**Why this category is stronger than V0's stage-setting:** V0 was "alerts paused for calibration; verdict in 47h." Variant D is "we tried three model-class attempts at sustain prediction; none passed pre-registered acceptance; the feature is permanently retired; here's the receipts trail proving we tried." That's a closing-the-loop post, not a setting-expectations post. Closing-the-loop posts are inherently more credible — they prove the discipline pattern produces verdicts under pressure, including the verdicts we didn't want.
+
+```
+post_grad_survival_prob is permanently retired.
+
+Three model-class attempts on lane-60s sustain prediction. All three
+failed pre-registered acceptance criteria.
+
+  Path C  — z-score scaling on 5-dim k-NN. Distances exploded to 10^14
+            from a 1e-6 floor on sparse dimensions. FAIL.
+
+  Path D2 — log+z-score on 2 continuous + binary post-filter. Passed
+            at small corpus; density-collapsed at large corpus on a
+            (0,0,0)-signature-dominated dataset. FAIL.
+
+  Path 7h — calibrated logistic regression with 15 interaction-term
+            features. Found no within-signature signal; model 1.22pp
+            WORSE than per-signature baseline on the only minority sig
+            with n>=30. FAIL by 11.22pp from threshold.
+
+Pre-registered iteration-limit at the model-class level fired: ONE
+attempt; FAIL = permanent sunset.
+
+Structural finding: lane-60s sustain prediction is not viable from
+the available features given the signature distribution of resolved
+graduates. Aggregate post_graduation.sustain_rate_30m continues —
+that's the independent Jupiter measurement. The per-mint k-NN is
+done.
+
+Eleven public commits across 48 hours documenting the chain. Every
+diagnosis timestamped before its fix or escalation. The receipts
+moat is stronger with a sunset verdict than it would have been with
+a marginal-pass ship — a sunset is harder to fake.
+
+Sustain was upside, not required. The discipline held under pressure.
+
+Receipts: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/post_grad_metric_broken_since_launch.md
+```
+
+**Length:** ~1100 chars (multi-post thread on X).
+
+**Common framing with V0/A/B/C:** "we chose alert silence over alert noise" doesn't apply here — sustain isn't paused, it's retired. The closing-equivalent line is: **"Sustain was upside, not required. The discipline held under pressure."**
+
+**Decision rule for Variant D:** ship after the Finding 7i sunset commit lands publicly. Optionally pair with V0 update or skip V0 entirely (per staleness note above). Variants A/B/C remain held until the Finding 8 interim gate verdict at 2026-05-09T16:45Z.
+
+**Quote-tweet structure (after Variant D ships):** when the Finding 8 interim gate resolves, the resolution post (A/B/C) quote-tweets Variant D for continuity. The receipts arc becomes: V-D (sustain retired, today) → A/B/C (bucket calibration verdict, ~22h) → +7d update (full Finding 8 acceptance close).
 
 ---
 

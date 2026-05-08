@@ -103,6 +103,17 @@ The "is the data plumbing broken" question has a one-block answer (the HTTP self
 - **Strategic context (frozen):** sustain is upside, not required. Bias toward strict criteria. No softening at the margin.
 - **Iteration-limit:** ONE attempt only. FAIL = permanent sunset; no further model-class iterations.
 
+**Finding 7h experiment result (2026-05-08)** — see `docs/research/post_grad_metric_broken_since_launch.md` for full detail:
+
+- **CRIT 1 PASS** — `p_000 = 0.4942` vs `r_000 = 0.4935`; |diff| = 0.0007 ≪ 0.05 tolerance.
+- **CRIT 2 FAIL DECISIVELY** — Brier improvement = **-0.0122** (model 1.22pp WORSE than per-signature baseline) vs threshold ≥+0.10. Failed by ~11.22pp from threshold.
+- **CRIT 3 PASS** — 14/14 in-lane mints got numeric predictions (sample below n≥50 target due to thin live traffic at run-time, but verdict unambiguous at 100%).
+- **OVERALL: FAIL → Finding 7i permanent sunset executes.**
+
+**Finding 7i — permanent sunset (executed 2026-05-08):**
+
+`predict_survival` permanently returns `{prob: null, status: 'sunset_lane_60s_structural_limit'}`. Aggregate `post_graduation.sustain_rate_30m` on `/api/accuracy` continues unaffected. Three model-class attempts (Path C, Path D2, Path 7h) all failed pre-registered acceptance with consistent mechanism: lane-60s sustain prediction is not viable from the available 5 features given the signature distribution of resolved graduates. Iteration-limit at model-class level fired correctly. **Finding 7 chain complete (7a → 7i).**
+
 ---
 
 ### Finding 7f — Finding 7e fix retracted; mint_checkpoints JOIN approach pre-registered (2026-05-07)

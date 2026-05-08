@@ -1002,3 +1002,159 @@ Aggregate `post_graduation.sustain_rate_30m` continues unchanged — independent
 | **(this commit) Finding 7h — calibrated LR with interactions; one-shot model-class attempt; frozen criteria** | Experiment runs after commit lands; ship-or-sunset per branches |
 
 The trail extends with the experiment-results commit as Finding 7h-result (PASS) or Finding 7i-sunset (FAIL).
+
+---
+
+## Finding 7h experiment result + Finding 7i — permanent sunset (FAIL branch executed)
+
+**Captured:** 2026-05-08, ~hours after the Finding 7h pre-registration commit `354024f` landed publicly. Per the publish-then-post discipline, the experiment ran AFTER the pre-registration commit — never the other way around.
+
+**Verdict: OVERALL FAIL.** Pre-registered FAIL branch executes: **permanent sunset of `post_grad_survival_prob`.**
+
+### Experiment results (per frozen protocol)
+
+```
+corpus loaded: n=901 resolved post-7f rows
+
+signature distribution:
+  (0, 0, 0): n=766  base_rate=0.4935
+  (1, 1, 0): n=107  base_rate=0.3925
+  (1, 1, 1): n=18   base_rate=0.3333
+  (0, 1, 0): n=7    base_rate=0.7143
+  (0, 0, 1): n=3    base_rate=0.3333
+
+stratified 5-fold CV (random_state=42):
+  fold 1: n_train=720, n_test=181, mean_pred_test=0.4842
+  fold 2: n_train=721, n_test=180, mean_pred_test=0.4724
+  fold 3: n_train=721, n_test=180, mean_pred_test=0.4863
+  fold 4: n_train=721, n_test=180, mean_pred_test=0.4911
+  fold 5: n_train=721, n_test=180, mean_pred_test=0.4678
+```
+
+### CRITERION 1 — (0,0,0) base rate convergence: PASS ✓
+
+```
+n on (0,0,0) signature (held-out):  766
+mean held-out prediction p_000:      0.4942
+corpus base rate r_000:              0.4935
+|p_000 - r_000|:                     0.0007  (tolerance ±0.05)
+```
+
+**Verdict: PASS.** The model is honest about the modal (0,0,0) case — predictions on (0,0,0)-signature held-out rows average 0.4942, within 0.07pp of the 0.4935 corpus base rate. Far inside the 5pp tolerance.
+
+This was the easy criterion. CRIT 1 tests calibration on the modal signature; the LR can trivially learn the (0,0,0) base rate by setting its main-effect coefficients appropriately. PASS here doesn't say anything about within-signature signal — it says the model isn't pathologically miscalibrated on the modal case.
+
+### CRITERION 2 — Minority-signature Brier improvement: FAIL ✗
+
+```
+qualifying minority signatures (n≥30): {(1, 1, 0)}
+per-signature baseline rate:           0.3925 (n=107)
+
+n on qualifying minority sigs (held-out):  107
+
+Brier_baseline (per-signature base rate predicted on every (1,1,0) row):  0.2384
+Brier_model    (calibrated LR predictions on (1,1,0) rows):                0.2507
+
+improvement (baseline - model):                                            -0.0122
+threshold required:                                                        ≥+0.10
+```
+
+**Verdict: FAIL — by 11.22pp.** The calibrated LR with interaction terms is **1.22pp WORSE** than just predicting the per-signature base rate on every (1,1,0) row.
+
+The threshold required ≥10pp Brier improvement; the result is in the opposite direction by ~1pp. Even at sample noise, the model is not finding within-signature signal — it's adding noise to the per-signature base rate estimate.
+
+**Mechanistic interpretation:** the LR's interaction terms (binary × continuous) had access to `unique_buyers × n_whales`, `vsol_velocity × n_whales`, etc. on the (1,1,0) subset (n=107). With 15 features and 107 rows, the model has degrees of freedom to fit noise — but no within-signature structure to fit signal. The continuous features (log-z-scored unique_buyers, vsol_velocity) carry no information beyond what the signature already encodes about sustain probability for (1,1,0)-signature mints.
+
+This is the same shape as Path D2's density collapse — the *raw data* doesn't have within-signature structure that any model in this corpus shape can capture from these 5 features. k-NN couldn't find it; LR with explicit interaction terms can't find it either. The structural boundary is real, not an artifact of model class.
+
+### CRITERION 3 — Coverage gate: PASS ✓ (sample below target)
+
+```
+n_total in-lane:        14   (target ≥50; live traffic was thin at run time)
+n_predicted (numeric, in [0,1]):  14
+coverage:                100.0%  (threshold ≥95%)
+```
+
+**Verdict: PASS, with sample-size caveat.** 14/14 in-lane mints get numeric predictions. Sample size below the pre-registration target of ≥50 (live in-lane traffic was thin at experiment run-time, only 14 in-lane mints visible in `/api/live` snapshot).
+
+**Interpretive note (frozen at this writeup):** the verdict on CRIT 3 is unambiguous at 100% coverage — even at sample n=50 with a single dropout, the result would be 98%, still PASS. The coverage criterion is mechanically simple and the LR pipeline handles input shape correctly. The sub-target sample size is a methodology limitation, not an outcome ambiguity.
+
+**Coverage criterion's role in the verdict:** moot — CRIT 2 fails decisively, so the OVERALL FAIL verdict stands regardless of CRIT 3's resolution. Even if CRIT 3 had failed (e.g., model produced NaN on some inputs), the verdict would be the same.
+
+### Final tally
+
+```
+CRIT 1 — (0,0,0) baseline:            PASS ✓
+CRIT 2 — minority Brier improvement:  FAIL ✗ (decisive: -0.0122 vs +0.10 required)
+CRIT 3 — coverage:                    PASS ✓ (sample n=14 below target n≥50)
+
+OVERALL: FAIL → execute pre-registered permanent sunset branch.
+```
+
+---
+
+## Finding 7i — permanent sunset (executing pre-registered FAIL branch)
+
+Per Finding 7h pre-registration (`354024f`) FAIL branch:
+
+> Permanent sunset. `predict_survival` returns `{prob: null, status: 'sunset_lane_60s_structural_limit'}`. Permanent. `LIFT_ENABLED` stays False. The status enum value `'sunset_lane_60s_structural_limit'` documents the verdict at the API surface.
+
+This commit ships that operationally:
+
+1. **`web/post_grad_tracker.py` `predict_survival()`** rewritten to return only the sunset payload. All prior status branches removed (warming, sunset_pending_*, live). Single terminal state.
+2. **`web/main.py` `/api/scope.predictions.post_grad_survival_prob`** description rewritten with the permanent-sunset framing + complete Finding 7 chain caveat.
+3. **`bot/main.py` alert template** adds `'sunset_lane_60s_structural_limit'` to the no-render status list (alongside the existing sunset states).
+4. **`web/static/app.js` dashboard sustain card** adds a new render branch for the permanent-sunset state — explicit messaging at the API-detail surface that the field is retired and pointing at this writeup.
+5. **Aggregate `post_graduation.sustain_rate_30m`** on `/api/accuracy` is unchanged — that's the independent Jupiter measurement and was never affected by the per-mint k-NN at any point in the Finding 7 chain.
+
+### The structural finding (frozen)
+
+**Lane-60s sustain prediction is not viable from the available features given the signature distribution of resolved graduates.**
+
+Three independent attempts demonstrated this:
+
+| Attempt | Mechanism failure |
+|---|---|
+| Path C (z-score, 5 dims) | Sparse-dim 1e-6 floor → distances exploded to 10^14; metric mathematically broken |
+| Path D2 (log-z-score, 2 continuous + binary post-filter) | Small-corpus passed CRIT 1; large-corpus density-collapsed on dense (0,0,0) sig |
+| Path 7h (calibrated LR + 15 interaction terms) | Found no within-(1,1,0)-signature signal; model 1.22pp WORSE than per-signature baseline |
+
+The pattern across all three: **k-NN couldn't find structure in the corpus shape; LR with explicit interaction terms also couldn't find it.** Two structurally different model classes both failed. The boundary isn't model-class-specific — it's data-specific. The features available at lane-60s (smart_money, n_whales, unique_buyers, vsol_velocity, fee_delegated) do not carry within-signature signal sufficient to produce calibrated per-mint sustain predictions at this corpus shape.
+
+### What IS viable (frozen acknowledgment)
+
+- **Aggregate `post_graduation.sustain_rate_30m`** on `/api/accuracy` — independent Jupiter price-poll measurement at the 5/15/30 min checkpoints. n>=6,800 resolved graduates; rate ≈47% sustain. **Unaffected by sunset; continues to publish.** This is the only sustain claim graduate-oracle makes.
+- **Per-mint sustain prediction** — retired. Will not return without a fundamentally different feature set (e.g., DEX-side post-graduation features that aren't available in the lane-60s prediction window) AND a fundamentally different framing of what "sustain" means.
+
+### What this commit is NOT
+
+- NOT softening criteria. CRIT 2 failed by ~11.22pp from threshold; this is not a marginal failure.
+- NOT iterating to a Path 7j with a different model class. The pre-registered iteration-limit at the model-class level fired correctly: ONE attempt; FAIL = permanent sunset.
+- NOT promising a reopening. The structural-boundary verdict is durable; absent a new feature set or substantially different problem framing, the field stays sunset.
+- NOT removing the receipts trail. The complete Finding 7 chain (7a→7i) lives in this writeup permanently. Any future reader inspecting the trail can verify the discipline pattern's full execution.
+
+### Receipts trail (Finding 7 chain — COMPLETE)
+
+| Diagnosis | Action |
+|---|---|
+| `5296351` Finding 7 (layers 7a/7b) | Path C pre-registered |
+| `2d95a5a` Path C pre-reg | Path C deployed; validation FAILED |
+| `c553d7f` Finding 7c — Path C failed; Path D2 + Path E pre-reg | Path D2 deployed; validation FAILED |
+| `707c169` Finding 7d + Path E execution receipt | Sunset shipped |
+| `45fb3b9` Finding 7e — HTTP self-call fix pre-reg | Deployed; verification surfaced fix wrong |
+| `2e615f4` Finding 7f deploy-time verification | 10-15% coverage acknowledged |
+| `c3a83ef` Finding 7f — corrected fix + retraction | Deployed |
+| `ea6d5f5` Finding 7f validation deferred — CRIT 1 PASS small-corpus | Re-validation pre-registered |
+| `f3f1f3e` Finding 7g — re-validation FAILS CRIT 1 at n=901; clean-data hypothesis rejected | Architecture review reopens; iteration-limit at model-class level |
+| `354024f` Finding 7h — calibrated LR with interactions; one-shot architecture attempt; frozen criteria | Pre-registration commits; experiment runs after |
+| **(this commit) Finding 7h experiment FAILED CRIT 2 by 11.22pp + Finding 7i permanent sunset executed** | predict_survival returns sunset_lane_60s_structural_limit; chain complete |
+
+**Eleven public commits across 48 hours documenting the complete chain. Five model-class diagnoses, three formal model-class attempts, two retractions, one root-cause fix, one structural-boundary verdict.** The discipline pattern produced a clean negative result: a publicly-justified permanent sunset, with every step's pre-registration predating its corresponding verdict.
+
+### Closing meta-observation
+
+The Finding 7 chain is an example of the discipline pattern executing without compromise across an unfavorable outcome. **A team that believes in its discipline pattern only when it produces ship verdicts is doing performance discipline.** A team that executes the same pattern when it produces sunset verdicts — when the verdict is "the thing we wanted to ship doesn't work, and here's the receipts proving we tried" — is doing genuine epistemic discipline.
+
+The receipts moat from Finding 7 is *stronger* with the sunset verdict than it would have been with a marginal-pass ship: the sunset is **harder to fake** because three independent model-class attempts on the same problem with the same frozen criteria produced consistent FAIL across mechanisms. Anyone replicating the experiment from the public spec gets the same answer.
+
+Sustain is upside, not required. The bias-toward-strict-criteria instruction held under pressure. The pattern works.
