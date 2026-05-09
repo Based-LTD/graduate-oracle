@@ -26,18 +26,19 @@ attempt; FAIL = permanent sunset.
 11 public commits documenting the chain. Closing-the-loop thread.
 ```
 
-### Post 2 — Path C (max-scaling discovered broken since launch)
+### Post 2 — Path C (max-scaling distortion → z-score → dimension collapse)
+
+Tweak applied 2026-05-09 per user direction: removed "broken since the field deployed" framing from this post — it conflated Path C's max-scaling distortion with Path D2's snapshot-source bug (Finding 7d). Post 3 carries the broken-since-launch finding unambiguously.
 
 ```
 1/ Path C — z-score scaling on 5-dim k-NN.
 
-We discovered the metric had been broken since the field deployed.
 Max-scaling caused smart_money to dominate distance computation
-while compressing other dimensions to near-zero.
+while compressing other dimensions to near-zero. We replaced it
+with z-score.
 
-Replaced with z-score. New problem: 3 of 5 features had near-zero
-variance, hit the 1e-6 divide-by-zero floor, distances exploded
-to 10^14.
+New problem: 3 of 5 features had near-zero variance, hit the
+1e-6 divide-by-zero floor, distances exploded to 10^14.
 
 FAIL.
 ```

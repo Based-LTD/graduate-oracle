@@ -78,15 +78,15 @@ case_study_harness/
 
 Lane writeup → X thread conversion per outreach_plan.md Channel #5 ("public credibility-building over time; lane writeups are thread-ready"). Each thread's draft commits publicly BEFORE the post goes live (publish-then-post discipline applied to social-media content). All threads close with a "verify yourself" post citing source commit hashes — receipts moat operating at the social-media layer.
 
-**Frozen sequence:**
+**Frozen sequence (all 5 threads drafted as of 2026-05-09):**
 
 | # | Source | Status | When to ship |
 |---|---|---|---|
-| 1 | Finding 7 chain sunset (subsumes Variant D) — [`docs/research/x_threads/thread_01_finding_7_sunset.md`](docs/research/x_threads/thread_01_finding_7_sunset.md) | Drafted | Anytime; closing-the-loop is fresh now (sunset shipped 2026-05-08 at `7658639`) |
+| 1 | Finding 7 chain sunset (subsumes Variant D) — [`docs/research/x_threads/thread_01_finding_7_sunset.md`](docs/research/x_threads/thread_01_finding_7_sunset.md) | Drafted (Post 2 tweak applied) | Anytime; closing-the-loop is fresh now (sunset shipped 2026-05-08 at `7658639`) |
 | 2 | Case Study 01 pre-reg (pre-commit-to-negative-findings) — [`docs/research/x_threads/thread_02_case_study_01_prereg.md`](docs/research/x_threads/thread_02_case_study_01_prereg.md) | Drafted | After Thread 1 lands AND trigger fires (~2026-05-09T16:05Z); sequencing matters because Thread 2 references Thread 1's precedent |
-| 3 | Lane 1 bundled corpus selection-bias inversion | Pending draft | Days 3-4 of cadence; one thread per week |
-| 4 | Lane 13 transition-zone framing (methodology depth) | Pending draft | Following week |
-| 5 | Finding 8 EMA fix (after verdict resolves) | Pending draft | After Finding 8 verdict commit lands; closing-the-loop applies same as Thread 1 |
+| 3 | Lane 1 bundled corpus selection-bias inversion — [`docs/research/x_threads/thread_03_lane_1_bundled_inversion.md`](docs/research/x_threads/thread_03_lane_1_bundled_inversion.md) | Drafted | Day 3-4 of cadence; one thread per week |
+| 4 | Lane 13 transition-zone framing (methodology depth) — [`docs/research/x_threads/thread_04_lane_13_transition_zone.md`](docs/research/x_threads/thread_04_lane_13_transition_zone.md) | Drafted | Following week |
+| 5 | Finding 8 EMA fix verdict — [`docs/research/x_threads/thread_05_finding_8_verdict_variants.md`](docs/research/x_threads/thread_05_finding_8_verdict_variants.md) | Drafted (3 branch variants A/B/C) | Within 1-2h after Finding 8 verdict commit lands publicly. Variant 5B is the most likely outcome per current data trajectory. |
 
 **Variant D retired:** the single-post sustain-sunset announcement at `docs/research/x_post_draft.md` is superseded by Thread 1. Variant D's body is preserved in the drafts file for receipts-trail integrity (anyone auditing can confirm the option-(a) consolidation decision).
 
