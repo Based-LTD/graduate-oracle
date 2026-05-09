@@ -74,6 +74,24 @@ case_study_harness/
 
 **Lesson banking from Case Study 01 (applies to harness for Studies 02+):** if Branch C fires due to overlap-density or resolution-rate limits, the harness should add an **overlap-density pre-check** at the start of comparison studies — verify viable overlap-per-hour during the first ~6h before committing to a full window. Pre-register feasibility checks, not just acceptance criteria.
 
+### X thread sequence (drafted 2026-05-09; threads ship via @GraduateOracle)
+
+Lane writeup → X thread conversion per outreach_plan.md Channel #5 ("public credibility-building over time; lane writeups are thread-ready"). Each thread's draft commits publicly BEFORE the post goes live (publish-then-post discipline applied to social-media content). All threads close with a "verify yourself" post citing source commit hashes — receipts moat operating at the social-media layer.
+
+**Frozen sequence:**
+
+| # | Source | Status | When to ship |
+|---|---|---|---|
+| 1 | Finding 7 chain sunset (subsumes Variant D) — [`docs/research/x_threads/thread_01_finding_7_sunset.md`](docs/research/x_threads/thread_01_finding_7_sunset.md) | Drafted | Anytime; closing-the-loop is fresh now (sunset shipped 2026-05-08 at `7658639`) |
+| 2 | Case Study 01 pre-reg (pre-commit-to-negative-findings) — [`docs/research/x_threads/thread_02_case_study_01_prereg.md`](docs/research/x_threads/thread_02_case_study_01_prereg.md) | Drafted | After Thread 1 lands AND trigger fires (~2026-05-09T16:05Z); sequencing matters because Thread 2 references Thread 1's precedent |
+| 3 | Lane 1 bundled corpus selection-bias inversion | Pending draft | Days 3-4 of cadence; one thread per week |
+| 4 | Lane 13 transition-zone framing (methodology depth) | Pending draft | Following week |
+| 5 | Finding 8 EMA fix (after verdict resolves) | Pending draft | After Finding 8 verdict commit lands; closing-the-loop applies same as Thread 1 |
+
+**Variant D retired:** the single-post sustain-sunset announcement at `docs/research/x_post_draft.md` is superseded by Thread 1. Variant D's body is preserved in the drafts file for receipts-trail integrity (anyone auditing can confirm the option-(a) consolidation decision).
+
+**Cadence rule:** ~one thread per week. Don't blast. Each thread is independent enough to stand alone, but Threads 1 → 2 → 5 form a closing-the-loop arc (sunset → ongoing study → study verdict) that compounds when read in sequence.
+
 **Phase 2 status (2026-05-08): SCAFFOLD COMPLETE; daemon idle awaiting trigger.**
 
 Source tree shipped at [`case_study_harness/`](case_study_harness/) (public mirror of deployed code). Config frozen at [`case_study_harness/configs/study_01_gmgn.toml`](case_study_harness/configs/study_01_gmgn.toml). Trigger logic: daemon polls every 60s until `start_at_ts = 1778342754` (2026-05-09T16:45:54Z = Finding 8 deploy + 48h) passes, then begins 48h collection. After collection: 24h grace window for outcome resolution. Then exits cleanly for analysis.

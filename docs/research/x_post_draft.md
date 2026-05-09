@@ -67,7 +67,15 @@ Status: graduateoracle.fun/status
 
 ---
 
-## Variant D — sustain permanently sunset (ships TODAY after Finding 7i)
+## Variant D — RETIRED 2026-05-09 (superseded by Thread 1)
+
+**Status: superseded.** Per user direction (option a), [`x_threads/thread_01_finding_7_sunset.md`](x_threads/thread_01_finding_7_sunset.md) does Variant D's job with more depth. Thread 1's Post 1 leads with the same line ("post_grad_survival_prob is permanently retired") and then expands the receipts narrative across 6 follow-up posts. Variant D as a single-post announcement is redundant once the thread exists.
+
+**Variant D draft below kept for historical receipts-trail integrity** — anyone auditing the drafts repository can confirm Variant D existed before Thread 1 was written, and the user's option-(a) decision is documented above. The body of Variant D is preserved verbatim as it was committed at `7658639`.
+
+---
+
+### Variant D body (preserved; SHIP THREAD 1 INSTEAD)
 
 **When this ships:** as soon as it's been greenlit, today. Doesn't replace V0; **replaces V0 if V0 hasn't shipped yet.** Different post category — claims a permanent retirement, not a temporary pause.
 
