@@ -74,6 +74,14 @@ case_study_harness/
 
 **Lesson banking from Case Study 01 (applies to harness for Studies 02+):** if Branch C fires due to overlap-density or resolution-rate limits, the harness should add an **overlap-density pre-check** at the start of comparison studies — verify viable overlap-per-hour during the first ~6h before committing to a full window. Pre-register feasibility checks, not just acceptance criteria.
 
+**Phase 2 status (2026-05-08): SCAFFOLD COMPLETE; daemon idle awaiting trigger.**
+
+Source tree shipped at [`case_study_harness/`](case_study_harness/) (public mirror of deployed code). Config frozen at [`case_study_harness/configs/study_01_gmgn.toml`](case_study_harness/configs/study_01_gmgn.toml). Trigger logic: daemon polls every 60s until `start_at_ts = 1778342754` (2026-05-09T16:45:54Z = Finding 8 deploy + 48h) passes, then begins 48h collection. After collection: 24h grace window for outcome resolution. Then exits cleanly for analysis.
+
+Output: `/data/case_studies.sqlite` (separate file from production scoring DB) → `case_study_01_observations` table.
+
+**Per pre-reg constraints (frozen):** no live rules toggle; no production scoring code touched; pure read-only instrumentation against production DB + GMGN API. Daemon's effective behavior between scaffold-deploy and collection-trigger: log a heartbeat every ~10 minutes; consume negligible CPU/memory; touch zero files outside its own output DB.
+
 ---
 
 ### `/status` page consolidation (pre-registered 2026-05-07, defer impl this week)

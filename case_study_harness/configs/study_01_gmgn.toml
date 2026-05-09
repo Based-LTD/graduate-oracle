@@ -1,0 +1,47 @@
+# Case Study 01 — Calibrated bucket vs component composition (GMGN)
+# Frozen config per pre-registration commit 5bc8f33 (graduate-oracle).
+# Phase 2 scaffold ships idle until start_at_ts triggers the daemon.
+
+[meta]
+study_id = "01"
+title = "Calibrated bucket vs. component-data composition"
+prereg_commit = "5bc8f33"
+prereg_url = "https://github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_comparison_prereg.md"
+
+[window]
+# Trigger fires at Finding 8 deploy + 48h = 1778169954 + 48*3600 = 1778342754
+# = 2026-05-09T16:45:54Z. Daemon waits in trigger-wait state until this UTC.
+start_at_ts = 1778342754
+duration_s = 172800  # 48 hours
+tick_s = 60          # 60s poll cadence
+
+[sources.grad_oracle]
+type = "grad_oracle_sqlite"
+db_path = "/data/data.sqlite"
+age_max = 75
+buckets = ["HIGH", "MED"]
+
+[sources.gmgn]
+type = "gmgn_cli_trenches"
+chain = "sol"
+type_arg = "new_creation"
+filter_preset = "strict"
+cli_path = "gmgn-cli"
+
+[join]
+tolerance_s = 120
+
+[outcome]
+resolver = "vsol_threshold_115"
+grace_window_s = 86400  # 24 hours
+
+[output]
+db_path = "/data/case_studies.sqlite"
+table_name = "case_study_01_observations"
+
+[acceptance]
+# Frozen per pre-reg; analysis script reads these for Branch verdict
+min_overlap_n = 30
+precision_lift_threshold_pp = 10
+ambiguous_band_pp = 5
+resolution_rate_floor = 0.70
