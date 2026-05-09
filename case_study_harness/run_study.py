@@ -39,6 +39,47 @@ def log(msg: str):
     print(f"[case_study_harness] {ts} {msg}", flush=True)
 
 
+def _write_gmgn_credentials():
+    """Write ~/.config/gmgn/.env from env vars at daemon startup.
+
+    Reads GMGN_API_KEY and GMGN_PRIVATE_KEY from the environment (set
+    via Fly secrets in production). Skips with a warning if either is
+    missing — daemon's trigger-wait phase still works; collection_loop
+    will log gmgn-cli credentials errors if they're unset at trigger time.
+
+    Idempotent; safe to call on every daemon restart. Permissions tightened
+    to 700 (dir) and 600 (file) so other processes on the same host can't
+    read the credentials.
+    """
+    api_key = os.environ.get("GMGN_API_KEY")
+    private_key = os.environ.get("GMGN_PRIVATE_KEY")
+    if not api_key or not private_key:
+        log("WARNING: GMGN_API_KEY and/or GMGN_PRIVATE_KEY not set in env. "
+            "gmgn-cli will fail at collection time. Set via "
+            "`fly secrets set GMGN_API_KEY=... GMGN_PRIVATE_KEY=...` "
+            "before trigger fires.")
+        return
+    config_dir = Path.home() / ".config" / "gmgn"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        config_dir.chmod(0o700)
+    except Exception:
+        pass  # may not be allowed on some hosts; not fatal
+    env_file = config_dir / ".env"
+    # Quote private key to preserve PEM newlines if multi-line. Most
+    # .env parsers (including Node's dotenv) handle quoted multi-line
+    # values correctly.
+    env_file.write_text(
+        f"GMGN_API_KEY={api_key}\n"
+        f'GMGN_PRIVATE_KEY="{private_key}"\n'
+    )
+    try:
+        env_file.chmod(0o600)
+    except Exception:
+        pass
+    log(f"wrote gmgn credentials to {env_file} (chmod 600)")
+
+
 def init_output_schema(out_db: str, table_name: str):
     """Create the output table if it doesn't exist. Schema frozen per
     pre-reg; future studies use parallel tables (case_study_NN_observations)."""
@@ -266,6 +307,11 @@ def main():
     log(f"loaded config: {cfg.get('meta', {}).get('study_id', '?')} - "
         f"{cfg.get('meta', {}).get('title', '?')}")
     log(f"prereg_commit: {cfg.get('meta', {}).get('prereg_commit', '?')}")
+
+    # Write GMGN credentials from env vars (Fly secrets) before trigger-wait.
+    # Safe to call here even though collection doesn't start for hours —
+    # writing creds at startup catches missing-secret errors early.
+    _write_gmgn_credentials()
 
     # Trigger wait
     trigger_ts = cfg["window"]["start_at_ts"]
