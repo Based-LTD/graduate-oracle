@@ -4,6 +4,78 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### Case Study 01 — Calibrated bucket vs component composition (pre-registered 2026-05-08)
+
+First of N planned commercial-comparison studies. Tests empirically whether graduate-oracle's calibrated lane-60s HIGH+MED bucket outperforms GMGN's `--filter-preset strict --type new_creation` server-side composition on the same overlapping mint set.
+
+**Strategic context:** the result determines whether the calibrated-bucket-alone product spec is the empirical differentiator, OR whether the product needs reshaping around what the data shows actually adds value (potentially the receipts-trail discipline itself, not the bucket). Per the user direction: discipline holds in either direction. Same shape as Finding 7i sunset precedent.
+
+**Methodology (frozen, full detail in [`docs/research/case_study_01_gmgn_comparison_prereg.md`](docs/research/case_study_01_gmgn_comparison_prereg.md)):**
+- 48h window starting after Finding 8 interim verdict (~2026-05-09T17:00Z)
+- 60s polls of both APIs; direct sqlite read on graduate-oracle side (no rate limit); `gmgn-cli market trenches --chain sol --type new_creation --filter-preset strict --raw` on GMGN side
+- Per-mint capture: graduate-oracle bucket assignment + feature snapshot; GMGN strict-preset membership + component fields; joint outcome resolution within 24h grace
+- Stratified analysis: full overlap, both-products-positive subset
+
+**Hypothesis (frozen):** graduate-oracle MED+HIGH precision ≥ GMGN strict-preset precision + 10pp on n≥30 overlap.
+
+**Three pre-registered branches with templates pre-drafted:**
+
+| Branch | Trigger | Action |
+|---|---|---|
+| **A — thesis supported** | n≥30 AND lift ≥10pp AND lift consistent on both-positive subset | Ship public writeup + X thread + TG; case study becomes B2B integration prospect artifact; harness configures for Study 02 |
+| **B — thesis undermined** | n≥30 AND lift ≤0pp OR \|diff\| <5pp | Ship negative finding writeup + product-reshape discussion (data-anchored); pre-registered iteration-limit triggers product-spec reopen, not "let's run another comparison" loop |
+| **C — insufficient sample / ambiguous** | n<30 OR resolution rate <70% | Decision tree: extend collection 48h (one extension) OR extend grace to 72h OR publish inconclusive (addressable-market-shape finding) |
+
+**Pre-drafted templates committed alongside this pre-reg:**
+- [`docs/research/case_study_01_gmgn_results_branch_a_template.md`](docs/research/case_study_01_gmgn_results_branch_a_template.md)
+- [`docs/research/case_study_01_gmgn_results_branch_b_template.md`](docs/research/case_study_01_gmgn_results_branch_b_template.md)
+- [`docs/research/case_study_01_gmgn_results_branch_c_template.md`](docs/research/case_study_01_gmgn_results_branch_c_template.md)
+
+Each template fills in terminal numbers at outcome time; structure, framing, branch-execution scoped pre-data.
+
+**Schedule (frozen):**
+- Pre-reg commit: this commit
+- Phase 2 (reusable harness scaffold): after pre-reg lands
+- Wait window: until 2026-05-09T16:45Z (Finding 8 interim verdict)
+- Collection: 48h, ~2026-05-09T17:00Z to ~2026-05-11T17:00Z
+- Grace: +24h
+- Branch verdict + writeup: ~2026-05-11T18:00Z
+- X / TG variant ships: +30min after writeup
+
+---
+
+### Reusable comparison harness (pre-registered scope, 2026-05-08)
+
+Case Study 01's instrumentation is built as the **reusable shape**, not a one-off. Future studies are one config file + one pre-reg writeup + one scheduled run on the same harness.
+
+**Harness design (frozen scope, implementation in Phase 2):**
+
+```
+case_study_harness/
+  sources/
+    grad_oracle.py     # direct sqlite read on production daemon
+    gmgn.py            # gmgn-cli wrapper with config-driven filter preset
+    <future>.py        # pluggable for Study 02+
+  joiner.py            # match mints across sources within ±120s tolerance
+  resolver.py          # track outcome over post-prediction window
+  run_study.py         # config-driven runner
+  configs/
+    study_01_gmgn.toml # Case Study 01 frozen config
+    study_02_*.toml    # future
+```
+
+**Future studies the harness supports** (pre-registered scope; no specific commitments yet):
+
+- **Study 02** — graduate-oracle vs Pump.fun's own analytics (defensive positioning before they decide build-vs-buy)
+- **Study 03** — graduate-oracle vs Phantom's wallet-side intelligence (different B2B integration target)
+- **Study 04** — longitudinal HIGH/MED bucket precision over 90+ days, published quarterly
+- **Study 05** — DEFERRED: post-graduation behavior comparison (sustain field permanently sunset per Finding 7i; this study is currently out of scope, may reopen if a different sustain framing becomes viable)
+- **Study 06** — k-NN-historical vs GBM-calibrated head-to-head on the same lane (internal model evolution receipts)
+
+**Lesson banking from Case Study 01 (applies to harness for Studies 02+):** if Branch C fires due to overlap-density or resolution-rate limits, the harness should add an **overlap-density pre-check** at the start of comparison studies — verify viable overlap-per-hour during the first ~6h before committing to a full window. Pre-register feasibility checks, not just acceptance criteria.
+
+---
+
 ### `/status` page consolidation (pre-registered 2026-05-07, defer impl this week)
 
 Today's audit revealed that a B2B prospect or technical reader has to assemble "what's running right now" from `/api/scope` + `/api/accuracy` + the dashboard + research/. **The interim Fix 6 (acceptance-gates panel + dashboard banner) is the first iteration; the full consolidated page is the goal.**
