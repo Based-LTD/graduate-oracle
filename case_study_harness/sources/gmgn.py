@@ -58,11 +58,27 @@ class GmgnSource:
         except json.JSONDecodeError as e:
             return {"snapshot_at": snapshot_at, "mints": [],
                     "error": f"JSON parse failed: {e}"}
-        # gmgn-cli output shape may vary; pull mints out flexibly.
+        # gmgn-cli market trenches returns a dict keyed by trench category:
+        #   {"completed": [...], "new_creation": [...], "pump": [...]}
+        # Even with --type new_creation, all three keys are present; only
+        # the matching array is populated. Pull our configured type's array
+        # if present; otherwise fall back to legacy schemas; finally flatten
+        # all category arrays.
         if isinstance(data, list):
             mints = data
         elif isinstance(data, dict):
-            mints = data.get("data") or data.get("mints") or data.get("rank") or []
+            mints = None
+            if self.type_arg and self.type_arg in data and isinstance(data[self.type_arg], list):
+                mints = data[self.type_arg]
+            if not mints:
+                mints = data.get("data") or data.get("mints") or data.get("rank")
+            if not mints:
+                # Last resort: flatten any list-valued top-level keys.
+                flat = []
+                for v in data.values():
+                    if isinstance(v, list):
+                        flat.extend(v)
+                mints = flat
         else:
             mints = []
         return {"snapshot_at": snapshot_at, "mints": mints, "error": None}

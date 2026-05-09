@@ -84,15 +84,24 @@ class Joiner:
                     break
             row["gmgn_in_strict_preset"] = 1 if mint_record is not None else 0
             if mint_record is not None:
-                # Pull common GMGN fields (best-effort; schema can vary)
-                row["gmgn_progress"] = mint_record.get("progress")
-                row["gmgn_holder_count"] = mint_record.get("holder_count") or mint_record.get("holders")
-                row["gmgn_smart_degen_count"] = mint_record.get("smart_degen_count") or mint_record.get("smart_count")
-                row["gmgn_renowned_count"] = mint_record.get("renowned_count")
-                row["gmgn_top70_sniper_hold_rate"] = mint_record.get("top70_sniper_hold_rate") or mint_record.get("sniper_hold_rate")
-                row["gmgn_creator_created_open_ratio"] = mint_record.get("creator_created_open_ratio")
-                row["gmgn_bundler_rate"] = mint_record.get("bundler_rate")
-                row["gmgn_rug_ratio"] = mint_record.get("rug_ratio")
+                # Pull common GMGN fields. Field names verified against
+                # live `gmgn-cli market trenches` response on 2026-05-09.
+                # Some fields have multiple aliases across CLI versions;
+                # try each in priority order before falling through to None.
+                def _pick(*keys):
+                    for k in keys:
+                        if k in mint_record and mint_record[k] is not None:
+                            return mint_record[k]
+                    return None
+                row["gmgn_progress"] = _pick("progress")
+                row["gmgn_holder_count"] = _pick("holder_count", "holders")
+                row["gmgn_smart_degen_count"] = _pick("smart_degen_count", "smart_count")
+                row["gmgn_renowned_count"] = _pick("renowned_count")
+                row["gmgn_top70_sniper_hold_rate"] = _pick("top70_sniper_hold_rate", "sniper_hold_rate")
+                row["gmgn_creator_created_open_ratio"] = _pick("creator_created_open_ratio")
+                # bundler_rate (older CLI) → bundler_mhr (1.2.9 confirmed)
+                row["gmgn_bundler_rate"] = _pick("bundler_rate", "bundler_mhr", "bundler_trader_amount_rate")
+                row["gmgn_rug_ratio"] = _pick("rug_ratio")
                 # Save a JSON excerpt for debugging — first 500 chars
                 import json as _j
                 row["gmgn_raw_excerpt"] = _j.dumps(mint_record)[:500]
