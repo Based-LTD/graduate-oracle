@@ -4,6 +4,30 @@ Tracked items that are known-correct-but-deferred. Not for hypothetical future w
 
 ## Pre-registered decisions
 
+### Score-latency diagnosis (pre-registered 2026-05-09)
+
+`/api/status.warnings` firing: `score latency avg 11.0s (>5s)` and `score latency p95 18.0s (>8s)`. User direction: diagnosis pass first, no fixes yet; pre-register acceptance criterion before fix ships.
+
+**Headline finding:** steady-state slow, not spike-driven. avg=12s and p95=18s consistent across samples. `rug_predictor` + `gbm_shadow` are dominant (75-85% of per-mint cost). 1289 tracked mints scored per pass; per-mint cost ~170ms.
+
+**Root causes (5 named in writeup):** pure-Python O(N_train) k-NN loop with re-normalization per mint, per-mint sqlite open, per-mint sklearn predict_proba on single sample, per-mint isotonic predict.
+
+**Fix proposal (NOT shipped yet):** Fix A (rug_predictor numpy vectorization), Fix B (batch sqlite pre-fetch), Fix C (gbm_shadow batch predict). Combined expected p95: 18s → ~3s.
+
+**Frozen acceptance criterion:** `score latency p95 < 3s under live load over 24h window` post-deploy. Frozen at this commit; no relaxation without explicit pre-registered amendment per the publish-then-post discipline rule.
+
+**Iteration-limit pre-registered (frozen):** if Fix A+B+C ships and p95 stays >= 3s at 24h:
+- Refined retry only if a NEW bottleneck not in Causes 1-5 surfaces (with new pre-reg + new criterion)
+- Otherwise Path E: move score_precompute to separate process (decouple latency from snapshot tick) OR score only in-lane subset (~22 mints) instead of all 1289 tracked mints. Both compatible; either is a deeper architecture change. Stop-iterating point.
+
+**Methodology adjustment surfaced explicitly:** I skipped the 30-min per-call instrumentation step because existing telemetry + source inspection produced unambiguous root causes. Standing by for user direction at greenlight time on whether to add instrumentation as confirmation OR ship the fix and verify from post-fix latency. Default recommendation: Path direct-fix (source-level root causes are unambiguous; instrumentation is more useful AFTER unexpected outcome than before).
+
+**Not blocking Case Study 01.** The harness reads sqlite directly, not the scoring path. Parallel diagnosis track.
+
+Full writeup: [`docs/research/score_latency_diagnosis.md`](docs/research/score_latency_diagnosis.md).
+
+---
+
 ### Case Study 01 — Calibrated bucket vs component composition (pre-registered 2026-05-08)
 
 First of N planned commercial-comparison studies. Tests empirically whether graduate-oracle's calibrated lane-60s HIGH+MED bucket outperforms GMGN's `--filter-preset strict --type new_creation` server-side composition on the same overlapping mint set.
