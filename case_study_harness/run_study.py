@@ -209,8 +209,30 @@ def collection_loop(cfg: dict):
     log(f"collection start={collection_start} end={collection_end}; "
         f"window={cfg['window']['duration_s']}s")
 
-    # Initial pull seeds the cursor — no historical backfill
-    grad.pull()
+    # Backfill cursor: pull from the original trigger_ts forward, not
+    # int(time.time()), so a daemon restart mid-collection doesn't skip
+    # predictions emitted between the original trigger and the restart.
+    # Per the 2026-05-10 grad_oracle enrichment-bug postmortem: with the
+    # original `grad.pull()` (cursor=now) seed, predictions emitted before
+    # any restart were unrecoverable. With `since_ts=trigger_ts`, the first
+    # post-restart pull replays all post-trigger predictions and inserts
+    # them; GMGN side may be NULL (snapshots are in-memory only and don't
+    # survive restart), but the absence is itself data per the joiner
+    # contract, and the grad-side count is what the C-iv subcondition
+    # verifies against.
+    trigger_ts = cfg["window"]["start_at_ts"]
+    log(f"backfill seed: setting cursor to trigger_ts={trigger_ts} "
+        f"(rather than int(time.time())) so restarts don't skip "
+        f"post-trigger predictions emitted before restart")
+    initial_preds = grad.pull(since_ts=trigger_ts)
+    log(f"backfill seed returned {len(initial_preds)} preds; "
+        f"cursor now at {grad.cursor}")
+    for p in initial_preds:
+        obs = joiner.match(p, [])  # empty snapshot_buffer — no GMGN match possible at backfill time
+        insert_observation(out_db, table_name, obs)
+    if initial_preds:
+        log(f"backfill seed: inserted {len(initial_preds)} backfill rows "
+            f"(GMGN side NULL — snapshot buffer was empty at backfill time)")
 
     # Rolling buffer of recent GMGN snapshots within tolerance window
     snapshot_buffer: list[dict] = []

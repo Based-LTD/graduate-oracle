@@ -55,26 +55,41 @@ class GradOracleSource:
             """, (cursor, self.age_max, *self.buckets)).fetchall()
             preds = [dict(r) for r in rows]
             # Enrich each prediction with mint_checkpoints feature snapshot
-            # at the closest checkpoint age <= age_bucket.
+            # at the closest checkpoint age <= age_bucket. Wrapped in
+            # try/except per-pred so a schema mismatch (e.g., the
+            # 2026-05-10 feature_unique_buyers postmortem) cannot silently
+            # take out the entire pipeline. Enrichment failure → pred lands
+            # with feat_* fields absent (becomes NULL in observation row);
+            # absence is itself data, same shape as missing GMGN snapshot.
+            # Column list verified against /data/data.sqlite mint_checkpoints
+            # schema as of 2026-05-10. feature_unique_buyers does NOT exist
+            # in that table; intentionally not selected. If a future schema
+            # adds it, the SELECT can be extended without the silent-failure
+            # risk because of the per-pred try/except below.
             for p in preds:
-                ck = c.execute("""
-                    SELECT feature_smart_money, feature_n_whales,
-                           feature_unique_buyers, feature_vsol_velocity,
-                           COALESCE(feature_fee_delegated, 0) AS feature_fee_delegated,
-                           feature_creator_n_launches,
-                           feature_creator_5x_rate,
-                           feature_bundle_pct,
-                           feature_dex_paid,
-                           checkpoint_age_s
-                      FROM mint_checkpoints
-                     WHERE mint = ?
-                       AND checkpoint_age_s <= ?
-                     ORDER BY checkpoint_age_s DESC
-                     LIMIT 1
-                """, (p["mint"], p.get("age_bucket") or 60)).fetchone()
-                if ck:
-                    for k in ck.keys():
-                        p[f"feat_{k}"] = ck[k]
+                try:
+                    ck = c.execute("""
+                        SELECT feature_smart_money, feature_n_whales,
+                               feature_vsol_velocity,
+                               COALESCE(feature_fee_delegated, 0) AS feature_fee_delegated,
+                               feature_creator_n_launches,
+                               feature_creator_5x_rate,
+                               feature_bundle_pct,
+                               feature_dex_paid,
+                               checkpoint_age_s
+                          FROM mint_checkpoints
+                         WHERE mint = ?
+                           AND checkpoint_age_s <= ?
+                         ORDER BY checkpoint_age_s DESC
+                         LIMIT 1
+                    """, (p["mint"], p.get("age_bucket") or 60)).fetchone()
+                    if ck:
+                        for k in ck.keys():
+                            p[f"feat_{k}"] = ck[k]
+                except sqlite3.Error as e:
+                    # Log once per failure; pred still lands without enrichment.
+                    print(f"[grad_oracle] enrichment failed for "
+                          f"mint={p.get('mint','?')[:14]}..: {e}", flush=True)
         if preds:
             self.cursor = preds[-1]["predicted_at"]
         return preds
