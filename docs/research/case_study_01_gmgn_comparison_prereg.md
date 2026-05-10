@@ -189,6 +189,69 @@ If the data shows it doesn't: **that's the empirical foundation for reshaping th
 
 ---
 
+## Amendment 01 — Branch C addendum (publish-then-post, pre-verdict)
+
+**Committed:** 2026-05-10 (paired with Finding 8 interim verdict commit; published before the original Branch C condition resolves at the 2026-05-12T17:45Z grace cutoff).
+
+**Surfaces a design flaw in the original Branch C decision tree:** existing subconditions assume insufficient overlap with GMGN means the case-study scope was wrong-shape (low overlap) or the resolution window was wrong-shape (slow graduations). Both are *case-study-internal* causes. They do NOT cover the case where graduate-oracle's source pipe (HIGH+MED bucket emission) produces zero predictions in the collection window — that's *case-study-external*, an upstream-infrastructure block.
+
+The Finding 8 interim verdict (Variant 5B fired at 2026-05-09T16:45Z) confirmed empirically that the bucket emission produces 0 MED+HIGH per 48h under current `bimodal_cliff` mode. The Case Study 01 trigger fired at the same timestamp and inherited this 0-emission state. After 8 hours of runtime, the case study harness has correctly collected 0 observations because there are 0 HIGH+MED predictions to collect. The daemon is healthy (verified via py-spy on PID 675 in `collection_loop` line 266); the upstream pipe is the limiter.
+
+### What this amendment is
+
+A Branch C SUB-condition added before the original Branch C condition resolves. The added subcondition is **strictly narrower** (more specific) than "n<30 in graduate-oracle MED+HIGH bucket on overlap" — it adds a precondition that distinguishes upstream-infrastructure-blocked from genuine low-overlap.
+
+### What this amendment is NOT
+
+- **NOT a relaxation.** The original Branch C "n<30 → extend by 48h" subcondition is preserved untouched for cases where the n<30 cause is genuine low overlap (n<30 of >0 emitted predictions overlap with GMGN's strict-preset). The amendment only narrows the action when the cause is upstream-infrastructure-blocked.
+- **NOT a post-hoc rationalization.** Amendment commits at T+8h into the 48h collection window; the Branch C condition doesn't resolve until grace-cutoff at 2026-05-12T17:45Z (~64h later). Reader can verify amendment timestamp predates Branch C resolution.
+- **NOT an exit clause to avoid an unwanted result.** The amendment does NOT skip the public writeup. It only routes the writeup to a different shape (upstream-cause writeup vs low-overlap writeup), both of which are publicly published.
+
+### The added subcondition (frozen here, before Branch C resolves)
+
+**Subcondition C-iv (upstream-infrastructure-blocked):**
+
+If at the analysis cutoff (48h + 24h grace), n<30 in graduate-oracle MED+HIGH bucket on overlap AND the bucket-emission floor is below the case-study-supportable threshold:
+
+```sql
+-- Verification query (frozen, deterministic)
+SELECT COUNT(*) FROM predictions
+ WHERE predicted_at >= 1778342754   -- trigger_ts
+   AND predicted_at <  1778515554   -- trigger_ts + 48h
+   AND grad_prob_bucket IN ('HIGH','MED')
+   AND age_bucket <= 75;
+-- If this count < 30, the upstream pipe (not the overlap with GMGN) is the limiter.
+```
+
+then the case study cause is **upstream-infrastructure-blocked**, NOT insufficient overlap with GMGN.
+
+### Action under Subcondition C-iv (frozen)
+
+1. **STOP the daemon early** at the analysis cutoff (do not extend the 48h window — extension under the same upstream-blocked state would only collect more zero-rows, wasting harness time and the implementer's analysis attention).
+2. **Public writeup ships** documenting the upstream-block as the case study finding. The writeup is `case_study_01_gmgn_results_branch_c_template.md` with an upstream-block addendum (deferred until verdict; pre-drafted shape: "Case Study 01 was upstream-blocked by Finding 8's bucket emission rate; the case study cannot answer the calibrated-vs-component question on this collection window because the calibrated bucket emitted 0 predictions; result is publicly published as inconclusive-due-to-upstream and the case study is **re-armed** with a new trigger contingent on Finding 8 follow-up resolution").
+3. **Re-arm condition (frozen):** the next case study trigger fires at:
+   - Finding 8 sub-branch (a) recalibration ships AND produces ≥10 MED predictions in the first 24h post-deploy, OR
+   - Finding 8 sub-branch (b) Path E ships AND produces ≥10 MED predictions in the first 24h post-deploy.
+   - Whichever fires first; new `start_at_ts` is computed at re-arm time as `path_resolution_ts + 24h`.
+4. **The re-arm is ONE-SHOT.** If the re-armed case study collection window also produces n<30 due to upstream-infrastructure-block (a second time), the case study is **permanently published as inconclusive-due-to-upstream**, the experimental design itself becomes the finding (consistent with the original Branch C "both limiters fired" subcondition), and graduate-oracle's product positioning is reshaped without the case-study comparison data point. **Iteration-limit applies at the case-study level** — same shape as Path E's iteration-limit pre-registration on Finding 8 itself.
+
+### What changes operationally as a result
+
+- Daemon continues running its `collection_loop` unchanged (no daemon-state mutation; cleaner than reaching into the running process). At analysis cutoff, the operator manually stops it via `supervisorctl stop case_study_harness` rather than letting it idle through grace.
+- The `case_study_01_observations` sqlite table remains queryable (it is empty; that *is* the data).
+- Re-arm involves: edit `case_study_harness/configs/study_01_gmgn.toml` `start_at_ts` to the new computed timestamp, redeploy (supervisord restart of `case_study_harness`).
+
+### Receipts trail (Case Study 01, with amendment)
+
+| Commit | Action |
+|---|---|
+| `5bc8f33` Case Study 01 pre-registration + 3 branch templates + BACKLOG entry | Methodology, criteria, branches, harness scope all frozen before any data |
+| (Phase 2 scaffold commit, post-pre-reg) Reusable harness scaffold | Built after pre-reg; idle until Finding 8 verdict |
+| Trigger fired 2026-05-09T16:45:54Z | Daemon began `collection_loop`; 0 observations through T+8h due to upstream emission state |
+| **(this commit) Case Study 01 — Branch C amended pre-verdict; Subcondition C-iv (upstream-infrastructure-blocked) added** | Amendment commits at T+8h into the 48h window; verdict not until T+72h grace cutoff; amendment is strictly narrower than original Branch C |
+
+---
+
 ## Cross-references
 
 - [`post_grad_metric_broken_since_launch.md`](post_grad_metric_broken_since_launch.md) — Finding 7 chain (sunset precedent for branch-execution discipline under unwanted outcomes)

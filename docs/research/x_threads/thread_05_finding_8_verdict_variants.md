@@ -132,9 +132,9 @@ github.com/Dspro-fart/graduate-oracle
 
 ---
 
-## Variant 5B — EMA-fix-verified PASS + alert-volume FAIL
+## Variant 5B — EMA-fix-verified PASS + alert-volume FAIL  ✅ **SHIPPED — this is the chosen variant**
 
-**Most likely outcome per current data trajectory.** Triggers if no bursts in 48h AND zero/very-few MED predictions land. The thread leans into the criterion-amendment story since that's the load-bearing finding.
+**FIRED.** Verdict resolved at 2026-05-09T16:45:54Z. Numbers verified from `/data/data.sqlite`: 48h-window MED count = 0, HIGH = 0, LOW = 4305, max 1h MED = 0, rebuild_failures = 0. The verdict commit + writeup ship in the same commit as the [Finding 8 verdict resolution section in `bucket_calibration_aliasing.md`](../bucket_calibration_aliasing.md#interim-verdict-variant-5b-fired--2026-05-09t164554z). Below: ready-to-post copy with all `[N]` placeholders filled in. Posts 7h late (vs the pre-reg "within minutes of verdict" cadence) — the late ship is documented in the writeup so the receipts trail is honest about the discipline-pattern erosion.
 
 ### Post 1 — hook
 
@@ -142,9 +142,9 @@ github.com/Dspro-fart/graduate-oracle
 The bucket calibration EMA smoothing fix did its job. Zero aliasing
 bursts in the 48h verdict window.
 
-But the volume-target calibration produced [0|<1/day] MED predictions
-in the same window — well below the rate that makes re-enabling
-alerts worth it.
+But the volume-target calibration produced 0 MED predictions in the
+same window — well below the rate that makes re-enabling alerts
+worth it.
 
 Per the amended interim criterion (pre-registered before the verdict
 resolved), the fix is verified but rules 9+10 stay disabled. The
@@ -193,13 +193,14 @@ Both must pass to re-enable. Strictly higher bar; not a relaxation.
 3/ Verdict at amended criteria:
 
   EMA-fix-verified gate: PASS
-    → No bursts. Daemon recompute fired [N] times without aliasing.
-      rebuild_failures=0.
+    → No bursts. Daemon recompute fired 2× over the 48h window
+      without aliasing. rebuild_failures=0. Max 1h MED count = 0.
 
   Alert-volume gate: FAIL
-    → [0 or <1] MED predictions in 48h. Volume-target calibration
-      is producing ~zero non-LOW assignments outside calibration-
-      spike windows.
+    → 0 MED predictions in 48h. 0 HIGH. 4305 LOW. Volume-target
+      calibration is producing zero non-LOW assignments —
+      bimodal_cliff mode engaged because raw GBM scores saturate
+      at the top sample (raw_p_high=0.98, ceiling_mass=15.5%).
 
 Rules 9+10 stay disabled. Pre-registered next step: investigate WHY
 the cutoff is producing zero MED, separate from the EMA-fix

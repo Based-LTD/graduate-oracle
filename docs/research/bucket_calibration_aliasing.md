@@ -528,4 +528,56 @@ This template lands in `pump-jito-sniper/docs/strategy/tg_pinned_message.md` (pr
 | `790c8dd` Finding 8 diagnostic — H1 confirmed | EMA fix pre-registered |
 | `4d13430` Finding 8 EMA fix landed | 7d full gate clock starts |
 | `70b4baf` Finding 8 — interim 48h TG re-enable gate pre-registered | Original criterion conflated EMA-verification with alert-volume |
-| **(this commit) Finding 8 — interim criterion amended pre-verdict; split EMA-verification from alert-volume** | Amendment commits at T+25.93h; verdict at T+48h; criterion is strictly higher bar than original |
+| `f3f1f3e` Finding 8 — interim criterion amended pre-verdict; split EMA-verification from alert-volume | Amendment committed at T+25.93h; verdict at T+48h; criterion is strictly higher bar than original |
+| **(this commit) Finding 8 interim verdict resolved — Variant 5B fired (EMA-fix PASS + alert-volume FAIL)** | Verdict at 2026-05-09T16:45:54Z; numbers below; rules 9+10 stay disabled; sub-branch decision (a-recalibration vs b-Path-E) remains user-owned per `feedback_methodology_calls_user_owned.md` |
+
+---
+
+## Interim verdict (Variant 5B fired) — 2026-05-09T16:45:54Z
+
+**Verdict ships at T+~7h, behind the pre-registered "within minutes of verdict" cadence.** Late ship documented; root cause was a parallel investigation (score-latency Fix A+B deploy at 06:50Z + Case Study 01 daemon empty-DB diagnosis) that consumed the implementer's attention through the verdict window. The 7h delay is a discipline-pattern erosion entry; the durable artifact is publishing it anyway with the lateness called out, not silently shipping with a fictitious timestamp.
+
+### Verdict numbers (queried from `/data/data.sqlite` post-verdict)
+
+| Gate | Criterion | Measured | Result |
+|---|---|---|---|
+| EMA-fix-verified gate | Max 1h MED count in 48h ≤ 30 | **0** | ✅ PASS |
+| EMA-fix-verified gate | ≥1 daemon recompute without burst | **2** (24h cadence × 48h window) | ✅ PASS |
+| EMA-fix-verified gate | rebuild_failures = 0 | **0** | ✅ PASS |
+| Alert-volume gate | ≥1 MED prediction in 48h | **0** | ❌ FAIL |
+
+**Supporting state from `/api/status.bucket_cutoffs` at verdict time:**
+- `bucket_logic_mode`: `bimodal_cliff` (engaged because raw GBM scores saturate at the top sample)
+- `raw_gbm_p_high_unsmoothed`: 0.9795 (top decile saturated)
+- `ceiling_mass_pct`: 15.5% (large cluster of mints scoring at the calibration ceiling)
+- `n_above_ceiling`: 0
+- `empty_high_window_count`: 1 (at least one recompute saw no HIGH cluster — consistent with the bimodal-cliff degenerate case)
+- `n_samples_used`: 8995 across the 7d rolling window
+- 48h-window prediction breakdown: HIGH=0, MED=0, LOW=4305 (n=4305 total, 100% LOW)
+
+### What this means
+
+**The EMA fix did its job.** Zero recompute aliasing bursts in 48h. The smoothed cutoff transitions held; `rebuild_failures=0`; the H1 (recompute aliasing) pathology that produced the original 697-MEDs-in-1h burst is now suppressed at the smoothing layer.
+
+**The volume-target calibration is producing zero non-LOW assignments.** Not "low volume" — literally zero. The bimodal-cliff fallback engages because raw GBM scores are saturating, and downstream the cutoff resolves to a value (0.113) that nothing crosses (`n_above_ceiling=0`). Rules 9+10 cannot be re-enabled against this distribution: re-enabling now would ship users into the full 7d gate window with continuous silence, then fail the 7d MED-volume floor and trigger Path E anyway — a worse outcome than staying disabled and resolving the upstream cause first.
+
+**Per the amended decision rules (PASS / FAIL row):** "Do NOT re-enable rules 9+10. Trigger one of two pre-registered branches: (a) cutoff-recalibration analysis, OR (b) trigger Path E early." That sub-branch decision is methodology and is user-owned (memory: `feedback_methodology_calls_user_owned.md`). It is **not** taken in this verdict commit. The "decision lands within 24h" pre-reg clock starts at this commit's timestamp.
+
+### Downstream consequence — Case Study 01 trigger upstream-blocked
+
+Case Study 01's data collection started at this verdict timestamp (trigger fired at 2026-05-09T16:45:54Z, T+0 of the verdict). The case study reads `predictions WHERE grad_prob_bucket IN ('HIGH','MED') AND age_bucket <= 75` from the same production DB. With 0 HIGH/MED predictions emitted in the 8h+ since trigger, the case study harness has 0 observations.
+
+This is **not** a Case Study 01 daemon bug. It is the same upstream-block that this verdict identifies. The Case Study 01 pre-registration is being amended in a paired commit (publish-then-post discipline) to add a Branch C addendum covering the upstream-blocked subcondition explicitly. See `case_study_01_gmgn_comparison_prereg.md` § amendment.
+
+### Sub-branch (a) vs (b) decision — pending user
+
+| Sub-branch | What it does | Trade-off |
+|---|---|---|
+| **(a) Cutoff-recalibration analysis** | Investigate WHY `bimodal_cliff` mode produces 0 cross-cutoff samples. May lead to a refined volume-target calibration that handles ceiling-mass distributions. | Preserves volume-target self-stabilization. Could iterate — risk of fix-N+1 chain. |
+| **(b) Trigger Path E early** | Ship fixed-percentile cutoffs (97th percentile of raw GBM scores in rolling 7d) immediately. Loses self-stabilization; ships consistently. | Stops the iteration. Locks in a known-good baseline. Cannot re-attempt volume-targeting without a fresh pre-reg. |
+
+Both unblock the Case Study 01 trigger downstream (whichever ships and produces non-zero MED restores the source data). The user picks at "decision lands within 24h."
+
+### Receipts trail update
+
+This verdict commit is the closing event for the Finding 8 interim 48h gate. The full 7d gate (`full_close = 1778861154 = 2026-05-15T16:45Z`) remains open. Rules 9+10 stay disabled until either (a) recalibration succeeds and produces sustained MED flow, or (b) Path E ships and re-arms the rules with fixed-percentile cutoffs. Either way, a separate verdict commit will close the full gate.
