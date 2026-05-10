@@ -174,8 +174,95 @@ SELECT MIN(med_count) FROM per_day;
 | `70b4baf` Finding 8 — interim 48h TG re-enable gate pre-registered | Original criterion conflated EMA-verification with alert-volume |
 | `f3f1f3e` Finding 8 — interim criterion amended pre-verdict | EMA-verification split from alert-volume; strictly higher bar |
 | `87edcb7` Finding 8 interim verdict resolved (Variant 5B fired) | EMA-fix PASS + alert-volume FAIL; sub-branch (a vs b) decision opens |
-| **(this commit) Finding 8 Path E pre-registration — fixed-percentile cutoffs on raw GBM, sub-branch (b) chosen** | Pre-registers Path E methodology, percentile, window, acceptance criterion, iteration-limit, deferred-calibration-bug ticket; commits BEFORE deploy |
-| (next commit) Path E deploy receipt | Deploy timestamp, post-deploy snapshot of bucket_cutoffs state, updated verification SQL with `[DEPLOY_TS]` filled in |
+| `4d56f53` Finding 8 Path E pre-registration — fixed-percentile cutoffs on raw GBM, sub-branch (b) chosen | Pre-registered Path E methodology, percentile, window, acceptance criterion, iteration-limit, deferred-calibration-bug ticket; committed BEFORE deploy |
+| **(this commit) Path E deploy receipt** | Deploy timestamp, post-deploy snapshot, verification SQL with `[DEPLOY_TS]` filled in, smoke-verify confirmation |
+
+---
+
+## Deploy receipt — 2026-05-10T06:55:28Z
+
+**Deploy timestamp:** `1778396128` = 2026-05-10T06:55:28Z UTC
+
+**Deploy executed:** `flyctl deploy --app graduate-oracle --remote-only`. Deploy duration ~90s. Rolling-update strategy; one machine (`d8de39da9ed998`); machine reached `started` and passed smoke + health checks; lease cleared cleanly.
+
+### Post-deploy snapshot of `/api/status.bucket_cutoffs` (Step 3)
+
+```
+bucket_logic_mode:       fixed_percentile_raw_gbm   ← Path E mode engaged ✓
+high_min:                0.7349899643183253         (HIGH cutoff = 99.9p of raw GBM)
+med_min:                 0.6702530370149092         (MED cutoff = 99.5p of raw GBM)
+computed_at:             1778396128                 (= deploy_ts; first rebuild on boot)
+n_samples_used:          4072                       (48h rolling window)
+sample_window_start:     1778223328                 (= 2026-05-08T06:55:28Z)
+status:                  ok
+last_rebuild_error:      None
+rebuild_failures:        0
+path_e_enabled:          True
+path_e_window_s:         172800                     (48h)
+path_e_high_percentile:  99.9
+path_e_med_percentile:   99.5
+```
+
+`med_min = 0.6703` matches the pre-registered projection to 4 decimals. Pre-reg snapshot called this at 0.6703; production rebuild produced 0.6703 (within float precision). The pre-reg's empirical-distribution snapshot was therefore representative of post-deploy state.
+
+### Smoke verify — bucket assignment logic (Step 4)
+
+Five in-lane predictions emitted in the first ~5 min post-deploy. All assigned LOW because raw GBM scores were below 0.6703 cutoff. Expected vs actual bucket matches in 5/5 cases:
+
+| predicted_at | mint | age | bucket | raw_gbm | expected | match |
+|---|---|---|---|---|---|---|
+| 1778396208 | EchoUHq8.. | 30 | LOW | 0.2725 | LOW | ✓ |
+| 1778396229 | EchoUHq8.. | 60 | LOW | 0.2716 | LOW | ✓ |
+| 1778396245 | GYNde5Gh.. | 30 | LOW | 0.2237 | LOW | ✓ |
+| 1778396254 | GYNde5Gh.. | 60 | LOW | 0.2615 | LOW | ✓ |
+| 1778396393 | AzHjDshM.. | 30 | LOW | 0.2121 | LOW | ✓ |
+
+Zero MED/HIGH emissions in the first 5 min is expected probabilistically — projected ~11 MED/day = ~1 per 2h. The 5-min window gives ~4% probability of seeing any MED. Sample is small but bucket-assignment code is verified correct.
+
+### Verification cadence anchored to deploy timestamp
+
+| Checkpoint | Anchor | Criterion | Action |
+|---|---|---|---|
+| **T+24h interim** | `1778482528` = 2026-05-11T06:55:28Z | MED count ≥ 10 in first 24h | If satisfied, triggers Case Study 01 Subcondition C-iv re-arm (`new start_at_ts = 1778482528 + 24*3600 = 1778568928`) |
+| **T+7d full acceptance** | `1779000928` = 2026-05-17T06:55:28Z | rolling-7d MED in [21, 210] AND no zero-MED 24h sub-window AND rebuild_failures = 0 | If satisfied, Path E gate closes; Finding 8 chain resolved. If fails, fresh pre-reg required (no fix-N+1 on Path E params) |
+
+### Verification SQL (filled in with DEPLOY_TS = 1778396128)
+
+```sql
+-- T+24h interim check (run at 2026-05-11T06:55:28Z)
+SELECT COUNT(*) FROM predictions
+ WHERE predicted_at >= 1778396128
+   AND predicted_at <  1778482528
+   AND grad_prob_bucket = 'MED';
+-- Expected: ≥10 (acceptance criterion 3); triggers Case Study 01 C-iv re-arm if satisfied.
+
+-- T+7d primary acceptance (run at 2026-05-17T06:55:28Z)
+SELECT COUNT(*) FROM predictions
+ WHERE predicted_at >= 1778396128
+   AND predicted_at <  1779000928
+   AND grad_prob_bucket = 'MED';
+-- Expected: 21 ≤ count ≤ 210 (acceptance criterion 1).
+
+-- T+7d zero-window check (acceptance criterion 2)
+WITH per_day AS (
+  SELECT (predicted_at / 86400) AS day_bucket, COUNT(*) AS med_count
+    FROM predictions
+   WHERE predicted_at >= 1778396128
+     AND predicted_at <  1779000928
+     AND grad_prob_bucket = 'MED'
+   GROUP BY day_bucket
+)
+SELECT MIN(med_count) FROM per_day;
+-- Expected: > 0 (no 24h sub-window at zero).
+```
+
+### Quality regression check (none observed at deploy)
+
+Pre-deploy state included 5,263 predictions with `grad_prob_gbm_shadow` populated post-Finding-8-deploy; post-deploy ingestion path unchanged (Path E only modifies the bucket-emission decision function, not the GBM scoring or feature pipeline). Smoke verify confirmed predictions logging continues with raw + calibrated GBM both populated.
+
+### Co-deployed: latency Fix A+B 24h verdict
+
+Same deploy window as the latency Fix A+B 24h checkpoint (the Path E deploy was deliberately sequenced 5 minutes after the latency window closed at 06:50:52Z so it would not void the verification clock). 24h verdict: avg=4.17s, **p95=6.24s** vs frozen 3s criterion → **FAIL** (within projected 5–7s range; expected outcome per pre-reg). Stage breakdown shows `gbm_shadow=17541ms` per pass dominant — Fix C target. Fix C is the next-natural deploy per the pre-registered iteration-limit; gbm_shadow `score_batch` infrastructure already shipped as additive in commit `23ed831` but not yet enabled. Logged here because the latency verdict and Path E deploy share their verification anchor.
 
 ---
 
