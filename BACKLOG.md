@@ -403,6 +403,33 @@ Source: `project_watch_grad_vs_runner.md` memory + 2026-05-04 chat. The 2× rati
 
 ## Engineering debt
 
+### Isotonic calibration squashes upper-tail signal to ceiling — investigate post-Path-E (opened 2026-05-10)
+
+**Status:** investigative scope only; **NO iteration-limit attached**. Any actual fix attempt requires a fresh pre-registration with its own iteration-limit, separate from this ticket.
+
+**Background.** Finding 8 Path E (pre-registered 2026-05-10, see [`docs/research/finding_8_path_e_pre_registration.md`](docs/research/finding_8_path_e_pre_registration.md)) sidestepped a known-bad isotonic calibration step by computing bucket cutoffs on raw GBM scores instead of post-isotonic calibrated scores. Path E is the working baseline; this ticket exists so the underlying calibration bug doesn't get buried under that ship.
+
+**The bug, with empirical receipts.** Snapshot from 2026-05-10 (n=5263 over 48h post-Finding-8-deploy window):
+
+| Field | min | median | p90 | p95 | p97 | p99 | max |
+|---|---|---|---|---|---|---|---|
+| `grad_prob_gbm_shadow` (raw GBM) | 0.0155 | 0.2988 | 0.4586 | 0.5176 | 0.5542 | 0.6197 | **0.8855** |
+| `grad_prob_gbm_calibrated_shadow` (post-isotonic) | 0.0000 | 0.0405 | 0.0806 | 0.1132 | 0.1132 | 0.1132 | **0.1132** |
+
+The raw GBM has clean upper-tail distribution (max 0.886). The isotonic-calibrated output is hard-capped at 0.1132 with **7.2% of mints** (379 of 5263) sitting at exactly that ceiling value. The calibration is squashing real upper-tail signal that exists in the raw GBM output.
+
+This is not analogous to Finding 7's structural-boundary case (Finding 7 had 3/5 training columns at zero values since launch — a data-plumbing dead-end). Finding 8's calibration produces a degenerate output OVER non-degenerate input. That's a calibration-design or calibration-training bug, not a no-signal bug.
+
+**What an investigation would look at.** Non-exhaustive starter list:
+- Isotonic regression training set size and shape — is it overfitting a small calibration corpus that doesn't include the upper raw-GBM tail?
+- Whether the isotonic step is being applied to a feature space the calibration model wasn't fit on (e.g., raw GBM scoring distribution shifted post-retrain but the isotonic calibrator is from before)
+- Whether monotone-constraint enforcement in isotonic is collapsing the upper tail because of insufficient calibration anchor points at high raw scores
+
+**Discipline notes:**
+- This ticket has no scheduled work date. It pulls when (a) a future Finding 8 sub-iteration needs to revisit the calibration, OR (b) operational pressure permits investigative work that isn't on the active ship list.
+- Any fix attempt MUST start with a fresh pre-registration: hypothesis, methodology, frozen acceptance criterion, iteration-limit. Touching the isotonic step without that scaffolding risks a fix-N+1 chain on calibration math, which is exactly the iteration trap Path E was the pre-registered escalation against.
+- If the investigation surfaces "the calibration is fundamentally underdetermined for this raw distribution," that becomes the closing-the-loop verdict and the calibration step is documented-as-permanently-degenerate (the upstream signal is what we surface; calibration becomes a post-processing convenience for downstream consumers, not a load-bearing layer in bucket emission).
+
 ### Add `activated_at` column to `tg_alert_rules` ✅ done 2026-05-04
 
 Schema migrated in [web/db.py](web/db.py) (ALTER TABLE + backfill from created_at). Bot rule INSERTs now write activated_at = now(). Cutoff queries in [web/main.py](web/main.py) (act_slice, audit) and [web/gate_validation.py](web/gate_validation.py) switched from `MIN(created_at)` to `MAX(activated_at)`. WARNING comments removed at all three sites.
