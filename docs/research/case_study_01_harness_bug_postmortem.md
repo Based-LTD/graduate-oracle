@@ -134,8 +134,92 @@ Six post-Path-E MED preds, each enriched with 9 mint_checkpoints feature columns
 | `87edcb7` Finding 8 interim verdict | Variant 5B fired; identified upstream pipe at 0 emission |
 | `4d56f53` Case Study 01 — Branch C amended pre-verdict; Subcondition C-iv added | Pre-registered upstream-infrastructure-blocked path; assumed harness was working |
 | `147777d` Path E deploy receipt | Path E shipped; upstream pipe started emitting MEDs at projected rate |
-| **(this commit) Case Study 01 harness bug postmortem + fix + Pre-reg amendment 02** | Empirical diagnosis identifies third root cause (silent enrichment bug); fix shipped same commit; amendment narrows eligible-data window and acknowledges Branch C likelihood |
-| (next commit, post-deploy) Verification — observations populated | Confirmation that fix produces actual rows; backfill count + forward-collection rate documented |
+| `51a409f` Case Study 01 harness bug postmortem + fix + Pre-reg Amendment 02 | Empirical diagnosis identifies third root cause (silent enrichment bug); fix shipped same commit; amendment narrows eligible-data window and acknowledges Branch C likelihood |
+| **(this commit) Deploy receipt — observations populated** | Fix deployed at 2026-05-10T19:25:37Z; 6 backfill rows landed; Path E anchor preserved across redeploy |
+
+---
+
+## Deploy receipt — 2026-05-10T19:25:37Z
+
+**Deploy timestamp:** 1778441137 (UTC). `flyctl deploy --app graduate-oracle --remote-only`. Duration ~78s. Rolling-update; single machine; smoke + health checks passed; lease cleared.
+
+### Verification (Step 1 of post-deploy)
+
+`case_study_01_observations` row count: **0 → 6**. All 6 post-trigger MED predictions backfilled into the harness DB. Spot-check of row contents confirms the data is healthy and matches the live `predictions` table:
+
+| predicted_at | mint | bucket | age | smart_money | whales | bundle_pct | gmgn_snapshot_at | gmgn_in_strict_preset |
+|---|---|---|---|---|---|---|---|---|
+| 1778413174 | GSeGxskJ2z5B1j.. | MED | 60 | 9 | 7 | 0.0 | NULL | NULL |
+| 1778413527 | 8p2zCBFdY7U9sL.. | MED | 60 | 7 | 8 | 5.9 | NULL | NULL |
+| 1778427277 | DiL7YLzM6JdC4e.. | MED | 60 | 2 | 7 | 46.2 | NULL | NULL |
+| 1778432022 | E5tYsDqeWcXGg4.. | MED | 60 | 4 | 7 | 45.1 | NULL | NULL |
+| 1778433240 | BL8pCSboJczivj.. | MED | 60 | 7 | 4 | 0.0 | NULL | NULL |
+| 1778435956 | 3KZsEFzaTpfa5s.. | MED | 30 | 9 | 7 | 33.6 | NULL | NULL |
+
+All grad-side feature columns populated from `mint_checkpoints` (the previously-failing enrichment now succeeds without `feature_unique_buyers`). GMGN side NULL on all 6, as designed for backfill rows (the in-memory snapshot_buffer was empty at backfill time; absence is data per joiner contract).
+
+### Path E verification anchor preserved (Step 2 of post-deploy)
+
+The redeploy reset `bucket_cutoffs._state["computed_at"]` to the new deploy time (1778441215 = 2026-05-10T19:26:55Z). Without anchor preservation, this would have shifted the Path E T+24h interim check from 06:55Z May 11 to 19:26Z May 11 — a ~12.5h methodology shift.
+
+Anchor preservation: `web/main.py` `_acceptance_gates()` now uses a hardcoded `PATH_E_INITIAL_DEPLOY_TS = 1778396128` constant (the original Path E deploy timestamp from receipt commit `147777d`). Verified post-deploy:
+
+```
+GET /api/status → acceptance_gates[0]:
+  path_e_deploy_ts:    1778396128 (2026-05-10T06:55:28Z)  ← original, not 19:25 redeploy
+  path_e_interim_close: 1778482528 (2026-05-11T06:55:28Z) ← original T+24h
+  path_e_full_close:    1779000928 (2026-05-17T06:55:28Z) ← original T+7d
+```
+
+Methodology integrity preserved. Future redeploys (Fix C latency deploy, etc.) will not shift these anchors.
+
+### Forward-collection now operational
+
+Daemon restart at 19:25Z installed the fixed module. The collection_loop polls every 60s:
+- `gmgn.snapshot()` — populates rolling snapshot_buffer
+- `grad.pull()` — returns new HIGH/MED preds (no longer raises)
+- `joiner.match()` per pred — joins against snapshot_buffer with ±120s tolerance
+- `insert_observation()` — lands the row
+
+For new MED predictions emitted between now and the trigger window close at 2026-05-11T16:45:54Z (~21h), observations will land WITH GMGN side populated (since the snapshot_buffer is now alive). Those rows are eligible for the Branch A/B precision comparison, in contrast to the 6 backfill rows which only count toward the C-iv subcondition's grad-side count.
+
+### Updated verification queries (Tuesday verdict, 2026-05-12T17:45:54Z)
+
+```sql
+-- Total observations at verdict cutoff
+SELECT COUNT(*) FROM case_study_01_observations
+ WHERE captured_at < 1778600754;
+-- Includes both backfill rows (gmgn_snapshot_at IS NULL) and
+-- forward-collected rows (gmgn_snapshot_at IS NOT NULL).
+
+-- Forward-collected only (eligible for A/B precision comparison)
+SELECT COUNT(*) FROM case_study_01_observations
+ WHERE captured_at < 1778600754
+   AND gmgn_snapshot_at IS NOT NULL;
+-- This is the n that determines whether Branch A/B can fire.
+-- Pre-reg threshold: n>=30. Likely n<30 given ~21h post-fix window
+-- at projected ~11 MED/day → ~10 forward MED → minus mints not in
+-- GMGN strict-preset → likely 0-5 fully-joined rows.
+
+-- C-iv subcondition verification (grad-side count over original 48h)
+SELECT COUNT(*) FROM predictions
+ WHERE predicted_at >= 1778342754   -- trigger_ts
+   AND predicted_at <  1778515554   -- trigger_ts + 48h
+   AND grad_prob_bucket IN ('HIGH','MED')
+   AND age_bucket <= 75;
+-- Likely <30, fires C-iv subcondition. Multi-factor cause:
+-- (1) upstream pipe at 0 emit until Path E (deploy at +14h into window)
+-- (2) harness silent-bug-blocked from inserting until +27h into window
+-- (3) post-fix collection window only ~21h vs original 48h
+```
+
+### Observations on the bug's age and the audit-program implication
+
+The enrichment bug existed at Phase 2 launch (commit `08fb96c`, 2026-05-08). It was masked for ~25h before exposure because the upstream pipe was producing 0 HIGH/MED predictions in that window (Finding 8's bucket emission breakage). Path E started producing MEDs at 11:39Z May 10; the bug exposed itself when the first MED hit the daemon and `pull()` raised. Even then, the silent-failure path (`except Exception` + `log + preds=[]`) kept the failure invisible until the user noticed "0 observations after Path E."
+
+This is the second silent-failure-via-broad-except pattern surfaced in this codebase. The first was the post_grad_survival_prob "3/5 training columns at zero since launch" finding (2026-05-07, commit reference in `post_grad_metric_broken_since_launch.md`). Both were diagnosed AFTER weeks of operational invisibility. The audit program's BACKLOG entry on this anti-pattern should be promoted to a structural improvement: any module whose failure produces silent zero-output should be wrapped with health-checks that surface via `/api/status.warnings`, not just `print(...)` to fly logs that retain ~2 minutes.
+
+Filed for the audit-program post-Tuesday-verdict review.
 
 ## What this means for the Tuesday verdict
 
