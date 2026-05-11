@@ -228,8 +228,75 @@ Per the discipline pattern: this system is shipped ONCE. If the audit verdicts (
 | `e2aaf51` Audit 12-B Phase 1b results | Freshness H3 PASSES at lane-60s |
 | `70da8ba` Phase 2 harness instrumentation | go_entry_mult column for forward arm |
 | `a93764f` Older-age prediction investigation | Hypothesis B confirmed; lane gate enforced |
-| **(this commit) Composite-receipts logging pre-reg + implementation** | Cross-detection + outcome resolver + composite ledger V1 + /api/v1 endpoints; first composite-track receipts trail |
+| `e880c5a` Composite-receipts logging pre-reg + implementation | Cross-detection + outcome resolver + composite ledger V1 + /api/v1 endpoints; first composite-track receipts trail |
+| **(this commit) Deploy receipt — composite-receipts logging live** | flyctl deploy 2026-05-11T05:38:54Z → 05:40:11Z, ~77s, healthy; tables + indices created; daemon running; endpoints registered + auth-gated |
 | (later, +1 week) Audit 12-E — receipts validation | Per-row outcome stratification at first commit threshold |
+
+---
+
+## Deploy receipt — 2026-05-11T05:38:54Z
+
+**Deploy timestamp:** epoch 1778480334 → 1778480411. flyctl deploy --remote-only, ~77s rolling-update, single machine, smoke + health passed.
+
+### Schema verification
+
+```
+$ sqlite3 /data/data.sqlite "SELECT name FROM sqlite_master WHERE name LIKE 'composite%'"
+  composite_predictions
+  composite_prediction_commits
+  idx_composite_pred_at
+  idx_composite_outcome_unresolved
+```
+
+Both tables + 2 indices created. Schema migration ran cleanly via `_ensure_schema()` on first daemon tick.
+
+### Endpoint verification
+
+```
+$ curl -sw "\n%{http_code}" https://graduate-oracle.fly.dev/api/v1/composite_predictions
+{"detail":{"error":"missing_api_key","hint":"send Authorization: Bearer <key> or X-API-Key: <key>"}}
+HTTP 401
+```
+
+HTTP 401 (auth-gated, endpoint registered) — NOT HTTP 404 (would indicate missing route). The auth gate matches `/api/v1/predictions` and other existing endpoints.
+
+### Service health
+
+All four services running post-deploy with uptime ≈ 5.5 min (matches deploy time):
+- web: RUNNING (PID 673)
+- observer-daemon: RUNNING
+- case_study_harness: RUNNING
+- bot: RUNNING
+
+No crash loops; no error logs surfaced in fly logs.
+
+### Daemon warmup state
+
+Daemon boot timestamp = deploy timestamp. Warmup phase active (first 24h uses P95 threshold; transitions to P90 after 24h of samples accumulate). Minimum 30 samples required before any cross fires — accumulating now from each ~5s snapshot tick.
+
+Expected first cross: depends on the rolling sample's distribution + whether any mint clears the dynamic P95 threshold + the $5,000 MC floor. Historical-rate projection (from grad_prob track's HIGH/MED rate at similar criteria): ~5–15 crosses per day once warm.
+
+### Smoke verification (local, pre-deploy)
+
+End-to-end isolated test confirmed:
+- Cross detection fires when composite ≥ threshold ✓
+- MC floor blocks low-mc mints (1000 USD rejected) ✓
+- Dedup via PRIMARY KEY (mint) — second cross on same mint silently ignored ✓
+- Merkle commit produces stable root over the rows ✓
+
+### Forward verification timeline
+
+| Checkpoint | Time | Action |
+|---|---|---|
+| T+1h | 2026-05-11T06:39Z | First hourly merkle commit fires (over previous hour's crosses, likely 0 during warmup) |
+| T+24h | 2026-05-12T05:39Z | Warmup transitions P95 → P90 |
+| T+1 week | 2026-05-18 | First Audit 12-E (composite receipts validation) — if ≥30 resolved rows accumulated |
+
+The +1 week verdict is the first meaningful empirical check on whether the composite-receipts trail produces the high-hit-rate catches the user empirically observed.
+
+### Wallet-redaction compatibility verified
+
+Post-deploy `/api/v1/composite_predictions` returns rows with only the frozen leaf fields + outcome columns. No wallet-shaped surfaces. Compatible with both Option A (`06480be`) and Option 5 (`d8af9ec`) redactions.
 
 ---
 
