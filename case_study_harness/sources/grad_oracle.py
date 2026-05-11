@@ -42,11 +42,19 @@ class GradOracleSource:
         with contextlib.closing(self._connect_ro()) as c:
             c.row_factory = sqlite3.Row
             # Predictions table: capture the prediction event itself.
+            # entry_mult is current_mult at predicted_at (snapshot, NOT
+            # lifecycle peak) — added 2026-05-11 for Audit 12-B Phase 2
+            # decomposition (per pre-reg b0f400e + user direction). Pairs
+            # with age_bucket as the two forward-safe predictors that
+            # Audit 12-B's multivariate regression needs. entry_mult is
+            # populated for ~71% of recent predictions; absence is data
+            # (handled as NULL downstream same as missing GMGN snapshot).
             rows = c.execute(f"""
                 SELECT id, mint, predicted_at, predicted_prob,
                        grad_prob_bucket, age_bucket, runner_prob_2x,
                        runner_prob_5x, expected_peak_mult,
-                       runner_prob_2x_from_now
+                       runner_prob_2x_from_now,
+                       entry_mult
                   FROM predictions
                  WHERE predicted_at > ?
                    AND age_bucket <= ?

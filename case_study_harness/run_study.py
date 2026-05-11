@@ -94,6 +94,7 @@ def init_output_schema(out_db: str, table_name: str):
                 go_runner_prob_2x REAL,
                 go_runner_prob_5x REAL,
                 go_expected_peak_mult REAL,
+                go_entry_mult REAL,
                 go_feat_smart_money INTEGER,
                 go_feat_n_whales INTEGER,
                 go_feat_unique_buyers INTEGER,
@@ -124,6 +125,18 @@ def init_output_schema(out_db: str, table_name: str):
         """)
         c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_pred_at ON {table_name}(grad_oracle_predicted_at)")
         c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_outcome ON {table_name}(outcome_graduated)")
+        # Phase 2 instrumentation migration (added 2026-05-11): ALTER existing
+        # tables to add go_entry_mult column. Idempotent — sqlite ALTER TABLE
+        # ADD COLUMN errors on duplicate, which we swallow per the
+        # forward-motion-only convention in the broader codebase.
+        for alter in [
+            f"ALTER TABLE {table_name} ADD COLUMN go_entry_mult REAL",
+        ]:
+            try:
+                c.execute(alter)
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
 
 
 def insert_observation(out_db: str, table_name: str, obs: dict):

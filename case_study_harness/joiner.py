@@ -43,6 +43,15 @@ class Joiner:
             "go_runner_prob_2x": grad_pred.get("runner_prob_2x"),
             "go_runner_prob_5x": grad_pred.get("runner_prob_5x"),
             "go_expected_peak_mult": grad_pred.get("expected_peak_mult"),
+            # Audit 12-B Phase 2 instrumentation (added 2026-05-11 per user
+            # direction). Forward-safe snapshot at predicted_at — not
+            # lifecycle peak. Pairs with go_age_bucket as the two predictors
+            # the Phase 2 multivariate regression needs. entry_mult IS
+            # current_mult at prediction time (web/predictions.py:240).
+            # NULL for ~29% of predictions where entry_mult wasn't captured
+            # at log time — absence is data, per the joiner's existing
+            # "absence is data" contract for missing GMGN snapshots.
+            "go_entry_mult": grad_pred.get("entry_mult"),
             # mint_checkpoints feature snapshot (joined at pull time)
             "go_feat_smart_money": grad_pred.get("feat_feature_smart_money"),
             "go_feat_n_whales": grad_pred.get("feat_feature_n_whales"),
