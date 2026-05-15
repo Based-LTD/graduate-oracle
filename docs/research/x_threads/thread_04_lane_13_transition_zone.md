@@ -112,7 +112,7 @@ Three corrections for the next pre-reg:
 5/ Verify yourself.
 
   Lane 13 writeup (full divergence detail):
-    github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/lane13_calibration_stability.md
+    github.com/Based-LTD/graduate-oracle/blob/main/docs/research/lane13_calibration_stability.md
 
   Pre-registration of the original 4 branches:
     BACKLOG.md "Lane 13 — calibration stability analysis"
@@ -125,7 +125,7 @@ isn't to pick a branch and call it a day. It's to flag the gap
 publicly + cover both verdicts in the action + update the rule
 before next time. The pattern compounds.
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---

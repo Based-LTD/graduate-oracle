@@ -153,7 +153,7 @@ rationalization the discipline forbids. publishing the inconclusive
 finding with the data anchoring it is what the receipts moat is.
 
 receipts:
-  github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
+  github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
 prereg: [PREREG_COMMIT_HASH]
 results: [RESULTS_COMMIT_HASH]
 ```
@@ -167,7 +167,7 @@ results: [RESULTS_COMMIT_HASH]
 
 Per pre-registered Branch C: [ACTION_TAKEN]. The discipline holds — frozen criteria, no post-hoc relaxation, the inconclusive verdict is the publication.
 
-Full writeup: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
+Full writeup: github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
 ```
 
 ---

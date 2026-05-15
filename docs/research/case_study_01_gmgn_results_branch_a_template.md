@@ -113,7 +113,7 @@ methodology pre-registered before data collection. acceptance criteria
 frozen: ≥10pp lift on n≥30 + lift consistency on both-products-positive
 subset. branches A/B/C all pre-drafted; the result fired branch A.
 
-receipts: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
+receipts: github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
 prereg commit: [PREREG_COMMIT_HASH]
 results commit:  [RESULTS_COMMIT_HASH]
 ```
@@ -125,8 +125,8 @@ results commit:  [RESULTS_COMMIT_HASH]
 
 Pre-registered methodology, frozen acceptance criteria, branch A executed cleanly. Sample size n=[OVERLAP_N] over 48h window (2026-05-09 → 2026-05-11).
 
-Full writeup: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
-Methodology pre-reg: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_comparison_prereg.md
+Full writeup: github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
+Methodology pre-reg: github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_comparison_prereg.md
 ```
 
 ---

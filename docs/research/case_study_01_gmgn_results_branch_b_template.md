@@ -163,7 +163,7 @@ discipline pattern holds. methodology pre-registered, frozen criteria
 applied fresh, branch B executed without softening.
 
 receipts:
-  github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
+  github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
 prereg: [PREREG_COMMIT_HASH]
 results: [RESULTS_COMMIT_HASH]
 ```
@@ -175,7 +175,7 @@ results: [RESULTS_COMMIT_HASH]
 
 Per pre-registered Branch B, this opens a product-reshape discussion. The receipts-trail discipline (publish-then-post, pre-registered criteria, public commit timeline) is the actual moat — bucket precision alone isn't.
 
-Full writeup: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
+Full writeup: github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_results.md
 ```
 
 ---

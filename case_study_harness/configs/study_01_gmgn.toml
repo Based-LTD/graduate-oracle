@@ -6,7 +6,7 @@
 study_id = "01"
 title = "Calibrated bucket vs. component-data composition"
 prereg_commit = "5bc8f33"
-prereg_url = "https://github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_comparison_prereg.md"
+prereg_url = "https://github.com/Based-LTD/graduate-oracle/blob/main/docs/research/case_study_01_gmgn_comparison_prereg.md"
 
 [window]
 # Trigger fires at Finding 8 deploy + 48h = 1778169954 + 48*3600 = 1778342754

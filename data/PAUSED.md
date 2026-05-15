@@ -21,7 +21,7 @@ The cutover sequence shipped the calibrated GBM v1 + isotonic cascade + HIGH/MED
 - **Finding 7** (chain): `post_grad_survival_prob` discovered to have been publishing artifacts since launch (snapshot-source bug; 3 of 5 features writing zero). Two metric replacements (Path C, Path D2) failed pre-registered acceptance criteria. Path E sunset executed. Root cause located + corrected fix shipped (Finding 7f). Currently in clean-corpus auto-lift gate.
 - **Finding 8**: bucket calibration aliasing during daemon recompute window (697-in-1h MED burst diagnosed). EMA smoothing + persistence sidecar shipped. Interim 48h TG re-enable gate at 2026-05-09T16:45Z; full 7d acceptance at 2026-05-15T16:45Z.
 
-13 commits in the last 28 hours, all timestamped, all on `github.com/Dspro-fart/graduate-oracle`.
+13 commits in the last 28 hours, all timestamped, all on `github.com/Based-LTD/graduate-oracle`.
 
 ## Resuming with explicit gate framing
 

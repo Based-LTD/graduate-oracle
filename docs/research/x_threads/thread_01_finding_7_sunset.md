@@ -133,7 +133,7 @@ instruction held under pressure.
 Every diagnosis timestamped before its fix or escalation. The
 audit trail is the receipts.
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---

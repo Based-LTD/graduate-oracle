@@ -80,7 +80,7 @@ The team has explicitly committed to reshape if the data demands it.
 
 48 hours ago we permanently sunset post_grad_survival_prob after
 three model-class attempts all failed pre-registered acceptance:
-github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/post_grad_metric_broken_since_launch.md
+github.com/Based-LTD/graduate-oracle/blob/main/docs/research/post_grad_metric_broken_since_launch.md
 
 11 commits across the Finding 7 chain. Each diagnosis timestamped
 before its fix or escalation. When the data said the feature didn't
@@ -126,7 +126,7 @@ When that commit appears, you can verify:
   → Terminal numbers match the frozen criteria
   → Commit timestamp predates any retroactive framing
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---

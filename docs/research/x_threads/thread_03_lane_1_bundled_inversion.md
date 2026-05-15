@@ -98,7 +98,7 @@ ran the rule fresh against the result.
 Pre-reg + run + decision rule all public:
 
   Lane 1 writeup:
-    github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/lane1_bundled_corpus.md
+    github.com/Based-LTD/graduate-oracle/blob/main/docs/research/lane1_bundled_corpus.md
 
   Pre-registration of the ≥90%/<80%/80-90% decision branches:
     BACKLOG.md "Lane 1 — bundled-pump corpus check"
@@ -110,7 +110,7 @@ The pre-reg predates the data. The decision rule was applied fresh.
 The investigation that fired is the result of the rule, not a
 post-hoc reframing.
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---

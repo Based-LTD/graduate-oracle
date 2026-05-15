@@ -52,7 +52,7 @@ every checkpoint.
 We chose alert silence over alert noise. Will post the resolution
 either way.
 
-Receipts: github.com/Dspro-fart/graduate-oracle
+Receipts: github.com/Based-LTD/graduate-oracle
 Status: graduateoracle.fun/status
 ```
 
@@ -115,7 +115,7 @@ a marginal-pass ship — a sunset is harder to fake.
 
 Sustain was upside, not required. The discipline held under pressure.
 
-Receipts: github.com/Dspro-fart/graduate-oracle/blob/main/docs/research/post_grad_metric_broken_since_launch.md
+Receipts: github.com/Based-LTD/graduate-oracle/blob/main/docs/research/post_grad_metric_broken_since_launch.md
 ```
 
 **Length:** ~1100 chars (multi-post thread on X).
@@ -157,7 +157,7 @@ gate. Separate gate; will post when it resolves.
 8 findings, 13 public commits, every diagnosis timestamped before
 its fix.
 
-Receipts: github.com/Dspro-fart/graduate-oracle/commit/[FIX_LANDED_COMMIT]
+Receipts: github.com/Based-LTD/graduate-oracle/commit/[FIX_LANDED_COMMIT]
 Status: graduateoracle.fun/status
 ```
 
@@ -197,7 +197,7 @@ TG alerts remain paused pending the separate bucket calibration
 gate (verdict ~2026-05-09 16:45 UTC). Alert silence over alert
 noise still holds for that one.
 
-Receipts: github.com/Dspro-fart/graduate-oracle/commit/[LIFT_COMMIT]
+Receipts: github.com/Based-LTD/graduate-oracle/commit/[LIFT_COMMIT]
 ```
 
 **Length:** ~870 chars.
@@ -235,7 +235,7 @@ and the data says both calibrations ship clean.
 8 findings caught + resolved across the cutover sequence; 13 public
 commits in 28 hours; every diagnosis timestamped before its fix.
 
-Receipts: github.com/Dspro-fart/graduate-oracle
+Receipts: github.com/Based-LTD/graduate-oracle
 Status: graduateoracle.fun/status
 ```
 

@@ -127,7 +127,7 @@ Finding 8 chain (5 commits, 53be35f → 4d13430):
 Amendment timestamp predates verdict by ~22h. Pre-registration of
 both halves predates the data that resolved them.
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---
@@ -245,7 +245,7 @@ Amendment commit predates verdict commit. The strict-vs-qualitative
 divergence handling rule (added to memory after Lane 13) covered
 the divergence properly.
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---
@@ -340,7 +340,7 @@ Finding 8 chain (escalation execution):
 Path E was pre-registered TWO DAYS before its fire. The escalation
 was designed to make today's commit mechanical, not deliberated.
 
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 ---

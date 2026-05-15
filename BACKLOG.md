@@ -135,7 +135,7 @@ Pre-registered scope for the full `/status` consolidation (impl deferred to this
 1. **Section 1: Deployed model architecture.** Calibrated GBM v1 + isotonic cascade + HIGH/MED/LOW bucket framework, with link to `docs/methodology.md`. Auto-derive from `/api/scope.predictions` + `/api/status.bucket_cutoffs` so the page can't go stale relative to deployed config.
 2. **Section 2: Current state of each prediction field.** Pulls from `/api/scope.predictions` calibrated/caveat fields, but renders status pills (✅ live / ⚠️ directional-only / 🔄 acceptance-gate / 🛑 sunset). One row per field. Click-through to the relevant Finding writeup.
 3. **Section 3: Active acceptance gates.** Already shipped today (Fix 6). Future iterations: graph the gate's progression — for sustain auto-lift, a corpus-size meter; for Finding 8 interim, a max-hour-MED meter against the 30/hr ceiling.
-4. **Section 4: Recent receipts trail.** Last 10 commits to `github.com/Dspro-fart/graduate-oracle` rendered with date, message, and link. Auto-pulled via GitHub API at page load. Ships the receipts trail prominently rather than burying it in `docs/research/`.
+4. **Section 4: Recent receipts trail.** Last 10 commits to `github.com/Based-LTD/graduate-oracle` rendered with date, message, and link. Auto-pulled via GitHub API at page load. Ships the receipts trail prominently rather than burying it in `docs/research/`.
 5. **Section 5: System health (existing).** Uptime, latency, daemon heartbeats — what `/status` already shows.
 
 **Effort estimate:** ~2-3 hours when the current acceptance gates settle.

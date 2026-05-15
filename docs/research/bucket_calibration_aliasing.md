@@ -515,7 +515,7 @@ parent Path E (fixed-percentile cutoffs) directly. Decision lands
 within 24h.
 
 Alert silence over alert noise still holds. Receipts updated:
-github.com/Dspro-fart/graduate-oracle
+github.com/Based-LTD/graduate-oracle
 ```
 
 This template lands in `pump-jito-sniper/docs/strategy/tg_pinned_message.md` (private artifact, separate edit).
