@@ -1,0 +1,21 @@
+# Secrets / keys — never commit
+.env
+.env.*
+*.key
+*keypair*.json
+*secret*
+*.pem
+id_rsa*
+# Data / state
+*.sqlite
+*.sqlite-*
+/data/
+dump.rdb
+*.log
+# Build artifacts
+target/
+__pycache__/
+*.pyc
+node_modules/
+# OS
+.DS_Store
