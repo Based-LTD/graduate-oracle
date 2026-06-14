@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>goracle CLI · wallet link</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .link-main { max-width: 640px; margin: 80px auto; padding: 0 24px; }
+  .link-card {
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    border-radius: 10px;
+    padding: 36px 32px;
+    background: linear-gradient(135deg, rgba(0,240,255,0.06), rgba(80,200,120,0.04));
+    text-align: center;
+  }
+  .link-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .link-card h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.6rem; font-weight: 700; margin: 0 0 12px;
+  }
+  .link-card p {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text); line-height: 1.6; font-size: 0.92rem;
+    margin: 0 0 16px;
+  }
+  .link-row {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; color: var(--muted);
+    margin: 6px 0;
+  }
+  .link-row strong { color: var(--text); }
+  pre.link-msg {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.5;
+    color: var(--text); text-align: left;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+  .link-btn {
+    display: inline-block;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 12px 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(0,240,255,0.5);
+    background: rgba(0,240,255,0.1);
+    color: var(--cyan);
+    cursor: pointer;
+    transition: background 0.15s;
+    margin: 8px 6px;
+  }
+  .link-btn:hover { background: rgba(0,240,255,0.2); }
+  .link-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .link-btn.primary {
+    background: rgba(0,240,255,0.3);
+    color: #fff;
+  }
+  .link-status {
+    margin-top: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem;
+    min-height: 1.5em;
+  }
+  .link-status.ok { color: #7ef0a3; }
+  .link-status.err { color: #ff6b6b; }
+  .link-status.pending { color: var(--muted); }
+  .link-help {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+</header>
+
+<main class="link-main">
+  <div class="link-card">
+    <div class="link-tag">goracle CLI</div>
+    <h1>Sign to link your wallet</h1>
+    <p>Your goracle CLI is waiting. Sign this message with Phantom to prove you own the wallet — no transaction, no SOL spent.</p>
+
+    <div id="link-meta" style="margin: 20px 0;">
+      <div class="link-row"><strong>Wallet:</strong> <span id="meta-wallet">…</span></div>
+      <div class="link-row"><strong>Tier:</strong> <span id="meta-tier">…</span></div>
+      <div class="link-row"><strong>Threshold:</strong> <span id="meta-threshold">…</span></div>
+    </div>
+
+    <pre class="link-msg" id="msg-preview">loading…</pre>
+
+    <button class="link-btn primary" id="sign-btn" disabled>Connect &amp; Sign with Phantom</button>
+
+    <div class="link-status pending" id="status">loading link…</div>
+
+    <div class="link-help">
+      Don't have Phantom?
+      <a href="https://phantom.app/download" target="_blank" rel="noopener" style="color: var(--cyan)">Install it →</a><br>
+      Wrong wallet? Disconnect Phantom and reconnect with the right one.<br>
+      Link expires 30 minutes after creation.
+    </div>
+  </div>
+</main>
+
+<script>
+  const linkId = window.location.pathname.split("/").pop();
+  let pollState = null;
+
+  const $status = document.getElementById("status");
+  const $signBtn = document.getElementById("sign-btn");
+  const $msg = document.getElementById("msg-preview");
+
+  function setStatus(text, cls = "pending") {
+    $status.textContent = text;
+    $status.className = "link-status " + cls;
+  }
+
+  async function loadLink() {
+    try {
+      const r = await fetch(`/api/signup/wallet/${linkId}`);
+      if (!r.ok) {
+        setStatus("Link not found or expired.", "err");
+        return null;
+      }
+      const d = await r.json();
+      pollState = d;
+      document.getElementById("meta-wallet").textContent = d.wallet || "—";
+      document.getElementById("meta-tier").textContent = d.tier_requested || "—";
+
+      // Message comes back in the poll response — the server stores the
+      // canonical bytes; any drift here would break signature verification.
+      $msg.textContent = d.message || "(message not available)";
+
+      // Threshold display
+      const tier = d.tier_requested;
+      const thresholds = { "tg_paid": "500,000 $GO", "builder": "2,500,000 $GO" };
+      document.getElementById("meta-threshold").textContent = thresholds[tier] || "—";
+
+      if (d.status === "fulfilled") {
+        setStatus("✓ Already signed — return to your terminal.", "ok");
+        $signBtn.disabled = true;
+        return d;
+      }
+      if (d.status === "pending") {
+        setStatus("Ready to sign.", "pending");
+        $signBtn.disabled = false;
+      } else if (d.status === "expired") {
+        setStatus("This link expired. Run goracle signup --wallet again.", "err");
+      } else if (d.status === "insufficient_balance") {
+        setStatus(`Insufficient $GO balance to claim ${tier}. Held: ${d.balance_ui?.toLocaleString() || 0}; need ${d.threshold_ui?.toLocaleString() || "?"}.`, "err");
+      } else if (d.status === "invalid_signature") {
+        setStatus("Previous signature failed verification. Sign again to retry.", "err");
+        $signBtn.disabled = false;
+      }
+      return d;
+    } catch (err) {
+      setStatus("Network error: " + err.message, "err");
+      return null;
+    }
+  }
+
+  async function signWithPhantom() {
+    const provider = window.solana;
+    if (!provider || !provider.isPhantom) {
+      setStatus("Phantom not detected. Install Phantom and refresh.", "err");
+      return;
+    }
+    try {
+      $signBtn.disabled = true;
+      setStatus("Connecting to Phantom…");
+      await provider.connect();
+      const connectedPubkey = provider.publicKey?.toString();
+      if (connectedPubkey !== pollState.wallet) {
+        setStatus(`Phantom is connected to ${connectedPubkey?.slice(0,8)}…, but the link is for ${pollState.wallet.slice(0,8)}…. Switch wallets and retry.`, "err");
+        $signBtn.disabled = false;
+        return;
+      }
+      setStatus("Waiting for you to approve in Phantom…");
+      const encoded = new TextEncoder().encode($msg.textContent);
+      const { signature } = await provider.signMessage(encoded, "utf8");
+      // signature is a Uint8Array; base58-encode for server.
+      const sigB58 = await base58encode(signature);
+
+      setStatus("Verifying signature on server…");
+      const r = await fetch("/api/signup/wallet/sign", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ link_id: linkId, signature: sigB58 }),
+      });
+      const d = await r.json();
+      if (d.status === "fulfilled") {
+        setStatus(`✓ Wallet linked. Tier: ${d.resolved_tier}. Balance: ${d.balance_ui?.toLocaleString() || "?"} $GO. Return to your terminal — your CLI will pick this up within a few seconds.`, "ok");
+        $signBtn.disabled = true;
+      } else if (d.status === "insufficient_balance") {
+        setStatus(`Insufficient $GO balance to claim ${pollState.tier_requested}. Held: ${d.balance_ui?.toLocaleString() || 0}; need ${d.threshold_ui?.toLocaleString() || "?"}.`, "err");
+        $signBtn.disabled = false;
+      } else if (d.status === "invalid_signature") {
+        setStatus("Signature didn't verify. Try again.", "err");
+        $signBtn.disabled = false;
+      } else if (d.status === "expired") {
+        setStatus("Link expired. Run goracle signup --wallet again from your terminal.", "err");
+      } else {
+        setStatus("Unexpected response: " + JSON.stringify(d), "err");
+        $signBtn.disabled = false;
+      }
+    } catch (err) {
+      setStatus("Phantom error: " + (err.message || err), "err");
+      $signBtn.disabled = false;
+    }
+  }
+
+  $signBtn.addEventListener("click", signWithPhantom);
+
+  // Base58 — small, no-dependency implementation. Bitcoin alphabet.
+  const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  async function base58encode(bytes) {
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    // BigInt-based conversion.
+    let n = 0n;
+    for (const b of arr) n = (n << 8n) | BigInt(b);
+    let out = "";
+    while (n > 0n) {
+      const r = Number(n % 58n);
+      out = B58[r] + out;
+      n = n / 58n;
+    }
+    // Leading zero bytes → leading "1"s.
+    for (const b of arr) {
+      if (b === 0) out = "1" + out; else break;
+    }
+    return out;
+  }
+
+  loadLink();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "name": "goracle",
+  "version": "0.2.0",
+  "description": "graduate-oracle CLI — signup, pay, and use the pump.fun graduation prediction API from your terminal.",
+  "type": "module",
+  "bin": {
+    "goracle": "src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test src/lib/*.test.js || true"
+  },
+  "keywords": [
+    "solana",
+    "pump.fun",
+    "graduate-oracle",
+    "memecoin",
+    "trading-signal",
+    "prediction",
+    "cli"
+  ],
+  "author": "graduate-oracle",
+  "license": "MIT",
+  "homepage": "https://graduateoracle.fun",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Based-LTD/graduate-oracle",
+    "directory": "cli"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "conf": "^13.0.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
