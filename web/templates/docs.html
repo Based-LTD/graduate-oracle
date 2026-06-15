@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · API docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Build on the real-time pump.fun graduation alert API. Seconds of runway between our ≥0.70 call and the bonding curve completing. One endpoint, every prediction hashed before its outcome.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .docs-main { max-width: 820px; margin: 50px auto 80px; padding: 0 24px; }
+
+  .docs-hero { text-align: center; margin-bottom: 48px; }
+  .docs-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .docs-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.2rem; font-weight: 700; letter-spacing: -0.5px;
+    margin: 0 0 16px;
+  }
+  .docs-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 640px; margin: 0 auto;
+    font-size: 0.95rem; line-height: 1.6;
+  }
+
+  .docs-pitch {
+    margin: 32px 0;
+    padding: 24px 28px;
+    border: 1px solid rgba(80, 200, 120, 0.4);
+    border-radius: 8px;
+    background: linear-gradient(135deg,
+      rgba(80, 200, 120, 0.08) 0%,
+      rgba(0, 240, 255, 0.04) 100%);
+  }
+  .docs-pitch-stat {
+    display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px;
+  }
+  .docs-pitch-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 3rem; font-weight: 900; color: #7ef0a3;
+    text-shadow: 0 0 20px rgba(80, 200, 120, 0.4);
+    line-height: 1;
+  }
+  .docs-pitch-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem; color: var(--text); font-weight: 500;
+  }
+  .docs-pitch-detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem; color: var(--text); line-height: 1.55;
+  }
+  .docs-pitch-detail strong { color: #7ef0a3; }
+
+  h2.sec {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1rem; font-weight: 700;
+    letter-spacing: 0.14em;
+    margin: 48px 0 14px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+  .sec-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem; color: var(--muted);
+    margin: 0 0 18px;
+    line-height: 1.6;
+  }
+  .sec-sub a { color: var(--cyan); }
+
+  pre.code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem; line-height: 1.55;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    overflow-x: auto;
+    color: #c0d8d0;
+  }
+  pre.code .key { color: var(--cyan); }
+  pre.code .val { color: #7ef0a3; }
+  pre.code .com { color: var(--muted); font-style: italic; }
+
+  .step-row {
+    display: flex; gap: 14px; margin: 14px 0;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(80, 200, 120, 0.18);
+    border: 1px solid rgba(80, 200, 120, 0.6);
+    color: #7ef0a3;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem;
+  }
+  .step-body {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .step-body strong { color: var(--text); }
+
+  table.simple {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.88rem;
+    margin: 14px 0;
+  }
+  table.simple th, table.simple td {
+    padding: 10px 14px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  table.simple thead th {
+    color: var(--cyan); font-size: 0.7rem; letter-spacing: 0.16em;
+    text-transform: uppercase; background: rgba(0,212,255,0.05);
+  }
+  table.simple tbody tr:last-child td { border-bottom: none; }
+  table.simple code { color: #7ef0a3; background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 3px; font-size: 0.82rem; }
+
+  .cta-row {
+    display: flex; gap: 12px; flex-wrap: wrap; margin: 28px 0;
+  }
+  .cta {
+    display: inline-block;
+    padding: 10px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem; font-weight: 600;
+    letter-spacing: 0.04em;
+    border-radius: 4px;
+    text-decoration: none;
+  }
+  .cta-primary {
+    background: rgba(80, 200, 120, 0.85);
+    color: #0a0a0a;
+    border: 1px solid rgba(80, 200, 120, 1);
+  }
+  .cta-secondary {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--cyan);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+  }
+
+  .docs-foot {
+    text-align: center; margin-top: 40px; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  }
+  .docs-foot a { color: var(--cyan); }
+
+  /* ── Mobile ── */
+  @media (max-width: 760px) {
+    .docs-main { max-width: 100%; margin: 24px auto 50px; padding: 0 14px; }
+    .docs-hero { margin-bottom: 24px; }
+    .docs-hero h1 { font-size: 1.55rem; }
+    .docs-hero-sub { font-size: 0.84rem; }
+    .docs-pitch { padding: 16px 16px; margin: 22px 0; }
+    .docs-pitch-num { font-size: 2.2rem; }
+    .docs-pitch-label { font-size: 0.88rem; }
+    .docs-pitch-detail { font-size: 0.82rem; }
+    h2.sec { font-size: 0.85rem; letter-spacing: 0.1em; margin-top: 26px; }
+    .step-row { gap: 10px; margin: 12px 0; }
+    .step-num { width: 24px; height: 24px; font-size: 0.78rem; }
+    .step-body { font-size: 0.84rem; line-height: 1.5; }
+    pre.code {
+      font-size: 0.72rem;
+      padding: 10px 12px;
+      line-height: 1.4;
+      white-space: pre;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table.simple { font-size: 0.78rem; }
+    table.simple th, table.simple td { padding: 7px 10px; }
+    .cta { padding: 9px 14px; font-size: 0.78rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">DASHBOARD</a>
+    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link active" href="/docs">DOCS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="docs-main">
+
+  <section class="docs-hero">
+    <div class="docs-hero-tag">how to use it</div>
+    <h1>Build on the real-time graduation alert.</h1>
+    <p class="docs-hero-sub">
+      Catch pump.fun mints before the bonding curve completes. One
+      endpoint. Every prediction logged with a hash before the outcome,
+      resolved against on-chain truth.
+    </p>
+  </section>
+
+  <div class="docs-pitch">
+    <div class="docs-pitch-stat">
+      <span class="docs-pitch-num" id="docs-runway-num">—s</span>
+      <span class="docs-pitch-label">median runway between our ≥0.70 call and the curve completing</span>
+    </div>
+    <div class="docs-pitch-detail">
+      Built for sniper bots, fast traders, and trading terminals embedding
+      a graduation-aware feed. <strong id="docs-accuracy-num">—%</strong>
+      of those calls actually graduate within 24h
+      (<span id="docs-accuracy-n">—</span>) — when we say ≥0.90, reality
+      lands close to 99%. Every prediction publicly
+      <strong>hashed before</strong> the outcome was known. Pre-launch
+      audit on <a href="/verdict" style="color:#7ef0a3">/verdict</a>.
+    </div>
+  </div>
+
+  <h2 class="sec">Quick start</h2>
+  <p class="sec-sub">Three steps. Two endpoints.</p>
+
+  <div class="step-row">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <strong>Get a key</strong>
+      <p class="sec-sub" style="margin-top:0.4rem">
+        Subscribe in SOL via Phantom at <a href="/api">/api</a> (founding
+        rate locks forever), or hold <strong>2.5M $GO</strong> in a
+        linked wallet for Builder access. Either path returns a key prefixed
+        <code>grad_</code>.
+      </p>
+    </div>
+  </div>
+
+  <div class="step-row">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <strong>Read the live firehose</strong>
+<pre class="code">curl https://graduateoracle.fun/api/v1/live \
+  -H 'Authorization: Bearer grad_...'</pre>
+      Returns every currently-tracked mint with calibrated grad_prob,
+      entry_mult, age, and supporting context. Updates every ~2 seconds.
+    </div>
+  </div>
+
+  <div class="step-row">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <strong>Filter for actionable signals</strong>
+<pre class="code">curl https://graduateoracle.fun/api/v1/live \
+  -H 'Authorization: Bearer grad_...' \
+  | jq <span class="val">'.mints[] | select(.grad_prob >= 0.70 and .current_mult <= 2.0)'</span></pre>
+      That's the same gate the TG bot fires on. <strong>≥70% grad_prob</strong> —
+      <span id="docs-hit-rate">—%</span> forward, on-chain-resolved hit rate over
+      the last 30 days <span id="docs-hit-n">(n=—)</span> — resolved against
+      truth, not a backtest.
+    </div>
+  </div>
+
+  <h2 class="sec">Pricing</h2>
+  <table class="simple">
+    <thead>
+      <tr><th>Tier</th><th>Calls/day</th><th>Data freshness</th><th>Webhooks</th><th>Price</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Builder</td><td>5,000</td><td>real-time</td><td>—</td><td>0.5 SOL/mo</td></tr>
+      <tr><td>Pro</td><td>50,000</td><td>real-time</td><td>✓</td><td>1.5 SOL/mo</td></tr>
+    </tbody>
+  </table>
+  <p class="sec-sub">Pricing in SOL, paid on-chain via the <code>/upgrade</code> flow. <a href="/api">See pricing →</a></p>
+
+  <h2 class="sec">$GO — Proof Launch tokenomics</h2>
+  <p class="sec-sub">
+    <strong>$GO</strong> launches on <a href="https://prooflaunch.fun" target="_blank"
+    rel="noopener">Proof Launch</a> — a Solana launchpad where tokenomics
+    are <em>enforced by programmable bots at the trade layer</em>, not
+    promised in a whitepaper. Every buy and sell triggers the same skim,
+    deterministically, every trade, forever.
+  </p>
+  <table class="simple">
+    <thead>
+      <tr><th>Bot</th><th>Share</th><th>What it does</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>BURN</strong></td><td>50%</td><td>Tokens routed to the burn address. Supply shrinks every trade.</td></tr>
+      <tr><td><strong>SOL → HOLDERS</strong></td><td>30%</td><td>SOL distributed pro-rata to $GO holders. Hold the token → earn SOL yield from volume, automatically.</td></tr>
+      <tr><td><strong>TREASURY</strong></td><td>10%</td><td>Routes to the graduate-oracle treasury — funds infra, model retrains, and buyback budget.</td></tr>
+      <tr><td><strong>PLATFORM</strong></td><td>10%</td><td>Proof Launch's protocol fee. This is how the launchpad gets paid.</td></tr>
+    </tbody>
+  </table>
+  <p class="sec-sub">
+    <strong>Why this matters for terminals.</strong> The tokenomics aren't
+    a roadmap — they're sealed by Proof's bot contracts at deploy time.
+    The burn happens whether we ship features or not. The holder yield
+    happens whether anyone subscribes or not. You're holding a supply
+    schedule, not a pitch deck.
+  </p>
+
+  <h2 class="sec">Authentication</h2>
+  <p class="sec-sub">All <code>/api/v1/*</code> endpoints require a bearer token.</p>
+<pre class="code">Authorization: Bearer grad_xxxxxxxxxxxx</pre>
+  <p class="sec-sub">Or via <code>X-API-Key</code> header. Keys are bearer credentials — treat them like passwords.</p>
+
+  <h2 class="sec">Reference</h2>
+  <table class="simple">
+    <thead><tr><th>Endpoint</th><th>What it returns</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /api/v1/signals</code></td><td>Cursor-paginated cross stream — the machine-consumable feed (poll, zero-miss, resumable)</td></tr>
+      <tr><td><code>GET /api/v1/live</code></td><td>Every tracked mint, scored</td></tr>
+      <tr><td><code>GET /api/v1/probe/{mint}</code></td><td>Single mint, full breakdown</td></tr>
+      <tr><td><code>GET /api/predictions/by_mint/{mint}</code></td><td>All historical predictions for a mint (receipts)</td></tr>
+      <tr><td><code>GET /api/ledger/commits</code></td><td>Hourly Merkle commits — verify a prediction was logged before its outcome</td></tr>
+      <tr><td><code>GET /api/ledger/proof/{prediction_id}</code></td><td>Cryptographic proof of a single prediction's commit</td></tr>
+      <tr><td><code>GET /api/accuracy</code></td><td>Live calibration receipts (LOO + forward)</td></tr>
+      <tr><td><code>GET /api/scope</code></td><td>What we predict, calibration bands, label sources</td></tr>
+    </tbody>
+  </table>
+  <p class="sec-sub">
+    Full schema reference: <a href="/swagger" target="_blank" rel="noopener">Swagger UI ↗</a> ·
+    <a href="/openapi.json" target="_blank" rel="noopener">OpenAPI spec ↗</a>
+  </p>
+
+  <h2 class="sec">Signals stream</h2>
+  <p class="sec-sub">
+    The machine-consumable feed. <code>GET /api/v1/signals</code> returns
+    composite-receipts crossings in the order they became deliverable.
+    Poll with the <code>cursor</code> from the prior response as
+    <code>since</code> — zero missed crossings, zero duplicates, fully
+    resumable after a crash. Built for execution bots, not dashboards.
+  </p>
+<pre class="code">curl https://graduateoracle.fun/api/v1/signals?since=&lt;cursor&gt; \
+  -H <span class="str">"Authorization: Bearer $KEY"</span>
+
+<span class="key">→</span> { "count", "cursor", "signals": [ {
+      "mint", "tier", "composite_score", "score_ratio",
+      "smart_money_in", "max_mult_at_cross", "age_s_at_cross",
+      "mc_at_cross_usd", "cross_at", "delivered_at" } ] }</pre>
+  <p class="sec-sub">
+    Filter by tier: <code>?tier=ACT</code> / <code>WATCH</code> /
+    <code>SCOUT</code> / <code>all</code>. Webhook push (HMAC-signed POST
+    on every cross) available via <code>POST /api/v1/webhooks</code>.
+  </p>
+
+  <h3 class="sec" style="font-size:1.05rem">Tier semantics</h3>
+  <table class="simple">
+    <thead><tr><th>Tier</th><th>Gate</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td><code>⚡ ACT</code></td><td>model confidence ≥ 0.15</td><td>Highest conviction. Trust-it band.</td></tr>
+      <tr><td><code>📊 WATCH</code></td><td>0.05–0.15</td><td>Mid conviction.</td></tr>
+      <tr><td><code>🛰 SCOUT</code></td><td>0.02–0.05, or strong composite</td><td>Recall tier — surfaced so it isn't missed; you judge it.</td></tr>
+    </tbody>
+  </table>
+  <p class="sec-sub">
+    <strong>Honest status:</strong> the 3-tier structure shipped 2026-05-16
+    and is <em>forward-validating in public right now</em>. Per-tier hit
+    rates are back-test projections under live verification — not yet proven
+    forward numbers. We publish the verdict (whichever way it breaks) on the
+    <a href="/api/ledger/commits">receipts trail</a> when the pre-registered
+    sample floor is hit. We don't quote a rate we haven't earned forward.
+    Pilot phase — no pricing on this feed yet, deliberately, until the
+    numbers are real.
+  </p>
+
+  <h2 class="sec">Errors</h2>
+  <p class="sec-sub">All errors are JSON with the same shape:</p>
+<pre class="code">{
+  <span class="key">"detail"</span>: {
+    <span class="key">"error"</span>:   <span class="val">"rate_limit_exceeded"</span>,
+    <span class="key">"message"</span>: <span class="val">"Daily quota of 200 reached. Resets at 1777502400."</span>,
+    <span class="key">"hint"</span>:    <span class="val">"/upgrade for higher limits"</span>
+  }
+}</pre>
+
+  <table class="simple">
+    <thead><tr><th>Status</th><th>Error</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>401</td><td><code>invalid_or_expired_key</code></td><td>Auth header missing/wrong</td></tr>
+      <tr><td>429</td><td><code>rate_limit_exceeded</code></td><td>Daily quota hit</td></tr>
+      <tr><td>503</td><td><code>no_snapshot</code></td><td>Observer warming up — retry in seconds</td></tr>
+    </tbody>
+  </table>
+
+  <div class="cta-row">
+    <a class="cta cta-primary" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">Try the TG bot →</a>
+    <a class="cta cta-secondary" href="/accuracy">See the receipts</a>
+    <a class="cta cta-secondary" href="/receipts">Verify a prediction</a>
+  </div>
+
+  <p class="docs-foot">
+    NFA · DYOR · prediction model output, not financial advice ·
+    <a href="https://x.com/GraduateOracle" target="_blank" rel="noopener">@GraduateOracle</a>
+  </p>
+
+</main>
+
+<script>
+  // Hydrate: docs hero (runway + accuracy) + quickstart hit rate.
+  fetch('/api/accuracy').then(r => r.json()).then(d => {
+    const hl = d.headline || {};
+    const timing = hl.time_to_grad;
+    if (timing?.status === 'ok' && timing.p50_s > 0) {
+      const s = timing.p50_s;
+      const sStr = s < 60 ? `${s}s` : `${Math.round(s/60)}m`;
+      const r = document.getElementById('docs-runway-num');
+      if (r) r.textContent = sStr;
+    }
+    const last30 = hl.last_30d;
+    if (last30?.status === 'ok' && last30.n_resolved) {
+      const acc = document.getElementById('docs-accuracy-num');
+      const accN = document.getElementById('docs-accuracy-n');
+      if (acc)  acc.textContent  = (last30.hit_rate * 100).toFixed(1) + '%';
+      if (accN) accN.textContent = 'n=' + last30.n_resolved.toLocaleString();
+      const rate = document.getElementById('docs-hit-rate');
+      const n    = document.getElementById('docs-hit-n');
+      if (rate) rate.textContent = (last30.hit_rate * 100).toFixed(1) + '%';
+      if (n)    n.textContent    = '(n=' + last30.n_resolved.toLocaleString() + ')';
+    }
+  }).catch(() => {});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Graduate Oracle API — real-time pump.fun graduation alert for builders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Real-time pump.fun graduation alert API. Seconds of runway between our ≥0.70 call and the bonding curve completing. Built for fast traders + bots. 950k+ mints indexed, every prediction hashed before outcome.">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Graduate Oracle API — real-time pump.fun graduation alert for builders">
+<meta property="og:description" content="Catch pump.fun graduations before the curve completes. Real-time alert API with seconds of runway. One HTTP call gets you the score on every mint. Hashed before outcome.">
+<meta property="og:url" content="https://graduateoracle.fun/api">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="GRADUATE">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GRADUATE API — pump.fun graduation oracle">
+<meta name="twitter:description" content="Catch pump.fun graduations before the curve completes. Real-time API for fast traders + bots. Hashed-before-outcome receipts.">
+<meta name="twitter:image" content="https://graduateoracle.fun/brand/og-image.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="alternate icon" href="/brand/favicon.svg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/api.css">
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">DASHBOARD</a>
+    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link active" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="api-main">
+
+<section class="api-hero">
+  <h1>Catch pump.fun graduations before the curve completes.</h1>
+  <p class="api-hero-tag">Real-time graduation alert API. Median <b><span id="api-runway-num">—s</span></b> of runway between our ≥0.70 confidence call and the bonding curve completing — built for fast traders, sniper bots, and trading terminals. <b><span id="api-headline-rate">—%</span></b> of those calls graduate within 24h<span id="api-headline-n" class="muted" style="font-weight:400;"></span>. <b>950,000+ pump.fun mints indexed.</b> Every prediction publicly hashed <b>before</b> the outcome was known. One HTTP call — full receipts at <a href="/accuracy">/accuracy</a>.</p>
+  <p>If you're building a wallet, terminal, sniper, alert tool, or analytics layer on Solana, this is the prediction layer your users currently don't see — and the only one with a public, pre-registered receipts chain. <b>Integrating into a terminal? → <a href="/for-terminals">/for-terminals</a></b> (REST, WebSocket, webhook, 30-day pilot). Backed by <b id="hero-curves">950,000+</b> mints with on-chain-verified outcomes; <a href="https://github.com/Based-LTD/graduate-oracle" target="_blank" rel="noopener">discipline trail on github</a>.</p>
+  <p style="margin-top: 1em; font-size: 0.9em; opacity: 0.85;"><b>What we don't do:</b> mature mint tracking, lifetime charting, slow-cook rug detection, trade execution. Out of scope by design — that's how the prediction stays honest. <a href="/api/scope">/api/scope</a> documents what's in and out.</p>
+  <div class="api-cta">
+    <a class="btn-cta primary" href="#tiers">CHOOSE YOUR PLAN</a>
+    <a class="btn-cta" href="#quickstart">QUICKSTART →</a>
+    <a class="btn-cta" href="/verdict">SEE THE VERDICT →</a>
+  </div>
+</section>
+
+<section class="api-feat">
+  <h2>What every response includes</h2>
+  <div class="feat-grid">
+    <div class="feat">
+      <div class="feat-icon">🎯</div>
+      <h3>Graduation probability score</h3>
+      <p>Each live mint at age 30s or 60s gets a <code>grad_prob</code> score, anchored to <span id="feat-curves">950k+</span> on-chain observations. Past 60s the field returns <code>null</code> — by design. We predict before the curve reveals itself.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">📊</div>
+      <h3>Inline calibration receipt</h3>
+      <p>Every prediction carries <code>grad_prob_calibration</code>: the historical accuracy at this exact (age × confidence) cell. Build accuracy-aware policies on top — your bot can require <code>historical_actual_rate &gt; 0.7</code> before acting.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">🧬</div>
+      <h3>Creator track records</h3>
+      <p>Each mint comes with the creator's full launch history — <code>runner_creator</code> flag, <code>rate_5x</code>, <code>n_launches</code>. Now backfilled against on-chain truth (99.4% of labels are direct Solana state, not derived).</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">⚠</div>
+      <h3>Rug detection</h3>
+      <p><code>rug_heuristic</code> = transparent flag list (bundle %, holder concentration, fresh-wallet first-3, bundle-dump-in-progress). <code>rug_prob</code> = k-NN over labeled rug history. Both ship inline on every mint.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">🎓</div>
+      <h3>Post-graduation survival</h3>
+      <p>Once a mint graduates, we poll its DEX price at 5/15/30 min checkpoints. The aggregate <code>post_graduation.sustain_rate_30m</code> on <a href="/api/accuracy">/api/accuracy</a> shows ~47% of graduates hold ≥80% of grad price for 30m. The per-mint <code>post_grad_survival_prob</code> field is currently in an <a href="https://github.com/Based-LTD/graduate-oracle/blob/main/docs/research/post_grad_metric_broken_since_launch.md">auto-lift gate</a> — sunset 2026-05-07 after a snapshot-source bug was found, clean-corpus k-NN re-validating; expected to restore within days. Aggregate stat is unaffected.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">🔍</div>
+      <h3>Public scope endpoint</h3>
+      <p><code>GET /api/scope</code> documents what we predict, at what age, against what corpus, with what calibration method. <b>Every claim is auditable.</b> No hidden caveats.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── What you get · alert kind matrix · sets expectations BEFORE pricing ── -->
+<section class="api-alerts-explainer">
+  <h2>The signals</h2>
+  <p class="pricing-intro">Six live signals, individually subscribable as Telegram alerts or pollable via API. Paid product — subscribe in SOL or hold $GO. The differentiated alpha is powered by our wallet + creator index; this is the part of the stack competitors can't quickly replicate.</p>
+  <div class="alert-grid">
+    <div class="alert-card paid">
+      <div class="alert-tag">OBSERVABLE</div>
+      <h4><code>grad_prob</code></h4>
+      <p>Fires when any non-mayhem mint hits N% graduation probability. The classic signal — observable from any pump.fun websocket.</p>
+    </div>
+    <div class="alert-card paid">
+      <div class="alert-tag">OBSERVABLE</div>
+      <h4><code>vsol_burst</code></h4>
+      <p>Fires when a mint adds N SOL of vSOL in 60 seconds. Surge detector — also publicly observable.</p>
+    </div>
+    <div class="alert-card paid">
+      <div class="alert-tag">BUILDER+</div>
+      <h4><code>runner_dev</code> 🔒</h4>
+      <p>Fires the moment a wallet with proven 5×+ track record launches a fresh mint. Powered by our creator history index. <b>This is how you front-run the runner before anyone else even knows it's launched.</b></p>
+    </div>
+    <div class="alert-card paid">
+      <div class="alert-tag">BUILDER+</div>
+      <h4><code>smart_in</code> 🔒</h4>
+      <p>Fires when N+ leaderboard wallets are <em>currently</em> in a mint's top buyers. Real-time tail-trading of proven wallets — not historical, live.</p>
+    </div>
+    <div class="alert-card paid">
+      <div class="alert-tag">BUILDER+</div>
+      <h4><code>runner_5x</code> · <code>runner_10x</code> 🔒</h4>
+      <p>Fires when a mint hits N% odds of 5× or 10× <em>from its current price</em> — the trader-relevant question. From-now math nobody else publishes.</p>
+    </div>
+    <div class="alert-card paid">
+      <div class="alert-tag">BUILDER+</div>
+      <h4><code>wallet</code> 🔒</h4>
+      <p>Fires every time a specific wallet buys a new mint. Pure copy-trading: pick the wallet, get the alert.</p>
+    </div>
+  </div>
+</section>
+
+<section id="tiers" class="api-tiers">
+  <h2>Pick your plan</h2>
+  <p class="pricing-intro"><b>Two ways in:</b> subscribe in SOL via Phantom <em>or</em> hold $GO — pick one.<br><br>
+  💎 <b>Subscribe</b> — pay in SOL, founding rate locked permanently. Your price never goes up.<br>
+  🪙 <b>Hold $GO</b> — hold <b>500k</b> for TG bot signal access, hold <b>2.5M</b> for API access. Auto-upgrades when you hold; reverts if you sell.<br><br>
+  Activates instantly either way. <span class="muted">$GO on-chain tokenomics handled at the trade layer: 50% burn, 30% SOL to holders, 10% public treasury — <a href="/for-terminals">/for-terminals</a> for details.</span></p>
+
+  <!-- ── feature-comparison table — for analytical buyers who want to see
+       exactly what's different between tiers at a glance. The tier cards
+       below are for the conversion click. -->
+  <div class="tiers-table-wrap">
+    <table class="tiers-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Builder</th>
+          <th class="hot">Pro ★</th>
+          <th class="enterprise">Enterprise</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>price</th>
+          <td>0.4 SOL/mo<br><span class="muted" data-price-usd="0.4">~$— /mo</span></td>
+          <td>1 SOL/mo<br><span class="muted" data-price-usd="1">~$— /mo</span></td>
+          <td><b>inquire</b><br><span class="muted">custom</span></td>
+        </tr>
+        <tr>
+          <th>API calls / day</th>
+          <td>5,000</td>
+          <td>50,000</td>
+          <td><b>custom</b> <span class="muted">(millions)</span></td>
+        </tr>
+        <tr>
+          <th>live data</th>
+          <td>real-time</td>
+          <td>real-time</td>
+          <td>real-time + <b>websocket firehose</b></td>
+        </tr>
+        <tr>
+          <th><code>/probe</code> + <code>/wallet</code></th>
+          <td>✓</td><td>✓</td><td>✓</td>
+        </tr>
+        <tr>
+          <th><code>/runners</code> + <code>/smart_money_active</code></th>
+          <td>✓</td><td>✓</td><td>✓</td>
+        </tr>
+        <tr>
+          <th>composite signal (ACT/WATCH/SCOUT)</th>
+          <td>✓</td><td>✓</td><td>✓</td>
+        </tr>
+        <tr>
+          <th>premium alerts (creator/runner/wallet)</th>
+          <td>✓ · 10 rules</td>
+          <td>✓ · ∞ rules</td>
+          <td>✓ · ∞ rules</td>
+        </tr>
+        <tr>
+          <th>watchlist size</th>
+          <td>unlimited</td>
+          <td>unlimited</td>
+          <td>unlimited</td>
+        </tr>
+        <tr>
+          <th>webhook delivery</th>
+          <td>—</td>
+          <td>✓ <span class="muted">(push, not poll)</span></td>
+          <td>✓</td>
+        </tr>
+        <tr>
+          <th>wallet leaderboard (discovery)</th>
+          <td>—</td>
+          <td>✓</td>
+          <td>✓</td>
+        </tr>
+        <tr>
+          <th>white-label responses</th>
+          <td>—</td>
+          <td>—</td>
+          <td>✓</td>
+        </tr>
+        <tr>
+          <th>support</th>
+          <td>community</td>
+          <td>priority</td>
+          <td><b>dedicated · SLA</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tiers-grid tiers-3">
+
+    <!-- 2026-06-11: FREE TIER REMOVED. graduate-oracle is a paid service.
+         No free signups, no "give us your email for a free key" flow.
+         Keys are issued on payment confirmation via /api/upgrade. -->
+
+
+    <!-- ─── BUILDER ─────────────────────────────────────────────────── -->
+    <div class="tier" id="card-builder">
+      <div class="tier-name">Builder</div>
+      <div class="tier-price">0.4 SOL<span>/mo</span></div>
+      <div class="tier-yearly"><span data-price-usd="0.4">~$— /mo</span> · or 4 SOL/yr (save 17%)</div>
+      <ul>
+        <li><b>5,000</b> API calls / day</li>
+        <li>Real-time live data (no delay)</li>
+        <li>All endpoints incl. <code>/runners</code> + <code>/smart_money_active</code></li>
+        <li><b>Premium alerts unlocked:</b><br>
+          <code>runner_dev</code> · <code>smart_in</code> · <code>runner_5x</code> · <code>runner_10x</code> · <code>wallet</code></li>
+        <li><b>10</b> Telegram alert rules</li>
+        <li>Unlimited watchlist · full leaderboards</li>
+      </ul>
+      <div class="tier-action">
+        <select id="builder-plan">
+          <option value="monthly">Monthly · 0.4 SOL</option>
+          <option value="yearly">Yearly · 4 SOL (save 17%)</option>
+        </select>
+        <button class="btn-cta" data-action="start-builder" type="button">START BUILDER</button>
+      </div>
+      <div class="tier-result" id="result-builder" hidden>
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- ─── PRO ─────────────────────────────────────────────────────── -->
+    <div class="tier hot" id="card-pro">
+      <div class="tier-badge">★ PRO</div>
+      <div class="tier-name">Pro</div>
+      <div class="tier-price">1 SOL<span>/mo</span></div>
+      <div class="tier-yearly"><span data-price-usd="1">~$— /mo</span> · or 10 SOL/yr (save 17%)</div>
+      <ul>
+        <li><b>50,000</b> API calls / day</li>
+        <li>Real-time live data</li>
+        <li><b>Unlimited</b> alerts + watchlist</li>
+        <li>Webhook delivery (push, not poll)</li>
+        <li>Priority support</li>
+        <li>Built for trading bots running real volume</li>
+      </ul>
+      <div class="tier-action">
+        <select id="pro-plan">
+          <option value="monthly">Monthly · 1 SOL</option>
+          <option value="yearly">Yearly · 10 SOL (save 17%)</option>
+        </select>
+        <button class="btn-cta primary" data-action="start-pro" type="button">START PRO</button>
+      </div>
+      <div class="tier-result" id="result-pro" hidden>
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <p class="tier-note">Plans activate within ~30 seconds of confirmed on-chain payment. Cancel any time by not renewing — no card, no Stripe, no recurring charges.</p>
+
+  <!-- Enterprise inquiry — separate from the productized tiers, a "let's
+       talk" callout for high-volume integrators (broker aggregators,
+       trading firms, signal channels embedding our score). -->
+  <div class="enterprise-callout">
+    <div class="enterprise-head">
+      <span class="enterprise-tag">ENTERPRISE</span>
+      <h3>Need more than Pro?</h3>
+    </div>
+    <p>For high-volume bot operators, brokers, signal channels, and trading firms embedding our score next to every mint they list. Custom rate limits, dedicated infra, white-label API responses, SLA, direct support.</p>
+    <ul class="enterprise-perks">
+      <li><b>WebSocket firehose</b> — every score change pushed in real time, no polling</li>
+      <li><b>Custom rate limits</b> — millions of calls / day, dedicated quota</li>
+      <li><b>White-label responses</b> — embed our calibrated scores in your product without our brand</li>
+      <li><b>Dedicated support</b> — direct line, response SLA, custom integrations</li>
+    </ul>
+    <a class="btn-cta primary" href="https://x.com/GraduateOracle" target="_blank" rel="noopener">DM @GraduateOracle ON X</a>
+  </div>
+
+  <!-- "I already have a free key, upgrade THAT one" — pick tier + plan -->
+  <details class="upgrade-existing">
+    <summary>Already have a free key? Upgrade <em>that one</em> instead.</summary>
+    <div class="upgrade-existing-row">
+      <input type="text" id="existing-key" placeholder="paste your existing key (grad_…)">
+      <select id="existing-tier">
+        <option value="builder">→ Builder</option>
+        <option value="pro" selected>→ Pro</option>
+      </select>
+      <select id="existing-plan">
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly (save 17%)</option>
+      </select>
+      <button class="btn-cta" data-action="upgrade-existing" type="button">UPGRADE</button>
+    </div>
+    <div class="tier-result" id="result-existing" hidden></div>
+  </details>
+</section>
+
+<section id="quickstart" class="api-quick">
+  <h2>Quickstart</h2>
+  <p>Send your key on every request via <code>Authorization: Bearer &lt;key&gt;</code> or <code>X-API-Key: &lt;key&gt;</code> header.</p>
+  <pre class="code-block"># curl
+curl -H "Authorization: Bearer grad_your_key_here" \
+     "https://graduateoracle.fun/api/v1/live?limit=10&min_prob=0.5"
+
+# python
+import requests
+r = requests.get("https://graduateoracle.fun/api/v1/live",
+                 headers={"Authorization": "Bearer grad_your_key_here"},
+                 params={"limit": 10, "min_prob": 0.5})
+print(r.json())
+
+# javascript / node
+const r = await fetch("https://graduateoracle.fun/api/v1/live?limit=10", {
+  headers: { Authorization: "Bearer grad_your_key_here" }
+});
+console.log(await r.json());</pre>
+  <p>Full schema + try-it-out interface: <a href="/docs">/docs</a> (Swagger UI, auto-generated).</p>
+</section>
+
+</main>
+
+<footer>
+  <div class="foot-left">GRADUATE · alpha · <a href="/">dashboard</a> · <a href="/docs">docs</a></div>
+  <div class="foot-right muted">all data observable on-chain · educational · DYOR</div>
+</footer>
+
+<script>
+// ── Inline tier-card flows ────────────────────────────────────────────
+// Paid tiers (Builder / Pro / Enterprise). Each card reveals results
+// inline — no modal, no scrolling, no confusion. A small "↺ start over"
+// button on each result lets the user reset the card. The free-tier
+// signup flow was removed 2026-06-11; this is a paid-only product now.
+
+function showCardResult(cardId, html) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const action = card.querySelector('.tier-action');
+  const result = card.querySelector('.tier-result');
+  if (action) action.style.display = 'none';
+  if (result) {
+    result.innerHTML = html;
+    result.hidden = false;
+  }
+}
+
+function resetCard(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const action = card.querySelector('.tier-action');
+  const result = card.querySelector('.tier-result');
+  if (action) action.style.display = '';
+  if (result) result.hidden = true;
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = 'COPIED ✓';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }
+  } catch {}
+}
+
+// ── Tier flow (Builder + Pro): generic intent → memo → poll pattern ───
+// (The legacy getFreeKey() flow was removed 2026-06-12 when we killed the
+// free tier — the card-free DOM element it referenced no longer exists.)
+// Both tiers use the same intent → memo → poll pattern; the only differences
+// are the tier id, plan select id, button label, and resulting card target.
+const tierIntents = {};   // {pro: intent, builder: intent}
+let activePollTimer = null;
+let activePollTier  = null;
+
+function renderTierResult(d, tier) {
+  const label = tier === 'pro' ? 'Pro' : 'Builder';
+  const newKeyBlock = d.new_key
+    ? `<div class="tier-result-label">⚠️ Your new API key — save it before paying:</div>
+       <div class="tier-result-key" id="result-${tier}-key">${d.new_key}</div>
+       <div class="tier-result-actions">
+         <button type="button" class="btn-cta primary" data-copy-target="result-${tier}-key">COPY KEY</button>
+       </div>
+       <div class="tier-result-hint">${d.new_key_warning || `It auto-upgrades to ${label} the moment your SOL payment confirms (~30s).`}</div>
+       <hr class="tier-result-divider">`
+    : `<div class="tier-result-label">Upgrading existing key — pay below to activate ${label}:</div>`;
+  return `${newKeyBlock}
+    <div class="tier-result-label">Send <b>${d.amount_sol} SOL</b> with memo <b>${d.memo}</b> to:</div>
+    <div class="tier-result-key" id="result-${tier}-addr">${d.treasury_wallet}</div>
+    <div class="tier-result-actions">
+      <button type="button" class="btn-cta primary" data-pay-phantom data-tier="${tier}">🦊 PAY WITH PHANTOM</button>
+      <a class="btn-cta" href="${d.deeplink_solana_pay}">📱 SOLANA PAY</a>
+      <button type="button" class="btn-cta" data-copy-target="result-${tier}-memo">📋 COPY MEMO</button>
+    </div>
+    <div class="tier-result-hint" id="result-${tier}-memo" data-copy-value="${d.memo}">memo: <b>${d.memo}</b> · expires in ${d.ttl_minutes} min</div>
+    <pre class="tier-result-status" id="result-${tier}-status">waiting for payment…</pre>
+    <button type="button" class="btn-cta-link" data-action="reset-card" data-card="${tier}">↺ cancel</button>`;
+}
+
+async function startTier(tier) {
+  const planEl = document.getElementById(`${tier}-plan`);
+  const cardId = `card-${tier}`;
+  const card = document.getElementById(cardId);
+  const btn = card.querySelector(`[data-action="start-${tier}"]`);
+  if (btn) btn.disabled = true;
+  showCardResult(cardId, `<div class="tier-result-label">Creating payment intent…</div>`);
+  try {
+    const r = await fetch('/api/upgrade', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tier, plan: planEl.value}),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      showCardResult(cardId,
+        `<div class="tier-result-error">error: ${d.detail?.error || JSON.stringify(d)}</div>
+         <button type="button" class="btn-cta-link" data-action="reset-card" data-card="${tier}">↺ try again</button>`);
+      return;
+    }
+    tierIntents[tier] = d;
+    showCardResult(cardId, renderTierResult(d, tier));
+    pollTierStatus(d.memo, tier);
+  } catch (err) {
+    showCardResult(cardId, `<div class="tier-result-error">error: ${err.message}</div>`);
+  }
+}
+
+async function upgradeExisting() {
+  const keyEl   = document.getElementById('existing-key');
+  const planEl  = document.getElementById('existing-plan');
+  const tierEl  = document.getElementById('existing-tier');
+  const tier    = tierEl?.value || 'pro';
+  const out     = document.getElementById('result-existing');
+  if (!keyEl.value.trim()) {
+    out.hidden = false;
+    out.innerHTML = `<div class="tier-result-error">paste your existing key first</div>`;
+    return;
+  }
+  out.hidden = false;
+  out.innerHTML = `<div class="tier-result-label">Creating payment intent…</div>`;
+  try {
+    const r = await fetch('/api/upgrade', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tier, plan: planEl.value, key: keyEl.value.trim()}),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      out.innerHTML = `<div class="tier-result-error">error: ${d.detail?.error || JSON.stringify(d)}</div>`;
+      return;
+    }
+    tierIntents[tier] = d;
+    out.innerHTML = renderTierResult(d, tier);
+    pollTierStatus(d.memo, tier);
+  } catch (err) {
+    out.innerHTML = `<div class="tier-result-error">error: ${err.message}</div>`;
+  }
+}
+
+function pollTierStatus(memo, tier) {
+  if (activePollTimer) clearInterval(activePollTimer);
+  activePollTier = tier;
+  activePollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/upgrade/' + memo);
+      const d = await r.json();
+      const statusEl = document.getElementById(`result-${tier}-status`);
+      if (!statusEl) { clearInterval(activePollTimer); return; }
+      if (d.fulfilled) {
+        const label = tier === 'pro' ? 'Pro' : 'Builder';
+        statusEl.textContent = `✓ PAYMENT CONFIRMED — ${label} activated. tx: ` + (d.tx_signature || '').slice(0, 24) + '…';
+        statusEl.classList.add('paid');
+        clearInterval(activePollTimer);
+      } else {
+        const ago = Math.max(0, Math.floor(Date.now()/1000 - d.expires_at + 30*60));
+        statusEl.textContent = 'waiting for payment… ' + ago + 's';
+      }
+    } catch {}
+  }, 5000);
+}
+
+// ── Phantom extension pay (browser one-click) ──────────────────────────
+async function ensureWeb3() {
+  if (window.solanaWeb3) return window.solanaWeb3;
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+  return window.solanaWeb3;
+}
+
+async function payWithPhantomExt(tier) {
+  const intent = tierIntents[tier];
+  if (!intent) return;
+  const { memo, treasury_wallet, amount_sol } = intent;
+  const provider = window.phantom?.solana || (window.solana?.isPhantom ? window.solana : null);
+  const status = document.getElementById(`result-${tier}-status`);
+  if (!provider) {
+    if (status) status.textContent = 'Phantom not detected. Use the Solana Pay link or paste memo manually.';
+    return;
+  }
+  if (status) status.textContent = 'Connecting Phantom…';
+  try {
+    await provider.connect();
+    const w3 = await ensureWeb3();
+    const conn = new w3.Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    const fromPk = provider.publicKey;
+    const toPk   = new w3.PublicKey(treasury_wallet);
+    const lamports = Math.round(amount_sol * w3.LAMPORTS_PER_SOL);
+    const tx = new w3.Transaction().add(
+      w3.SystemProgram.transfer({ fromPubkey: fromPk, toPubkey: toPk, lamports }),
+      new w3.TransactionInstruction({
+        keys: [{ pubkey: fromPk, isSigner: true, isWritable: true }],
+        programId: new w3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
+        data: new TextEncoder().encode(memo),
+      })
+    );
+    tx.feePayer = fromPk;
+    const { blockhash } = await conn.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+    if (status) status.textContent = 'Confirm in Phantom…';
+    const { signature } = await provider.signAndSendTransaction(tx);
+    if (status) status.textContent = 'Submitted ' + signature.slice(0,12) + '… waiting for confirmation';
+  } catch (err) {
+    if (status) status.textContent = 'Phantom error: ' + (err.message || err);
+  }
+}
+
+// ── Single delegated click handler ────────────────────────────────────
+document.addEventListener('click', (e) => {
+  const action = e.target.closest('[data-action]')?.dataset.action;
+  if (action === 'start-pro')     { e.preventDefault(); startTier('pro');     return; }
+  if (action === 'start-builder') { e.preventDefault(); startTier('builder'); return; }
+  if (action === 'upgrade-existing') {
+    e.preventDefault();
+    upgradeExisting();
+    return;
+  }
+  if (action === 'reset-card') {
+    const which = e.target.closest('[data-card]')?.dataset.card;
+    if (which === 'free')    resetCard('card-free');
+    if (which === 'pro')     resetCard('card-pro');
+    if (which === 'builder') resetCard('card-builder');
+    if (activePollTimer) clearInterval(activePollTimer);
+    return;
+  }
+
+  const copyTarget = e.target.closest('[data-copy-target]');
+  if (copyTarget) {
+    const id = copyTarget.dataset.copyTarget;
+    const el = document.getElementById(id);
+    const text = el?.dataset.copyValue || el?.textContent || '';
+    if (text) copyText(text, copyTarget);
+    return;
+  }
+
+  const phantomBtn = e.target.closest('[data-pay-phantom]');
+  if (phantomBtn) {
+    e.preventDefault();
+    const tier = phantomBtn.dataset.tier || 'pro';
+    payWithPhantomExt(tier);
+    return;
+  }
+});
+
+// Live curves count for hero + feature blurb
+fetch('/api/live').then(r => r.json()).then(d => {
+  if (!d.n_indexed_curves) return;
+  const hero = document.getElementById('hero-curves');
+  if (hero) hero.textContent = d.n_indexed_curves.toLocaleString() + '+';
+  const feat = document.getElementById('feat-curves');
+  if (feat) feat.textContent = Math.floor(d.n_indexed_curves / 1000).toLocaleString() + 'k+';
+}).catch(() => {});
+
+// Live: runway (median seconds to grad after ≥0.70 call) + accuracy (hit rate).
+// Both from /api/accuracy.headline. No hardcoded numbers.
+fetch('/api/accuracy').then(r => r.json()).then(d => {
+  const hl = d.headline || {};
+  const last30 = hl.last_30d;
+  if (last30?.status === 'ok' && last30.n_resolved) {
+    const rate = document.getElementById('api-headline-rate');
+    const n    = document.getElementById('api-headline-n');
+    if (rate) rate.textContent = (last30.hit_rate * 100).toFixed(1) + '%';
+    if (n)    n.textContent    = ' (n=' + last30.n_resolved.toLocaleString() + ')';
+  }
+  const timing = hl.time_to_grad;
+  if (timing?.status === 'ok' && timing.p50_s > 0) {
+    const runway = document.getElementById('api-runway-num');
+    if (runway) {
+      runway.textContent = timing.p50_s < 60 ? `${timing.p50_s}s` : `${Math.round(timing.p50_s / 60)}m`;
+    }
+  }
+}).catch(() => {});
+
+// Live SOL→USD pricing — replaces ~$— placeholders with the actual dollar
+// equivalent based on the current Jupiter quote. Falls back silently to
+// "SOL only" if the endpoint is unreachable.
+fetch('/api/sol_price').then(r => r.json()).then(d => {
+  const sol = d && d.sol_usd;
+  if (sol) {
+    document.querySelectorAll('[data-price-usd]').forEach(el => {
+      const sol_amt = parseFloat(el.dataset.priceUsd);
+      if (!isFinite(sol_amt)) return;
+      const usd = Math.round(sol_amt * sol);
+      el.textContent = `~$${usd} /mo`;
+    });
+  }
+
+  // ── Purchasing gate ──────────────────────────────────────────────────
+  // When the store is closed (sol_pay.PURCHASING_OPEN === False) every paid
+  // CTA locks to "COMING SOON" and a founding-price banner is shown. Free
+  // key + Enterprise "DM on X" stay live — neither is an on-chain purchase.
+  if (d && d.purchasing_open === false) {
+    ['start-builder', 'start-pro', 'upgrade-existing'].forEach(act => {
+      document.querySelectorAll(`[data-action="${act}"]`).forEach(btn => {
+        btn.disabled = true;
+        btn.dataset.action = '';            // neuter the click handler
+        btn.textContent = 'COMING SOON';
+        btn.classList.add('btn-soon');
+      });
+    });
+    ['builder-plan', 'pro-plan', 'existing-key', 'existing-tier', 'existing-plan']
+      .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = true; });
+
+    const tiers = document.getElementById('tiers');
+    const intro = tiers && tiers.querySelector('.pricing-intro');
+    if (intro && !document.getElementById('soon-banner')) {
+      const b = document.createElement('div');
+      b.id = 'soon-banner';
+      b.className = 'soon-banner';
+      b.innerHTML =
+        '<b>Paid plans open soon.</b> ' +
+        (d.intro_price ? d.intro_price : 'Founding pricing locked for early subscribers.') +
+        ' Grab a free key now — your slot carries the founding rate when the store opens.';
+      intro.insertAdjacentElement('afterend', b);
+    }
+  }
+}).catch(() => {});
+</script>
+
+</body>
+</html>

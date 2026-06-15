@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle — real-time pump.fun graduation alert</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Catch pump.fun graduations before the bonding curve completes. Median runway between our ≥0.70 call and graduation, hashed before outcome. Built for fast traders + bots. 950,000+ mints indexed.">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="graduate-oracle — real-time pump.fun graduation alert">
+<meta property="og:description" content="Catch pump.fun graduations before the bonding curve completes. Real-time alert with seconds of runway between our ≥0.70 call and grad. 950k+ mints indexed, every prediction hashed before outcome. NFA · DYOR.">
+<meta property="og:url" content="https://graduateoracle.fun/">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="graduate-oracle">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="graduate-oracle — real-time pump.fun graduation alert">
+<meta name="twitter:description" content="Catch pump.fun graduations before the curve completes. Real-time alert. 950k+ mints indexed. Hashed before outcome. NFA · DYOR.">
+<meta name="twitter:image" content="https://graduateoracle.fun/brand/og-image.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="alternate icon" href="/brand/favicon.svg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Background ambience — blurred color blobs replacing the prior
+     radial-gradient (which banded visibly on 8-bit displays). z-index:0
+     so all content sits above it. -->
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<!-- boot sequence overlay -->
+<div id="boot">
+  <pre id="boot-text"></pre>
+</div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link active" href="/">DASHBOARD</a>
+    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <div class="meta">
+    <span id="status">
+      <span class="live">● LIVE</span>
+      &nbsp;<span class="sep">·</span>&nbsp; <span id="snap-age">—</span>
+      &nbsp;<span class="sep">·</span>&nbsp; <span id="n-tracked">—</span> tracked
+      &nbsp;<span class="sep">·</span>&nbsp; <span id="n-indexed">—</span> indexed
+      &nbsp;<span class="sep">·</span>&nbsp; <span id="high-confidence-counter"></span>
+    </span>
+  </div>
+</header>
+
+<!-- Active acceptance gates banner (Finding 7/8 chain).
+     Removes itself when neither gate is active. Read by app.js
+     from /api/status.acceptance_gates (added in main.py /api/status). -->
+<section id="acceptance-gates-banner" class="acceptance-banner" style="display:none">
+  <div class="acceptance-banner-inner">
+    <span class="acceptance-banner-dot"></span>
+    <span class="acceptance-banner-text" id="acceptance-banner-text">
+      Alerts paused for calibration · bucket distribution stabilizing post-cutover
+    </span>
+    <a class="acceptance-banner-link" href="/status">why? see status →</a>
+  </div>
+</section>
+
+<!-- Hero pitch — verdict-led (2026-06-02 Branch A). Leads with the
+     tradeable headline (ACT ≥5× rate from the pre-registered forward
+     validation), with the calibration receipt as supporting evidence.
+     Both numbers are receipts; the verdict number is the moat. -->
+<section class="hero-pitch hero-pitch-compact">
+  <div class="hero-pitch-left">
+    <div class="hero-pitch-stat-wrap">
+      <span class="hero-pitch-stat-tag">MEDIAN RUNWAY · ≥70% CALLS · LIVE</span>
+      <span class="hero-pitch-stat-num" data-mode="ok" id="hero-runway">—s</span>
+    </div>
+    <div class="hero-pitch-text">
+      <div class="hero-pitch-tagline">
+        between our call and the bonding curve <strong>completing</strong>
+        <span id="hero-runway-n" class="muted" style="font-weight:400; opacity:0.7;"></span>
+      </div>
+      <div class="hero-pitch-detail">
+        Catch pump.fun graduations <strong>before</strong> the curve
+        completes — fast traders + bots get a head start.
+        <strong id="hero-last30-rate">—%</strong> of ≥70% calls graduate
+        within 24h <span id="hero-last30-n" class="muted" style="opacity:0.7;"></span>.
+        <strong>950,000+ mints indexed.</strong>
+        Every prediction publicly hashed <strong>before</strong> the
+        outcome was known. Live receipts on
+        <a href="/accuracy">/accuracy</a>.
+      </div>
+    </div>
+  </div>
+  <div class="hero-pitch-cta-row">
+    <a class="hero-pitch-cta hero-pitch-cta-primary" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">
+      Subscribe via Telegram →
+    </a>
+    <a class="hero-pitch-cta hero-pitch-cta-secondary" href="/accuracy">
+      Receipts
+    </a>
+  </div>
+</section>
+
+<!-- Hero is static post-verdict (2026-06-02 Branch A). The dynamic
+     hero-stat loader was removed when the hero pivoted from the live
+     calibration number to the locked verdict number; the calibration
+     ticker below continues to surface live receipts dynamically. -->
+
+
+<!-- API-demo identity — what makes this dashboard different from a
+     marketing page. The dashboard IS the API. The pulsing dot + the
+     direct callout reinforces "this is live, you can build on it." -->
+<aside class="api-demo-alert" role="status">
+  <div class="api-demo-alert-flag">
+    <span class="api-demo-pulse"></span>
+    <span class="api-demo-alert-tag">API DEMO</span>
+  </div>
+  <div class="api-demo-alert-body">
+    Below: <code>/api/v1/live</code> rendered as a dashboard.
+    Color tiers are calibrated against on-chain truth:
+    <span class="band-legend">
+      <span class="band-chip band-low">≥30%</span>
+      <span class="band-explain">noise (15-17% graduate)</span>
+    </span>
+    <span class="band-legend">
+      <span class="band-chip band-mid">≥50%</span>
+      <span class="band-explain">real signal (24-30%)</span>
+    </span>
+    <span class="band-legend">
+      <span class="band-chip band-high">≥70%</span>
+      <span class="band-explain">HITS · TG fires here</span>
+    </span>
+  </div>
+  <a class="api-demo-alert-cta" href="/docs">Build with the API →</a>
+</aside>
+
+<!-- Live calibration ticker — global, sits below the alert -->
+<section class="meta-strip">
+  <div class="cal-ticker" id="cal-ticker" data-state="warming">
+    <span class="cal-ticker-label">PROVEN ACCURACY</span>
+    <span class="cal-ticker-content" id="cal-ticker-content">loading model calibration…</span>
+    <a class="cal-ticker-method" href="/accuracy" target="_blank" rel="noopener" title="how the math works — methodology + live receipts">how →</a>
+  </div>
+</section>
+
+<!-- tab nav — sits above the table so navigation is always visible
+     without scrolling past the long mint list. -->
+<nav class="tabs">
+  <button class="tab active" data-tab="grads">GRADUATIONS</button>
+  <button class="tab" data-tab="watch">WATCHLIST&nbsp;<span class="watch-count" id="watch-count">0</span></button>
+  <button class="tab" data-tab="snipers">SNIPER&nbsp;WATCH</button>
+</nav>
+
+<main>
+  <!-- Hero "now playing" — top-probability mint highlighted as a card.
+       Clickable to open the same detail popup as the table rows. -->
+  <section id="hero" class="hero" style="display:none">
+    <div class="hero-label">🎯 HITS — ≥70% to graduate</div>
+    <div class="hero-meta" id="hero-meta"></div>
+    <div class="hero-row">
+      <div class="hero-mint">
+        <span class="mint-cell hero-mint-cell" id="hero-mint" data-mint="">
+          <span class="mint-text" id="hero-mint-text">—</span>
+          <span class="copy-icon">⎘</span>
+        </span>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><span class="lab">vSOL</span><span class="val" id="hero-vsol">—</span></div>
+        <div class="hero-stat"><span class="lab">buyers</span><span class="val" id="hero-buyers">—</span></div>
+        <div class="hero-stat"><span class="lab">age</span><span class="val" id="hero-age">—</span></div>
+        <div class="hero-stat hero-prob"><span class="lab">grad odds</span><span class="val" id="hero-prob">—</span><span class="hero-trend" id="hero-trend"></span></div>
+        <div class="hero-stat"><span class="lab">≥5×</span><span class="val" id="hero-prob-5x">—</span></div>
+        <div class="hero-stat"><span class="lab">≥10×</span><span class="val" id="hero-prob-10x">—</span></div>
+        <div class="hero-stat"><span class="lab">expected peak</span><span class="val" id="hero-peak">—</span></div>
+      </div>
+      <div class="hero-actions" id="hero-actions"></div>
+      <button type="button" class="hero-expand" id="hero-expand" aria-label="show full details">
+        <span class="hero-expand-text">EXPAND</span>
+        <span class="hero-expand-chev">▾</span>
+      </button>
+    </div>
+    <div class="hero-row hero-row-2">
+      <div class="hero-badges" id="hero-badges"></div>
+      <div class="hero-creator" id="hero-creator"></div>
+    </div>
+    <!-- Other HITS — additional ≥70% mints scoring right now, clickable strips -->
+    <div class="hero-extras" id="hero-extras"></div>
+  </section>
+
+  <!-- Graduations panel — the live board table. -->
+  <section class="panel" data-panel="grads">
+
+    <!-- Sort & filter controls. Client-side; applies to the existing
+         /api/v1/live payload before render. State persists in localStorage. -->
+    <div class="board-controls">
+      <div class="board-controls-group">
+        <label for="sort-select" class="board-controls-label">Sort</label>
+        <select id="sort-select" class="board-controls-select" title="Choose how to rank the live feed. Lane-60s prediction discipline still holds — these sort options affect display only, not the model's commitments.">
+          <option value="prob">Probability (model)</option>
+          <option value="time">Newest first</option>
+          <option value="hot">Hot launch (composite)</option>
+          <option value="smart">Smart money entries</option>
+          <option value="progress">Closest to graduation</option>
+          <option value="movers">Biggest movers</option>
+        </select>
+      </div>
+      <div class="board-controls-group">
+        <label for="filter-mc-floor" class="board-controls-label">Min MC</label>
+        <select id="filter-mc-floor" class="board-controls-select" title="Filter out mints below this market-cap floor. Pairs well with the Hot launch sort to surface real activity vs dead curves.">
+          <option value="0">no min</option>
+          <option value="1000">$1k</option>
+          <option value="5000">$5k</option>
+          <option value="10000">$10k</option>
+          <option value="25000">$25k</option>
+          <option value="50000">$50k</option>
+        </select>
+      </div>
+      <div class="board-controls-group">
+        <label class="board-controls-toggle" title="Hide mints with no movement (max_mult ≤ 1.0) older than 60s — typically dead curves quietly filling.">
+          <input type="checkbox" id="filter-hide-dead"> hide dead curves
+        </label>
+        <label class="board-controls-toggle" title="Show only mints in the lane-60s prediction window (age ≤ 75s with a HIGH/MED/LOW bucket assigned).">
+          <input type="checkbox" id="filter-in-lane"> in-lane only
+        </label>
+      </div>
+    </div>
+
+    <table id="board">
+      <colgroup>
+        <col style="width: 32px">                              <!-- ★ -->
+        <col style="width: 200px">                             <!-- contract -->
+        <col style="width: 220px">                             <!-- predictions -->
+        <col style="width: 64px">                              <!-- age -->
+        <col style="width: 88px">                              <!-- MC/buyers -->
+        <col style="width: 90px">                              <!-- vSOL/growth -->
+        <col style="width: 90px">                              <!-- mult/peak -->
+        <col style="width: 90px">                              <!-- trend -->
+        <col style="width: 110px">                             <!-- creator -->
+        <col style="width: 130px">                             <!-- links -->
+      </colgroup>
+      <thead><tr>
+        <th>★</th>
+        <th>contract</th>
+        <th class="predictions-col" title="The product. Three predictions per mint: GRAD (will it survive to graduation), X (will it pump from here even if it doesn't graduate), RUG (probability of devil-candle rug in first 5 min). Each shows lift vs base rate.">predictions</th>
+        <th class="r">age</th>
+        <th class="r" title="MC (top) · buyers (bottom)">MC&nbsp;/&nbsp;buyers</th>
+        <th class="r" title="vSOL (top) · 60s growth (bottom)">vSOL&nbsp;/&nbsp;growth</th>
+        <th class="r" title="current mult (top) · session peak (bottom)">mult&nbsp;/&nbsp;peak</th>
+        <th class="r">trend</th>
+        <th class="r">creator</th>
+        <th>links</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty" class="empty" style="display:none">awaiting first snapshot…</p>
+  </section>
+
+  <!-- Smart money leaderboard panel removed 2026-05-11 per
+       project_wallet_index_is_the_moat.md — wallet identities are
+       proprietary moat data; leaderboard surface previously exposed
+       them publicly. Aggregate signal (smart_money_in count + tier
+       categories) remains on the live board. -->
+
+
+  <!-- Watchlist panel -->
+  <section class="panel" data-panel="watch" style="display:none">
+    <div class="panel-head">
+      <h2>WATCHLIST</h2>
+      <div class="panel-sub">starred contracts — pinned across reloads (stored locally in your browser).</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>★</th>
+        <th>contract</th>
+        <th class="r">live</th>
+        <th class="r">vSOL</th>
+        <th class="r">buyers</th>
+        <th class="r" title="odds from current entry price">odds*</th>
+        <th class="r">creator</th>
+        <th>links</th>
+      </tr></thead>
+      <tbody id="watch-rows"></tbody>
+    </table>
+    <p id="watch-empty" class="empty">no contracts pinned. ★ a row on <a href="#" data-go-tab="grads">THE LIVE BOARD</a> to track it.</p>
+  </section>
+
+  <!-- Sniper watch panel -->
+  <section class="panel" data-panel="snipers" style="display:none">
+    <div class="panel-head">
+      <h2>SNIPER WATCH</h2>
+      <div class="panel-sub">wallets that consistently buy in the first <b>2 seconds</b> of a mint's life and end up holding ruggers. avoid following these.</div>
+    </div>
+    <table id="sniper-board">
+      <thead><tr>
+        <th>#</th>
+        <th>wallet</th>
+        <th class="r">mints</th>
+        <th class="r">fast snipes</th>
+        <th class="r">rug %</th>
+        <th class="r">good %</th>
+        <th>links</th>
+      </tr></thead>
+      <tbody id="sniper-rows"></tbody>
+    </table>
+    <p id="sniper-empty" class="empty" style="display:none">computing sniper stats…</p>
+  </section>
+
+  <!-- Paper P&L panel -->
+  <section class="panel" data-panel="paper" style="display:none">
+    <div class="panel-head">
+      <h2>PAPER P&amp;L · LIVE PROOF OF SIGNAL</h2>
+      <div class="panel-sub">
+        Three bots · 1 SOL each · thresholds 70/80/90% · real Jupiter prices · zero overrides.
+        <button type="button" class="details-toggle" data-toggle-details="paper-details">how it works ▸</button>
+      </div>
+      <div id="paper-details" class="panel-details" hidden>
+        <p>Each bot enters every mint whose grad-probability clears its threshold (70 / 80 / 90 %) and exits when the rules fire. Prices come from <b>Jupiter v3</b> — the same data the rest of crypto uses — routed through pump.fun's bonding curve pre-graduation and Raydium post-migration automatically. Positions ride through graduation just like a real trader's would.</p>
+        <p><b style="color:var(--cyan)">ENTRY</b> &nbsp; grad-probability ≥ threshold (signal-only · no price cap)<br>
+        <b style="color:var(--cyan)">EXIT</b> &nbsp;&nbsp; <span class="up">+20% take-profit</span> &nbsp;·&nbsp; 30 min timeout &nbsp;·&nbsp; 5 min stale-quote<br>
+        <b style="color:var(--cyan)">RULES</b> &nbsp; bankroll compounds · no human intervention · no fudge factors</p>
+      </div>
+    </div>
+
+    <!-- Per-threshold summary cards -->
+    <div class="paper-cards" id="paper-cards"></div>
+
+    <!-- Recent trades -->
+    <div class="panel-head" style="margin-top:24px">
+      <h2 style="font-size:1.1rem">RECENT TRADES</h2>
+      <div class="panel-sub">latest 30 across all thresholds, newest first</div>
+    </div>
+    <table id="paper-board">
+      <thead><tr>
+        <th class="r">strategy</th>
+        <th>contract</th>
+        <th class="r">entry prob</th>
+        <th class="r">entry mult</th>
+        <th class="r">exit mult</th>
+        <th class="r">P&amp;L</th>
+        <th class="r">hold</th>
+        <th>reason</th>
+        <th>state</th>
+      </tr></thead>
+      <tbody id="paper-rows"></tbody>
+    </table>
+    <p id="paper-empty" class="empty" style="display:none">paper trader warming up — waiting for first signal…</p>
+  </section>
+
+</main>
+
+<!-- Detail popup — floats above the live data so the table can keep flowing
+     in the background. Live-updates on every refresh tick (the dashboard
+     re-fills its content from the latest snapshot). Click the X, the backdrop,
+     or hit Escape to dismiss. -->
+<div id="detail-popup-backdrop" class="detail-popup-backdrop" hidden></div>
+<div id="detail-popup" class="detail-popup" role="dialog" aria-modal="false" hidden>
+  <div class="detail-popup-head">
+    <span class="detail-popup-mint" id="detail-popup-mint"></span>
+    <button type="button" class="detail-popup-close" aria-label="close">✕</button>
+  </div>
+  <div class="detail-popup-body" id="detail-popup-body"></div>
+</div>
+
+<footer>
+  <div class="foot-left">GRADUATE · alpha v0.2 · <span class="muted">data: <span id="footer-curves">—</span> historical curves + live firehose</span></div>
+  <div class="foot-right muted">NFA · DYOR · prediction model output, not financial advice · pump.fun is high-risk, positions can go to zero</div>
+</footer>
+
+<div id="toast">contract copied</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "goracle",
-  "version": "0.2.0",
-  "description": "graduate-oracle CLI — signup, pay, and use the pump.fun graduation prediction API from your terminal.",
+  "version": "0.3.0",
+  "description": "graduate-oracle CLI — real-time pump.fun graduation alert API, from your terminal. Signup, pay in SOL, stream to your bot.",
   "type": "module",
   "bin": {
     "goracle": "src/index.js"

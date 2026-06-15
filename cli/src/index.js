@@ -22,8 +22,8 @@ const program = new Command();
 
 program
   .name("goracle")
-  .description(chalk.bold("graduate-oracle") + chalk.gray(" — pump.fun graduation prediction API, from your terminal."))
-  .version("0.2.0");
+  .description(chalk.bold("graduate-oracle") + chalk.gray(" — real-time pump.fun graduation alert API, from your terminal."))
+  .version("0.3.0");
 
 program
   .command("signup")

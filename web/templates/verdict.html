@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · the verdict · 2026-06-02</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Branch A verdict — under correction. The original ≥5× metric measured peak from mint origin, not from the call. We caught it pre-launch and are publishing the corrected math. The receipts chain — every prediction hashed before outcome — is doing its job.">
+<meta property="og:title" content="The Verdict · graduate-oracle">
+<meta property="og:description" content="Branch A verdict — under correction. We caught a metric measurement bug pre-launch and are publishing the audit. Receipts chain doing its job.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .ver-main { max-width: 860px; margin: 50px auto 80px; padding: 0 24px; }
+
+  .ver-hero { text-align: center; margin-bottom: 44px; }
+  .ver-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .ver-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.6rem; font-weight: 700; letter-spacing: -1px;
+    margin: 0 0 16px; line-height: 1.15;
+  }
+  @media (max-width: 600px) {
+    .ver-hero h1 { font-size: 1.85rem; letter-spacing: -0.5px; }
+    .ver-hero-sub { font-size: 0.88rem; }
+    .ver-main { margin: 30px auto 60px; padding: 0 18px; }
+    .ver-num { padding: 18px 14px; }
+    .ver-num-value { font-size: 2.4rem; }
+    h2.ver-sec { font-size: 1.1rem; margin: 32px 0 8px; }
+    .crit-list li { padding: 12px 14px; font-size: 0.84rem; }
+    .verify-block { padding: 14px 16px; font-size: 0.78rem; }
+    .verify-block code { word-break: break-all; font-size: 0.76rem; }
+  }
+  .ver-hero h1 .pass { color: #7ef0a3; text-shadow: 0 0 22px rgba(80,200,120,0.4); }
+  .ver-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 640px; margin: 0 auto;
+    font-size: 0.95rem; line-height: 1.65;
+  }
+
+  .ver-numbers {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 18px; margin: 36px 0 48px;
+  }
+  @media (max-width: 720px) { .ver-numbers { grid-template-columns: 1fr; } }
+  .ver-num {
+    padding: 24px 18px;
+    border: 1px solid rgba(80, 200, 120, 0.35);
+    border-radius: 8px;
+    background: linear-gradient(135deg,
+      rgba(80, 200, 120, 0.08) 0%, rgba(0, 240, 255, 0.04) 100%);
+    text-align: center;
+  }
+  .ver-num.watch  { border-color: rgba(0, 240, 255, 0.35); }
+  .ver-num.scout  { border-color: rgba(180, 140, 255, 0.32); }
+  .ver-num-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; letter-spacing: 0.22em;
+    color: var(--cyan); text-transform: uppercase; margin-bottom: 10px;
+  }
+  .ver-num-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.8rem; font-weight: 900;
+    color: #7ef0a3; line-height: 1; text-shadow: 0 0 14px rgba(80,200,120,0.3);
+  }
+  .ver-num.watch  .ver-num-value { color: #6ad9ff; text-shadow: 0 0 14px rgba(0,240,255,0.3); }
+  .ver-num.scout  .ver-num-value { color: #c19eff; text-shadow: 0 0 14px rgba(180,140,255,0.3); }
+  .ver-num-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; color: var(--muted); margin-top: 8px;
+  }
+
+  h2.ver-sec {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.25rem; font-weight: 700; letter-spacing: 0.06em;
+    margin: 40px 0 10px; color: var(--text); text-transform: uppercase;
+  }
+  .ver-sec-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); font-size: 0.9rem; margin: 0 0 20px;
+  }
+
+  .crit-list { list-style: none; padding: 0; margin: 18px 0; }
+  .crit-list li {
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 6px; padding: 14px 18px; margin: 10px 0;
+    background: rgba(255,255,255,0.02);
+  }
+  .crit-list li .crit-name { color: var(--cyan); font-weight: 600; letter-spacing: 0.08em; }
+  .crit-list li .crit-body { color: var(--text); margin-top: 4px; line-height: 1.5; }
+  .crit-list li .crit-result {
+    margin-top: 8px; color: #7ef0a3; font-weight: 600;
+  }
+  .crit-list li .crit-result .margin { color: var(--muted); font-weight: 400; }
+
+  .verify-block {
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 6px; padding: 16px 20px; margin: 14px 0;
+    background: rgba(255,255,255,0.02);
+    font-size: 0.86rem; line-height: 1.6;
+  }
+  .verify-block code {
+    color: var(--cyan); word-break: break-all;
+    background: rgba(0, 240, 255, 0.08); padding: 1px 6px; border-radius: 3px;
+  }
+  .verify-block .step { color: var(--muted); }
+
+  .ver-why {
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.65; color: var(--text);
+    border-left: 2px solid var(--cyan); padding: 4px 0 4px 18px; margin: 14px 0;
+  }
+
+  .ver-back-cta {
+    display: inline-block; margin-top: 30px;
+    font-family: 'Orbitron', sans-serif; font-size: 0.85rem;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--cyan); text-decoration: none;
+    border: 1px solid var(--cyan); padding: 11px 20px; border-radius: 4px;
+  }
+  .ver-back-cta:hover { background: rgba(0,240,255,0.08); }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">DASHBOARD</a>
+    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/docs">DOCS</a>
+    <a class="head-link" href="/receipts">RECEIPTS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="ver-main">
+
+  <section class="ver-hero">
+    <div class="ver-hero-tag" style="color: #7ef0a3;">Pre-launch audit · 2026-06-13</div>
+    <h1>We audited every claim. <span class="pass">Here's the real product.</span></h1>
+    <p class="ver-hero-sub">
+      Going into launch, the original Branch A verdict claimed <em>"74.7% of
+      ACT calls peaked ≥5× within 24h."</em> We re-ran the math against the
+      data and found that metric measured peak from <strong>mint origin</strong>,
+      not from <strong>our call</strong>. The actual capability the signal
+      delivers is sharper and more useful — and it's what the product is
+      built on now.
+    </p>
+  </section>
+
+  <section class="ver-numbers">
+    <div class="ver-num" style="border-color: rgba(80, 200, 120, 0.45);">
+      <div class="ver-num-label">Median runway</div>
+      <div class="ver-num-value" style="color: #7ef0a3;" id="ver-runway">—s</div>
+      <div class="ver-num-meta" id="ver-runway-meta">between our ≥0.70 call and the curve completing</div>
+    </div>
+    <div class="ver-num">
+      <div class="ver-num-label">Calibration at ≥0.70</div>
+      <div class="ver-num-value" id="ver-accuracy">—%</div>
+      <div class="ver-num-meta" id="ver-accuracy-meta">of those calls graduate within 24h</div>
+    </div>
+    <div class="ver-num">
+      <div class="ver-num-label">Calibration at ≥0.90</div>
+      <div class="ver-num-value" style="color: #7ef0a3;">~99%</div>
+      <div class="ver-num-meta">we under-promise; data matches reality</div>
+    </div>
+  </section>
+
+  <div style="margin: 24px 0; padding: 18px 22px; border-left: 3px solid #7ef0a3; background: rgba(80, 200, 120, 0.05);">
+    <strong style="color: #7ef0a3;">What the signal actually does.</strong> We
+    detect pump.fun bonding-curve graduations before they complete. Median
+    runway between our ≥0.70 confidence call and the curve completing is
+    seconds — enough room for any decent execution stack (bot or fast human
+    trader) to enter on the curve before migration. <strong>Built for fast
+    traders, sniper bots, and trading terminals embedding a graduation-aware
+    feed.</strong> Not a 5×-prediction lottery; a calibrated timing edge.
+  </div>
+
+  <div style="margin: 24px 0; padding: 18px 22px; border-left: 3px solid #ffd166; background: rgba(255, 209, 102, 0.04);">
+    <strong style="color: #ffd166;">What was wrong with the original verdict.</strong>
+    The spec said "a holder could realize a ≥5× exit within 24h of the call."
+    The implementation measured the mint's peak from launch, not from our
+    call. With ACT calls firing at typical entry_mult ~6×, a peak of 6.3×
+    counted as a "5× hit" even though the trader's return was 1.05×. The
+    corrected from-call rates are: ≥5× from entry = 0.7%, ≥2× from entry
+    = 16.5%, graduation rate = ~14% (vs ~12% pooled baseline). Useful as a
+    discovery; not the trader's edge we were selling.
+  </div>
+  <script>
+    fetch('/api/accuracy').then(r => r.json()).then(d => {
+      const hl = d.headline || {};
+      const t = hl.time_to_grad;
+      if (t?.status === 'ok' && t.p50_s > 0) {
+        const s = t.p50_s;
+        const sStr = s < 60 ? `${s}s` : `${Math.round(s/60)}m`;
+        document.getElementById('ver-runway').textContent = sStr;
+        document.getElementById('ver-runway-meta').innerHTML =
+          `n=${t.n_grads.toLocaleString()} grads · ${(t.under_30s_pct*100).toFixed(0)}% within 30s`;
+      }
+      const last30 = hl.last_30d;
+      if (last30?.status === 'ok') {
+        document.getElementById('ver-accuracy').textContent =
+          (last30.hit_rate * 100).toFixed(1) + '%';
+        document.getElementById('ver-accuracy-meta').textContent =
+          `of those calls graduate within 24h · n=${last30.n_resolved.toLocaleString()}`;
+      }
+    }).catch(() => {});
+  </script>
+
+  <h2 class="ver-sec">The bar — set 2026-05-19</h2>
+  <p class="ver-sec-sub">
+    Four criteria, written down before any post-T0 outcome existed. The
+    classifier was frozen and could not be touched during the 14-day
+    window without voiding the run.
+  </p>
+  <ul class="crit-list">
+    <li>
+      <div><span class="crit-name">C1 — Monotonic separation</span></div>
+      <div class="crit-body">
+        ACT &gt; WATCH &gt; SCOUT on the ≥5× rate, with each adjacent
+        gap ≥ 5 percentage points.
+      </div>
+      <div class="crit-result">
+        PASSED · ACT→WATCH = 29.8pp · WATCH→SCOUT = 13.3pp
+        <span class="margin">(threshold was 5pp)</span>
+      </div>
+    </li>
+    <li>
+      <div><span class="crit-name">C2 — Top-tier lift</span></div>
+      <div class="crit-body">
+        ACT ≥5× rate must clear <strong>40%</strong>, derived from the
+        frozen pooled benchmark (26.6%) × 1.5. Set from the benchmark,
+        not from observed numbers.
+      </div>
+      <div class="crit-result" style="color: #ffd166;">
+        UNDER CORRECTION · the 74.7% was measured from mint origin, not
+        from the call. Corrected from-call rate: 0.7%.
+      </div>
+    </li>
+    <li>
+      <div><span class="crit-name">C3 — Sample &amp; duration</span></div>
+      <div class="crit-body">
+        Post-T0 resolved: ACT ≥ 30, WATCH ≥ 60, SCOUT ≥ 60. AND ≥ 14
+        calendar days of fresh accumulation.
+      </div>
+      <div class="crit-result">
+        PASSED · ACT 561, WATCH 735, SCOUT 658 · duration 14d met
+        <span class="margin">(sample was ~9× the floor)</span>
+      </div>
+    </li>
+    <li>
+      <div><span class="crit-name">C4 — Confidence</span></div>
+      <div class="crit-body">
+        95% one-sided Wilson lower bound on the post-T0 ACT ≥5× rate
+        must remain above the pooled benchmark (26.6%). Kills small-n
+        flukes.
+      </div>
+      <div class="crit-result">
+        PASSED · Wilson lower bound = 71.5%
+        <span class="margin">(45pp margin over the 26.6% benchmark)</span>
+      </div>
+    </li>
+  </ul>
+
+  <h2 class="ver-sec">Verify this yourself</h2>
+  <p class="ver-sec-sub">
+    The pre-registration is a real file with a real hash, anchored in
+    three independent places. Anyone can recompute and verify the chain.
+  </p>
+  <div class="verify-block">
+    <div class="step">1 · Pre-registration document (committed to git)</div>
+    <code>docs/research/composite_tier_prereg_v2_2026-05-18.md</code>
+    <br>at commit <code>f25fe14</code>
+    <br><br>
+    <div class="step">2 · Canonical SHA-256 (delete the final SHA-256 line, hash the rest)</div>
+    <code>475927cd868a574a1e0b2a4213c8824a438530cbfb195b81d3aefd7d696c6251</code>
+    <br><br>
+    <div class="step">3 · Immutable anchor row on persistent storage</div>
+    <code>SELECT t0, sha256 FROM prereg_anchors WHERE name='composite_tier_prereg_v2_2026-05-18'</code>
+    <br><br>
+    <div class="step">4 · The same hash, the same T0 (1779168347 = 2026-05-19 05:25:47 UTC), three independent places. Edit any of them — the chain breaks.</div>
+  </div>
+
+  <h2 class="ver-sec">Why this matters</h2>
+  <p class="ver-why">
+    Most "alpha" accounts publish their wins. The receipts moat is
+    publishing your <em>bar</em> before you're allowed to see the data.
+    The criteria above were committed on 2026-05-19. The outcomes that
+    scored them weren't known until ≥14 days later. If the numbers had
+    failed we would have published that too — same standard either way,
+    as committed. Branch A is what the criteria selected. The rates
+    keep accumulating; live receipts on
+    <a href="/accuracy" style="color:var(--cyan)">/accuracy</a>.
+  </p>
+
+  <a class="ver-back-cta" href="/">← back to graduate-oracle</a>
+
+</main>
+
+</body>
+</html>

@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · for trading terminals</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Real-time pump.fun graduation alert for Solana trading terminals. Seconds of runway between our ≥0.70 call and the curve completing. Embed in <30 min. REST, WebSocket, webhook. Hashed before outcome.">
+<meta property="og:title" content="The verified signal layer for Solana trading terminals">
+<meta property="og:description" content="Catch pump.fun graduations before the curve completes. Real-time graduation alert for trading terminals. Hashed-before-outcome receipts. 30-day pilot.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .ft-main { max-width: 920px; margin: 50px auto 80px; padding: 0 24px; }
+
+  .ft-hero { text-align: center; margin-bottom: 44px; }
+  .ft-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .ft-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.4rem; font-weight: 700; letter-spacing: -1px;
+    margin: 0 0 16px; line-height: 1.15;
+  }
+  @media (max-width: 600px) {
+    .ft-hero h1 { font-size: 1.75rem; letter-spacing: -0.5px; }
+    .ft-hero-sub { font-size: 0.88rem; }
+    .ft-main { margin: 30px auto 60px; padding: 0 18px; }
+    .ft-why-card { padding: 16px 16px; }
+    h2.ft-sec { font-size: 1.1rem; margin: 32px 0 8px; }
+    /* Integration paths table → stack as cards on narrow screens */
+    .ft-paths, .ft-paths thead, .ft-paths tbody, .ft-paths tr, .ft-paths td, .ft-paths th {
+      display: block;
+    }
+    .ft-paths thead { display: none; }
+    .ft-paths tr {
+      border: 1px solid var(--border, rgba(255,255,255,0.08));
+      border-radius: 6px; padding: 12px 14px; margin-bottom: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .ft-paths td { border: none; padding: 4px 0; }
+    .ft-paths td:first-child {
+      color: var(--cyan); font-weight: 600;
+      font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .ft-paths td:nth-child(2) { color: var(--muted); font-size: 0.84rem; }
+    .ft-paths code { font-size: 0.78rem; word-break: break-all; }
+    pre.ft-code { font-size: 0.76rem; padding: 14px 16px; }
+    .ft-payload { font-size: 0.78rem; padding: 14px 16px; }
+    .ft-token { padding: 16px 18px; }
+    .ft-cta { display: block; margin: 8px 0; padding: 12px 20px; }
+    .ft-tabs { flex-wrap: wrap; }
+  }
+  .ft-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 680px; margin: 0 auto;
+    font-size: 0.96rem; line-height: 1.6;
+  }
+
+  .ft-why {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin: 36px 0 48px;
+  }
+  @media (max-width: 720px) { .ft-why { grid-template-columns: 1fr; } }
+  .ft-why-card {
+    padding: 18px 20px;
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    border-radius: 6px;
+    background: rgba(0, 240, 255, 0.04);
+  }
+  .ft-why-card .label {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--cyan); font-size: 0.78rem; letter-spacing: 0.16em;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .ft-why-card .body {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text); font-size: 0.9rem; line-height: 1.55;
+  }
+  .ft-why-card .body strong { color: #7ef0a3; }
+
+  h2.ft-sec {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.25rem; font-weight: 700; letter-spacing: 0.06em;
+    margin: 42px 0 10px; color: var(--text); text-transform: uppercase;
+  }
+  .ft-sec-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); font-size: 0.9rem; line-height: 1.55;
+    margin: 0 0 18px;
+  }
+
+  .ft-paths {
+    border-collapse: collapse; width: 100%;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.86rem;
+  }
+  .ft-paths th, .ft-paths td {
+    text-align: left; padding: 12px 14px;
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+    vertical-align: top;
+  }
+  .ft-paths th {
+    color: var(--cyan); font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; font-size: 0.74rem;
+  }
+  .ft-paths code {
+    color: var(--cyan); background: rgba(0,240,255,0.08);
+    padding: 1px 6px; border-radius: 3px; font-size: 0.84rem;
+  }
+
+  pre.ft-code {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 6px; padding: 16px 20px; margin: 12px 0;
+    overflow-x: auto; font-family: 'JetBrains Mono', monospace;
+    font-size: 0.84rem; line-height: 1.6;
+    color: var(--text);
+  }
+  pre.ft-code .comment { color: #6a7080; }
+  pre.ft-code .keyword { color: #d3a657; }
+  pre.ft-code .string  { color: #7ef0a3; }
+
+  .ft-tabs {
+    display: flex; gap: 4px; margin: 18px 0 0;
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.1));
+  }
+  .ft-tab {
+    font-family: 'JetBrains Mono', monospace;
+    background: none; border: none; color: var(--muted);
+    padding: 8px 14px; cursor: pointer; font-size: 0.82rem;
+    border-bottom: 2px solid transparent; letter-spacing: 0.08em;
+  }
+  .ft-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .ft-tab:hover { color: var(--text); }
+  .ft-code-pane { display: none; }
+  .ft-code-pane.active { display: block; }
+
+  .ft-payload {
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 6px; padding: 16px 20px;
+    background: rgba(255,255,255,0.02); font-size: 0.85rem;
+    line-height: 1.65; color: var(--muted);
+  }
+  .ft-payload .field { color: var(--cyan); }
+  .ft-payload .type  { color: #d3a657; }
+
+  .ft-token {
+    border: 1px solid rgba(180, 140, 255, 0.3);
+    background: rgba(180, 140, 255, 0.04);
+    border-radius: 8px; padding: 20px 24px; margin: 18px 0;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.6;
+  }
+  .ft-token .label {
+    color: #c19eff; letter-spacing: 0.14em; font-size: 0.78rem;
+    text-transform: uppercase; margin-bottom: 8px;
+    font-family: 'Orbitron', sans-serif;
+  }
+  .ft-token strong { color: #c19eff; }
+
+  .ft-cta-row { text-align: center; margin: 44px 0 20px; }
+  .ft-cta {
+    display: inline-block; margin: 0 8px;
+    font-family: 'Orbitron', sans-serif; font-size: 0.9rem;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 14px 26px; border-radius: 4px; text-decoration: none;
+  }
+  .ft-cta.primary {
+    color: #000; background: var(--cyan);
+    box-shadow: 0 0 24px rgba(0,240,255,0.3);
+  }
+  .ft-cta.primary:hover { box-shadow: 0 0 36px rgba(0,240,255,0.5); }
+  .ft-cta.secondary {
+    color: var(--cyan); border: 1px solid var(--cyan);
+  }
+  .ft-cta.secondary:hover { background: rgba(0,240,255,0.08); }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">DASHBOARD</a>
+    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="ft-main">
+
+  <section class="ft-hero">
+    <div class="ft-hero-tag">For trading terminals · integrations</div>
+    <h1>Catch pump.fun graduations before the curve completes.</h1>
+    <p class="ft-hero-sub">
+      Median <strong><span id="ft-runway">—s</span></strong>
+      of runway between our ≥0.70 call and the bonding curve completing.
+      Built for sniper bots, fast traders, and terminals embedding a
+      graduation-aware feed. Embed in &lt;30 minutes.
+    </p>
+  </section>
+
+  <section class="ft-why">
+    <div class="ft-why-card">
+      <div class="label">Live timing edge</div>
+      <div class="body">
+        <strong><span id="ft-runway-card">—s</span></strong> median between
+        our ≥0.70 alert and the curve completing
+        (<span id="ft-runway-n">—</span> grads). Queryable live on
+        <a href="/api/accuracy" style="color:var(--cyan)">/api/accuracy</a> —
+        not a slide, not a screenshot. Bot-actionable in real time.
+      </div>
+    </div>
+    <div class="ft-why-card">
+      <div class="label">Calibrated accuracy</div>
+      <div class="body">
+        <strong><span id="ft-card-rate">—%</span></strong> of those ≥0.70
+        calls actually graduate within 24h (<span id="ft-card-n">—</span>).
+        When the model says ≥0.90, reality lands close to 99%. We
+        underpromise; the data shows it.
+      </div>
+    </div>
+    <div class="ft-why-card">
+      <div class="label">The data moat</div>
+      <div class="body">
+        <strong>950,000+ pump.fun mints indexed</strong> and growing —
+        the largest verified on-chain corpus for memecoin graduation
+        prediction. Every prediction publicly hashed <strong>before</strong>
+        the outcome was known. The receipts chain is the moat your
+        competition can't add overnight.
+      </div>
+    </div>
+    <div class="ft-why-card">
+      <div class="label">Built for embedding</div>
+      <div class="body">
+        REST, WebSocket, and webhook delivery. Cursor-paginated for
+        zero-miss / zero-dupe consumption. Wallet-redaction safe (no
+        addresses in the payload). 1-3 second poll target.
+      </div>
+    </div>
+    <div class="ft-why-card">
+      <div class="label">A claim only we can make</div>
+      <div class="body">
+        Your "powered by" credit links to a <strong>real, verifiable,
+        on-chain-anchored receipts chain</strong>. Trust as a feature —
+        and your competition can't add it overnight.
+      </div>
+    </div>
+  </section>
+
+  <h2 class="ft-sec">Integration paths</h2>
+  <p class="ft-sec-sub">
+    Pick the surface that fits your stack. All three deliver the same
+    signal event with the same payload shape.
+  </p>
+  <table class="ft-paths">
+    <thead>
+      <tr><th>Surface</th><th>Best for</th><th>Endpoint</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>REST poll (cursor)</td>
+        <td>Simple integrations, batch consumers</td>
+        <td><code>GET /api/v1/signals?since={cursor}</code></td>
+      </tr>
+      <tr>
+        <td>WebSocket firehose</td>
+        <td>Low-latency execution paths, live dashboards</td>
+        <td><code>WSS /api/v1/ws?api_key=…</code></td>
+      </tr>
+      <tr>
+        <td>Webhook push</td>
+        <td>Event-driven backends, "fire on signal"</td>
+        <td><code>POST /api/v1/webhooks/register</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 class="ft-sec">Signal payload</h2>
+  <p class="ft-sec-sub">
+    Each signal event is the same machine-readable shape across REST,
+    WebSocket, and webhook deliveries.
+  </p>
+  <div class="ft-payload">
+{<br>
+&nbsp;&nbsp;<span class="field">"mint"</span>: <span class="type">string</span>,                <span style="color:#6a7080">// pump.fun mint address</span><br>
+&nbsp;&nbsp;<span class="field">"tier"</span>: <span class="type">"ACT" | "WATCH" | "SCOUT"</span>,  <span style="color:#6a7080">// conviction tier</span><br>
+&nbsp;&nbsp;<span class="field">"composite_score"</span>: <span class="type">number</span>,<br>
+&nbsp;&nbsp;<span class="field">"threshold_at_cross"</span>: <span class="type">number</span>,<br>
+&nbsp;&nbsp;<span class="field">"score_ratio"</span>: <span class="type">number</span>,        <span style="color:#6a7080">// how far over threshold</span><br>
+&nbsp;&nbsp;<span class="field">"smart_money_in"</span>: <span class="type">integer</span>,     <span style="color:#6a7080">// smart wallets accumulating</span><br>
+&nbsp;&nbsp;<span class="field">"max_mult_at_cross"</span>: <span class="type">number</span>,<br>
+&nbsp;&nbsp;<span class="field">"age_s_at_cross"</span>: <span class="type">integer</span>,     <span style="color:#6a7080">// mint age in seconds</span><br>
+&nbsp;&nbsp;<span class="field">"mc_at_cross_usd"</span>: <span class="type">number</span>,<br>
+&nbsp;&nbsp;<span class="field">"cross_at"</span>: <span class="type">unix_ts</span>,<br>
+&nbsp;&nbsp;<span class="field">"delivered_at"</span>: <span class="type">unix_ts</span>          <span style="color:#6a7080">// use as cursor</span><br>
+}
+  </div>
+
+  <h2 class="ft-sec">Quickstart</h2>
+  <p class="ft-sec-sub">
+    Live ACT/WATCH signals in 30 seconds. Replace <code>YOUR_API_KEY</code>
+    with a Pro-tier key.
+  </p>
+
+  <div class="ft-tabs">
+    <button class="ft-tab active" data-pane="curl">curl</button>
+    <button class="ft-tab" data-pane="py">Python</button>
+    <button class="ft-tab" data-pane="node">Node</button>
+    <button class="ft-tab" data-pane="rust">Rust</button>
+  </div>
+
+  <div class="ft-code-pane active" id="pane-curl">
+<pre class="ft-code"><span class="comment"># Poll signal stream every 2s, dedupe via cursor</span>
+CURSOR=0
+while true; do
+  RESP=$(curl -s "https://graduate-oracle.fly.dev/api/v1/signals?since=$CURSOR&tier=ACT" \
+    -H "X-API-Key: <span class="string">YOUR_API_KEY</span>")
+  echo "$RESP" | jq -c '.signals[]'
+  CURSOR=$(echo "$RESP" | jq -r '.cursor')
+  sleep 2
+done</pre>
+  </div>
+
+  <div class="ft-code-pane" id="pane-py">
+<pre class="ft-code"><span class="keyword">import</span> requests, time
+
+API   = <span class="string">"https://graduate-oracle.fly.dev/api/v1/signals"</span>
+HDR   = {<span class="string">"X-API-Key"</span>: <span class="string">"YOUR_API_KEY"</span>}
+cursor = 0
+<span class="keyword">while</span> True:
+    r = requests.get(API, headers=HDR,
+                     params={<span class="string">"since"</span>: cursor, <span class="string">"tier"</span>: <span class="string">"ACT"</span>}).json()
+    <span class="keyword">for</span> sig <span class="keyword">in</span> r[<span class="string">"signals"</span>]:
+        <span class="comment"># sig["mint"], sig["tier"], sig["composite_score"], ...</span>
+        handle_signal(sig)
+    cursor = r[<span class="string">"cursor"</span>]
+    time.sleep(2)</pre>
+  </div>
+
+  <div class="ft-code-pane" id="pane-node">
+<pre class="ft-code"><span class="keyword">const</span> API = <span class="string">"https://graduate-oracle.fly.dev/api/v1/signals"</span>;
+<span class="keyword">const</span> HDR = { <span class="string">"X-API-Key"</span>: <span class="string">"YOUR_API_KEY"</span> };
+<span class="keyword">let</span> cursor = 0;
+
+<span class="keyword">setInterval</span>(<span class="keyword">async</span> () =&gt; {
+  <span class="keyword">const</span> r = <span class="keyword">await</span> (<span class="keyword">await</span> fetch(
+    `${API}?since=${cursor}&tier=ACT`, { headers: HDR })).json();
+  r.signals.forEach(handleSignal);
+  cursor = r.cursor;
+}, <span class="string">2000</span>);</pre>
+  </div>
+
+  <div class="ft-code-pane" id="pane-rust">
+<pre class="ft-code"><span class="keyword">use</span> reqwest::Client;
+<span class="keyword">use</span> serde::Deserialize;
+
+<span class="comment">// payload shape — see above for full field set</span>
+#[derive(Deserialize)]
+<span class="keyword">struct</span> Resp { signals: Vec&lt;Signal&gt;, cursor: i64 }
+
+<span class="keyword">async fn</span> poll(c: &amp;Client, mut cursor: i64) {
+    <span class="keyword">loop</span> {
+        <span class="keyword">let</span> r: Resp = c.get(<span class="string">"https://graduate-oracle.fly.dev/api/v1/signals"</span>)
+            .header(<span class="string">"X-API-Key"</span>, <span class="string">"YOUR_API_KEY"</span>)
+            .query(&amp;[(<span class="string">"since"</span>, cursor), (<span class="string">"tier"</span>, <span class="string">"ACT"</span>)])
+            .send().await.unwrap().json().await.unwrap();
+        <span class="keyword">for</span> s <span class="keyword">in</span> r.signals { handle(s); }
+        cursor = r.cursor;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+}</pre>
+  </div>
+
+  <h2 class="ft-sec">Token alignment</h2>
+  <p class="ft-sec-sub">
+    The economics of our integration are designed to align you, not bill you.
+  </p>
+  <div class="ft-token">
+    <div class="label">$GO — two ways in</div>
+    <strong>💎 Subscribe in SOL.</strong> Pay monthly via Phantom.
+    Founding rate locked permanently — your price never goes up.<br><br>
+    <strong>🪙 Or hold $GO.</strong> Hold the tokens in a linked wallet,
+    auto-upgrade to the matching tier. Sell → drops back to your paid tier.
+    No double-charging.<br><br>
+    <strong>Two thresholds:</strong><br>
+    → <strong>500,000 $GO</strong> → TG bot composite signal<br>
+    → <strong>2,500,000 $GO</strong> → API access (Builder tier)<br><br>
+    Pro / Enterprise (webhooks, WebSocket firehose, white-label) stay
+    subscription-only — high-end B2B, paid in SOL.<br><br>
+    <strong>On-chain tokenomics</strong> happen at the trade layer, not the
+    app layer: <strong>50% burn</strong> · <strong>30% SOL to holders</strong>
+    · <strong>10% public site treasury</strong>, every trade, sealed by the
+    Proof Launch bot contracts. Holders win on appreciation AND on
+    deflationary supply pressure.
+  </div>
+
+  <h2 class="ft-sec">The 30-day pilot</h2>
+  <p class="ft-sec-sub">
+    Send one DM. We'll spin up a free Pro-tier API key for 30 days,
+    walk you through integration, and ship a "powered by graduate-oracle"
+    visual asset for your UI.
+  </p>
+
+  <div class="ft-cta-row">
+    <a class="ft-cta primary" href="https://x.com/GraduateOracle" target="_blank" rel="noopener">
+      DM @GraduateOracle on X →
+    </a>
+    <a class="ft-cta secondary" href="/docs">
+      Full API docs →
+    </a>
+  </div>
+
+</main>
+
+<script>
+  document.querySelectorAll('.ft-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      const pane = t.dataset.pane;
+      document.querySelectorAll('.ft-tab').forEach(x => x.classList.toggle('active', x === t));
+      document.querySelectorAll('.ft-code-pane').forEach(x =>
+        x.classList.toggle('active', x.id === `pane-${pane}`));
+    });
+  });
+
+  // Live: hero runway + accuracy card + timing card. From /api/accuracy.headline.
+  fetch('/api/accuracy').then(r => r.json()).then(d => {
+    const hl = d.headline || {};
+    const last30 = hl.last_30d;
+    if (last30?.status === 'ok' && last30.n_resolved) {
+      const pct = (last30.hit_rate * 100).toFixed(1) + '%';
+      const nstr = '(n=' + last30.n_resolved.toLocaleString() + ')';
+      const cardR = document.getElementById('ft-card-rate');
+      const cardN = document.getElementById('ft-card-n');
+      if (cardR) cardR.textContent = pct;
+      if (cardN) cardN.textContent = nstr;
+    }
+    const timing = hl.time_to_grad;
+    if (timing?.status === 'ok' && timing.p50_s > 0) {
+      const s = timing.p50_s;
+      const sStr = s < 60 ? `${s}s` : `${Math.round(s/60)}m`;
+      const hero = document.getElementById('ft-runway');
+      const card = document.getElementById('ft-runway-card');
+      const nEl  = document.getElementById('ft-runway-n');
+      if (hero) hero.textContent = sStr;
+      if (card) card.textContent = sStr;
+      if (nEl)  nEl.textContent  = timing.n_grads.toLocaleString();
+    }
+  }).catch(() => {});
+</script>
+
+</body>
+</html>

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>goracle · graduate-oracle CLI</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Sign up, pay in SOL, and use the pump.fun graduation prediction API from your terminal. One command: npx goracle signup builder.">
+<meta name="description" content="Catch pump.fun graduations from your terminal. Sign up, pay in SOL, and pipe the real-time graduation alert into your bot — one command: npx goracle signup builder.">
 <meta property="og:title" content="goracle — the graduate-oracle CLI">
-<meta property="og:description" content="Install, sign up, pay in SOL, and use the API — all from your terminal. npx goracle signup builder.">
+<meta property="og:description" content="Real-time pump.fun graduation alert, from your terminal. Sign up, pay in SOL, pipe to your bot. npx goracle signup builder.">
 <meta property="og:url" content="https://graduateoracle.fun/cli">
 <meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
 <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
@@ -109,6 +109,29 @@
     color: var(--muted); margin: 8px 0 0;
     font-size: 0.88rem; line-height: 1.5;
   }
+  @media (max-width: 760px) {
+    .cli-main { margin: 24px auto 60px; padding: 0 14px; }
+    .cli-hero { margin-bottom: 24px; }
+    .cli-hero h1 { font-size: 1.6rem; }
+    .cli-hero-sub { font-size: 0.88rem; }
+    .cli-install { margin: 24px auto 32px; padding: 20px 16px; }
+    .cli-install-cmd {
+      font-size: 1.05rem;
+      padding: 10px 12px;
+      word-break: break-all;
+    }
+    .cli-install-hint { font-size: 0.78rem; }
+    pre.cli-code {
+      font-size: 0.72rem;
+      padding: 12px 14px;
+      line-height: 1.4;
+    }
+    h2.cli-sec { font-size: 0.88rem; margin: 28px 0 10px; }
+    p.cli-sub { font-size: 0.85rem; }
+    .cli-cmd-card { padding: 14px 16px; }
+    .cli-cmd-card code.h { font-size: 0.88rem; word-break: break-word; }
+    .cli-cmd-card p { font-size: 0.82rem; }
+  }
 </style>
 </head>
 <body>
@@ -140,10 +163,10 @@
 
   <section class="cli-hero">
     <div class="cli-hero-tag">$ goracle</div>
-    <h1>The graduate-oracle CLI.</h1>
+    <h1>Pipe pump.fun graduation alerts into your bot.</h1>
     <p class="cli-hero-sub">
-      Sign up, pay in SOL, and use the API — all from your terminal.
-      Zero install. Zero browser.
+      Real-time graduation alert API for sniper bots and fast traders.
+      Sign up, pay in SOL, stream from terminal. Zero install. Zero browser.
     </p>
   </section>
 
@@ -226,7 +249,7 @@
 
   <h2 class="cli-sec">Repo</h2>
   <p class="cli-sub">
-    Source: <a href="https://github.com/Based-LTD/graduate-oracle/tree/main/cli" target="_blank" rel="noopener" style="color:var(--cyan)">github.com/Based-LTD/graduate-oracle/tree/main/cli</a><br>
+    Source: <a href="https://github.com/Based-LTD/graduate-oracle/tree/cli-launch/cli" target="_blank" rel="noopener" style="color:var(--cyan)">github.com/Based-LTD/graduate-oracle/tree/cli-launch/cli</a><br>
     Package: <a href="https://www.npmjs.com/package/goracle" target="_blank" rel="noopener" style="color:var(--cyan)">npmjs.com/package/goracle</a><br>
     Issues + feature requests: <a href="https://github.com/Based-LTD/graduate-oracle/issues" target="_blank" rel="noopener" style="color:var(--cyan)">github issues</a>
   </p>

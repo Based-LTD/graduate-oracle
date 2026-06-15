@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · the receipts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Live receipts. Median runway between our ≥0.70 call and the bonding curve completing, calibrated accuracy on resolved on-chain outcomes, every prediction hashed before its outcome.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .acc-main { max-width: 820px; margin: 50px auto 80px; padding: 0 24px; }
+
+  .acc-hero { text-align: center; margin-bottom: 48px; }
+  .acc-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .acc-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.4rem; font-weight: 700; letter-spacing: -1px;
+    margin: 0 0 18px; color: var(--text);
+  }
+  .acc-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 640px; margin: 0 auto;
+    font-size: 0.95rem; line-height: 1.6;
+  }
+
+  /* Big numbers — backtest + live + post-bond, co-billed equal weight. */
+  .big-numbers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 36px 0 48px;
+  }
+  .big-numbers.big-numbers-3col {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  @media (max-width: 900px) {
+    .big-numbers.big-numbers-3col { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) { .big-numbers { grid-template-columns: 1fr; } }
+  .big-number {
+    padding: 28px 24px;
+    border: 1px solid rgba(80, 200, 120, 0.4);
+    border-radius: 8px;
+    background: linear-gradient(135deg,
+      rgba(80, 200, 120, 0.08) 0%,
+      rgba(0, 240, 255, 0.04) 100%);
+    text-align: center;
+    box-shadow: 0 0 28px rgba(80, 200, 120, 0.06);
+  }
+  .big-number-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; letter-spacing: 0.2em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .big-number-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 4.5rem; font-weight: 900;
+    color: #7ef0a3;
+    text-shadow: 0 0 22px rgba(80, 200, 120, 0.4);
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+  .big-number-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem; color: var(--text);
+    line-height: 1.5;
+  }
+  .big-number-sub strong { color: var(--text); }
+  .big-number-method {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 0.04em;
+  }
+
+  /* Plain-english explanation */
+  .explain {
+    margin: 36px 0;
+    padding: 22px 26px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: var(--text);
+  }
+  .explain strong { color: #7ef0a3; }
+
+  /* The breakdown — what the numbers actually mean across confidence bands */
+  h2.sec {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; font-weight: 700;
+    letter-spacing: 0.14em;
+    margin: 44px 0 12px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+  .sec-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem; color: var(--muted);
+    margin: 0 0 18px;
+    line-height: 1.6;
+  }
+  .band-table {
+    width: 100%; border-collapse: collapse;
+    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.92rem;
+  }
+  .band-table th, .band-table td {
+    padding: 12px 18px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .band-table thead th {
+    color: var(--cyan); font-size: 0.72rem; letter-spacing: 0.16em;
+    text-transform: uppercase; background: rgba(0,212,255,0.05);
+  }
+  .band-table tbody tr:last-child td { border-bottom: none; }
+  .band-table .r { text-align: right; }
+  .band-table .band-row-high { background: rgba(80, 200, 120, 0.06); }
+  .band-table .band-row-high td:first-child { color: #7ef0a3; font-weight: 700; }
+  .band-table .band-row-noise { color: var(--muted); }
+
+  /* Trust footer */
+  .trust-row {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+    margin: 36px 0 24px;
+    padding: 14px 22px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+  }
+  .trust-status {
+    color: #7ef0a3;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .trust-status.warn { color: #d3a657; }
+  .trust-link a { color: var(--cyan); text-decoration: none; }
+  .trust-link a:hover { text-decoration: underline; }
+
+  .acc-foot {
+    text-align: center; margin-top: 32px; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  }
+  .acc-foot a { color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">DASHBOARD</a>
+    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link active" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/docs">DOCS</a>
+    <a class="head-link" href="/receipts">RECEIPTS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="acc-main">
+
+  <section class="acc-hero">
+    <div class="acc-hero-tag">The receipts</div>
+    <h1>Live receipts.</h1>
+    <p class="acc-hero-sub">
+      We detect pump.fun graduations before the bonding curve completes.
+      Every prediction logged with a hash before the outcome — receipts
+      anyone can verify. Three numbers, read them together:
+    </p>
+  </section>
+
+  <section class="big-numbers big-numbers-3col">
+    <div class="big-number">
+      <div class="big-number-label">Median runway · ≥0.70 calls</div>
+      <div class="big-number-value" id="runway-value">—s</div>
+      <div class="big-number-sub">
+        between our call and the bonding curve <strong>completing</strong>
+      </div>
+      <div class="big-number-method">
+        n=<span id="runway-n">—</span> resolved graduations; bot-actionable in real time
+      </div>
+    </div>
+    <div class="big-number">
+      <div class="big-number-label">Calibrated accuracy · ≥0.70</div>
+      <div class="big-number-value" id="backtest-pct">…</div>
+      <div class="big-number-sub">
+        of those calls <strong>actually graduate</strong> within 24h
+      </div>
+      <div class="big-number-method">
+        Forward — <span id="backtest-n">…</span>; every prediction hashed before outcome
+      </div>
+    </div>
+    <div class="big-number">
+      <div class="big-number-label">Sustain · 30m post-bond</div>
+      <div class="big-number-value" id="postbond-pct">…</div>
+      <div class="big-number-sub">
+        of graduated mints held <strong>≥80% of grad price</strong> 30 min later
+      </div>
+      <div class="big-number-method">
+        n=<span id="postbond-n">…</span> resolved post-bond outcomes
+      </div>
+    </div>
+  </section>
+
+  <div class="explain">
+    The three numbers measure different things and shouldn't be averaged.
+    <strong>Median runway</strong> is the time between our ≥0.70 confidence
+    alert and the bonding curve actually completing — the window a fast
+    trader or sniper bot has to execute a buy on the curve before migration.
+    <strong>Calibrated accuracy</strong> is the share of those calls that
+    actually graduate within 24h — when the model says ≥0.70, that's the
+    reality. <strong>Sustain 30m post-bond</strong> asks "of mints that
+    did graduate, how many held value 30 min later?" — sourced independently
+    from on-chain DEX prices, the question a trader actually has, since
+    graduation alone is not a profit thesis. Pre-launch audit on
+    <a href="/verdict">/verdict</a> — we caught and corrected our own
+    measurement bug before launch; that's the receipts chain working.
+  </div>
+
+  <h2 class="sec">By confidence band</h2>
+  <p class="sec-sub">
+    The model is honest about uncertainty. Lower-confidence calls
+    graduate at lower rates — exactly as predicted. The Telegram bot
+    only fires at <strong>≥70%</strong>.
+  </p>
+  <table class="band-table">
+    <thead>
+      <tr>
+        <th>If we say</th>
+        <th class="r">Actual graduation rate</th>
+        <th class="r">Sample size</th>
+      </tr>
+    </thead>
+    <tbody id="band-rows">
+      <tr><td colspan="3" class="band-row-noise">loading…</td></tr>
+    </tbody>
+  </table>
+
+  <div class="trust-row">
+    <div>
+      <div style="opacity:0.7; font-size:0.75rem; letter-spacing:0.1em; margin-bottom:4px;">SYSTEM STATUS</div>
+      <div class="trust-status" id="trust-status">CALIBRATED · STABLE</div>
+    </div>
+    <div class="trust-link">
+      <a href="/receipts">verify any prediction →</a>
+    </div>
+  </div>
+
+  <h2 class="sec">runner_prob fields — directional, recalibration pending</h2>
+  <p class="sec-sub">
+    The <code>runner_prob_2x/5x/10x_from_now</code> fields exposed at
+    <code>/api/v1/probe</code> and <code>/api/live</code> are currently
+    <strong>directional</strong>: mints with higher runner_prob do hit
+    higher rates, but the absolute probability is over-stated by roughly
+    <strong>11-13 percentage points</strong> on high-confidence bins
+    (≥0.5). The saturation case (kNN reports 1.0 because all neighbors hit)
+    is the loudest miss — <code>runner_prob_5x_from_launch</code> at
+    predicted 0.99 has actual rate around 0.29.
+  </p>
+  <p class="sec-sub">
+    Magnitude recalibration is in progress via the existing
+    <code>apply_calibration</code> infrastructure (the same self-correcting
+    curve grad_prob uses). Until recalibration is verified, treat
+    runner_prob fields as a ranking signal, not as a literal probability.
+    Consumers making sizing decisions on the absolute number should
+    discount by ~12pp at the high end. The full audit
+    (<a href="/api/scope" target="_blank" rel="noopener">/api/scope</a>
+    documents the field, n=89,077 sample) is intentionally surfaced here
+    rather than hidden — same discipline as the warming label on the live
+    rate above.
+  </p>
+
+  <p class="acc-foot">
+    raw JSON: <a href="/api/accuracy" target="_blank" rel="noopener">/api/accuracy</a>
+    &nbsp;·&nbsp;
+    NFA · DYOR · prediction model output, not financial advice
+  </p>
+
+</main>
+
+<script>
+function fmtPct(v) { return v == null ? '—' : (v * 100).toFixed(0) + '%'; }
+function fmtN(v)   { return v == null ? '—' : v.toLocaleString(); }
+
+async function load() {
+  let d;
+  try {
+    const r = await fetch('/api/accuracy');
+    d = await r.json();
+  } catch (e) { return; }
+
+  // Backtest big number — LOO at ≥70%. Lifetime calibration runs as a
+  // background daemon that periodically recomputes; if it's mid-rebuild
+  // (e.g. during a corpus refresh), thresholds may be null. Surface
+  // warming honestly in that case rather than letting the card sit on
+  // the "…" placeholder forever.
+  // Headline accuracy number. Repointed 2026-05-16: was bound to the
+  // lifetime LOO cross-val (chronically warming/None). Now leads with
+  // forward_calibrated — REAL on-chain-resolved outcomes, the stronger
+  // claim. Same pickBest band-selection as the hero + calibration
+  // ticker so every accuracy number on the site is the SAME number
+  // (no contradictory stats across pages). Falls back to raw forward,
+  // then to honest warming only if genuinely no resolved data exists.
+  const fcSrc = (d.forward_calibrated && d.forward_calibrated.thresholds)
+                  ? d.forward_calibrated
+                  : (d.forward && d.forward.thresholds ? d.forward : null);
+  const _pickBand = (src) => {
+    if (!src) return null;
+    const ok = Object.values(src.thresholds).filter(
+      b => b.actual_grad_rate != null && (b.n_resolved || 0) >= 30);
+    const over = ok.filter(b => b.actual_grad_rate >= b.threshold_pct / 100);
+    if (over.length) return over.sort((a,b) => b.threshold_pct - a.threshold_pct)[0];
+    if (ok.length)  return ok.sort((a,b) =>
+      (a.threshold_pct/100 - a.actual_grad_rate) -
+      (b.threshold_pct/100 - b.actual_grad_rate))[0];
+    return null;
+  };
+  const ltThr = (d.forward_calibrated && d.forward_calibrated.thresholds)
+                  || (d.forward && d.forward.thresholds) || {};
+
+  // Runway big number — median seconds between our ≥0.70 call and the
+  // bonding curve completing. Pulled live from /api/accuracy.headline.
+  const timing = d.headline?.time_to_grad;
+  if (timing?.status === 'ok' && timing.p50_s > 0) {
+    const s = timing.p50_s;
+    const sStr = s < 60 ? `${s}s` : `${Math.round(s/60)}m`;
+    document.getElementById('runway-value').textContent = sStr;
+    document.getElementById('runway-n').textContent = fmtN(timing.n_grads);
+  } else {
+    document.getElementById('runway-value').textContent = 'warming';
+    document.getElementById('runway-value').style.fontSize = '2.4rem';
+    document.getElementById('runway-value').style.color    = '#d3a657';
+    document.getElementById('runway-value').style.textShadow = 'none';
+  }
+
+  // Calibrated accuracy at ≥0.70 — last-30-day live hit rate from headline.
+  const last30 = d.headline?.last_30d;
+  if (last30?.status === 'ok' && last30.n_resolved > 0) {
+    document.getElementById('backtest-pct').textContent = fmtPct(last30.hit_rate);
+    document.getElementById('backtest-n').textContent =
+      fmtN(last30.n_resolved) + ' resolved on-chain · last 30 days';
+  } else {
+    document.getElementById('backtest-pct').textContent = 'warming';
+    document.getElementById('backtest-pct').style.fontSize = '2.4rem';
+    document.getElementById('backtest-pct').style.color    = '#d3a657';
+    document.getElementById('backtest-pct').style.textShadow = 'none';
+  }
+
+  // btBand is computed for the legacy band table below; the big number
+  // up top now hydrates from headline.last_30d (above) — it's the live
+  // 30-day calibration at ≥0.70, the single number that matters.
+  const btBand = _pickBand(fcSrc);
+
+  // Post-bond sustains big number — independent live measurement, sourced
+  // from on-chain DEX prices via post_grad_tracker. Answers "did the
+  // graduation actually pay" rather than "did graduation happen." Loud
+  // truth: this number is materially lower than the graduation numbers,
+  // and that gap is the product's open question.
+  const pg = d.post_graduation || {};
+  if (pg.sustain_rate_30m != null) {
+    document.getElementById('postbond-pct').textContent = fmtPct(pg.sustain_rate_30m);
+    document.getElementById('postbond-n').textContent   = fmtN(pg.n_resolved_30m || 0);
+  } else {
+    document.getElementById('postbond-pct').textContent = 'warming';
+    document.getElementById('postbond-pct').style.fontSize = '2.4rem';
+    document.getElementById('postbond-pct').style.color    = '#d3a657';
+    document.getElementById('postbond-pct').style.textShadow = 'none';
+    document.getElementById('postbond-n').textContent   = fmtN(pg.n_resolved_30m || 0);
+  }
+
+  // Live forward big number — the ACT slice (≥70% AND entry ≤ 2.0).
+  // Anchored to the currently-active rule's activation timestamp so older
+  // rules with different thresholds don't contaminate the rate.
+  // Below n=30 we deliberately do NOT show a percentage — we render the
+  // warming state with raw counts so users can see the sample is small.
+  // Live composite signal — Branch A verdict, 2026-06-02. The 3-tier
+  // composite passed the pre-registered acceptance criteria (committed
+  // 2026-05-19, doc digest 475927cd…6251 anchored in prereg_anchors on
+  // /data and in git f25fe14). The headline is the ACT tier's ≥5× rate
+  // on the post-T0 in-scope sample. HTML carries the static verdict copy;
+  // no JS override needed — these are the ratified numbers at C3 close.
+
+  // Band breakdown — the 5 thresholds, side-by-side
+  const bands = [
+    ['≥30% (noise band)', ltThr['50'] || ltThr['60'] || {}, 'band-row-noise'],
+    ['≥50% (real signal)', ltThr['50'] || {}, ''],
+    ['≥60%', ltThr['60'] || {}, ''],
+    ['≥70% (TG fires here)', ltThr['70'] || {}, 'band-row-high'],
+    ['≥80%', ltThr['80'] || {}, ''],
+    ['≥90%', ltThr['90'] || {}, ''],
+  ];
+  // First row is "below 50% is noise" — show as a placeholder/explainer
+  const rowsHtml = [
+    `<tr class="band-row-noise"><td>Below 50%</td><td class="r">noise band — calibration below predicted</td><td class="r muted">excluded</td></tr>`,
+    ...bands.slice(1).map(([label, b, cls]) => {
+      const rate = b.actual_grad_rate != null ? fmtPct(b.actual_grad_rate) : '—';
+      const n = b.n != null ? fmtN(b.n) : '—';
+      return `<tr class="${cls}"><td>${label}</td><td class="r">${rate}</td><td class="r">n=${n}</td></tr>`;
+    })
+  ];
+  document.getElementById('band-rows').innerHTML = rowsHtml.join('');
+
+  // Drift status
+  const dr = d.drift || {};
+  const status = document.getElementById('trust-status');
+  if (dr.drift_detected) {
+    status.textContent = 'DRIFT DETECTED — recalibrating';
+    status.className = 'trust-status warn';
+  } else {
+    status.textContent = 'CALIBRATED · STABLE';
+  }
+}
+load();
+</script>
+
+</body>
+</html>

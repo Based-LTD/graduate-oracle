@@ -1,5 +1,6 @@
-// accuracy — pretty-print the same headline the website hero shows.
-// No auth required.
+// accuracy — pretty-print the live receipts: median runway between our
+// ≥0.70 call and the bonding curve completing, plus the 30-day hit rate.
+// Mirrors the homepage hero. No auth required.
 
 import chalk from "chalk";
 import { api } from "../lib/api.js";
@@ -17,6 +18,7 @@ export async function accuracy(opts) {
   const h = data.headline || {};
   const last30 = h.last_30d || {};
   const lifetime = h.lifetime || {};
+  const timing = h.time_to_grad || {};
   const traj = h.trajectory || [];
 
   if (opts.json) {
@@ -25,17 +27,25 @@ export async function accuracy(opts) {
   }
 
   console.log();
-  console.log(chalk.bold("graduate-oracle · live calibration"));
-  console.log(chalk.gray("predictions at age 30s or 60s with grad_prob ≥ 0.70"));
+  console.log(chalk.bold("graduate-oracle · live receipts"));
+  console.log(chalk.gray("predictions at age 30s or 60s, calibrated, ≥ 0.70 confidence"));
   console.log();
 
+  console.log(chalk.bold("Last 30 days:"));
+  if (timing.status === "ok" && timing.p50_s > 0) {
+    const s = timing.p50_s;
+    const sStr = s < 60 ? `${s}s` : `${Math.round(s/60)}m`;
+    const under30 = (timing.under_30s_pct * 100).toFixed(0);
+    console.log("  " + chalk.greenBright.bold("median runway: " + sStr) +
+      chalk.gray("  (between our call and graduation completing)"));
+    console.log("  " + chalk.gray(`${under30}% of graduations happen within 30s · n=${fmt.num(timing.n_grads)}`));
+  }
   if (last30.status === "ok") {
-    console.log(chalk.bold("Last 30 days:"));
-    console.log("  hit rate: " + fmt.probColor(last30.hit_rate));
-    console.log("  resolved: " + fmt.num(last30.n_resolved) + " calls");
-    console.log("  graduated: " + fmt.num(last30.n_graduated));
+    console.log("  " + chalk.bold("hit rate:      ") + fmt.probColor(last30.hit_rate) +
+      chalk.gray(`  (of those calls graduate within 24h)`));
+    console.log("  " + chalk.gray("resolved:      ") + fmt.num(last30.n_resolved) + " calls");
   } else {
-    console.log(chalk.yellow("  last 30d: warming (insufficient sample)"));
+    console.log(chalk.yellow("  hit rate: warming (insufficient sample)"));
   }
 
   console.log();
@@ -54,6 +64,6 @@ export async function accuracy(opts) {
   }
 
   console.log();
-  console.log(chalk.gray("Receipts: https://graduateoracle.fun/accuracy"));
-  console.log(chalk.gray("Pre-registered verdict: https://graduateoracle.fun/verdict"));
+  console.log(chalk.gray("Receipts:        https://graduateoracle.fun/accuracy"));
+  console.log(chalk.gray("Pre-launch audit: https://graduateoracle.fun/verdict"));
 }
