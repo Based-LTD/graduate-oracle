@@ -260,31 +260,25 @@ def welcome_text() -> str:
 # for first-time users. Gives every visitor a clear answer without having to
 # leave Telegram for the website.
 PLANS_EXPLAINER = (
-    "*GRADUATE — what you get*\n\n"
-    "*You set the trigger. Your plan sets the format.*\n\n"
-    "Both tiers can subscribe to triggers like `/alert grad_prob 30`, "
-    "`/alert smart_in 3`, etc. The difference is what arrives in your DM "
-    "when one fires.\n\n"
-    "*🟢 Free* — `0 SOL`\n"
-    "  ✓ /probe — full mint score\n"
-    "  ✓ /watch — 5 mints\n"
-    "  ✓ Triggers: `grad_prob`, `vsol_burst`\n"
-    "  ✓ 1 alert rule · 25 probes/day · 5-min delayed data\n"
-    "  *Alert format:* one-liner — trigger reason + mint\n\n"
-    "*🔥 Paid* — `0.15 SOL/mo` · 1.25 SOL/yr (save 17%)\n"
-    "  Everything in Free, plus:\n"
-    "  🔓 *All triggers unlocked:*\n"
-    "    `runner_dev` · `runner_5x` · `runner_10x` · `smart_in` · "
-    "`cluster_pile_in` · `acceleration` · `whale_pile_in` · `dex_paid` · "
-    "`fee_delegation_set` · `fee_delegated_full` · `bundle_detected`\n"
-    "  🔓 `/alert wallet <addr>` — copy-trade specific wallet buys\n"
-    "  ✓ Unlimited alerts/watchlist/probes · real-time data\n"
-    "  *Alert format:* rich card — odds first, then category-tagged "
-    "signals (smart-money, creator, momentum, alignment, outlook, risk) "
-    "with Pump/Axiom/Dex buttons.\n\n"
-    "_Need API access (webhooks, WebSocket firehose, SDK)? See "
-    "`/upgrade builder` (0.4 SOL/mo) or `/upgrade pro` (1 SOL/mo)._\n\n"
-    "*Universal suppression:* alerts never fire on active dangerous bundles (≥30% supply still held by bundlers — that's a real dump risk).\n\n"
+    "*GRADUATE — real-time pump.fun graduation alert*\n\n"
+    "Median runway between our ≥0.70 confidence call and the bonding curve "
+    "completing is seconds — enough for any sub-second bot or fast TG-sniper "
+    "to enter on the curve before migration.\n\n"
+    "*Two ways in:*\n\n"
+    "💎 *Subscribe in SOL* — founding rate locks forever:\n"
+    "  `/upgrade tg_paid` — *0.2 SOL/mo* — TG composite signal access\n"
+    "  `/upgrade builder` — *0.4 SOL/mo* — Builder API (5,000 calls/day)\n"
+    "  `/upgrade pro`     — *1 SOL/mo* — Pro API (50k calls/day · webhooks)\n\n"
+    "🪙 *Hold $GO* — auto-unlock when held, reverts if you sell:\n"
+    "  Hold *500,000 $GO* → TG composite signal access\n"
+    "  Hold *2,500,000 $GO* → Builder API (firehose)\n\n"
+    "*The API is the firehose* — every pump.fun mint scored in its first 60 "
+    "seconds. The composite signal alert is the focused product on top.\n\n"
+    "*Built for:*\n"
+    "🤖 sniper bots · ⚡ fast TG-sniper traders\n"
+    "🛣️ DEX aggregators · 🖥️ trading terminals\n\n"
+    "_Every prediction publicly hashed before outcome was known. Pre-launch "
+    "audit chain: graduateoracle.fun/verdict_\n\n"
     "→ `/upgrade` to start."
 )
 
@@ -477,24 +471,44 @@ async def cmd_accuracy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dr = d.get("drift") or {}
     status = "DRIFT DETECTED ⚠️" if dr.get("drift_detected") else "CALIBRATED · STABLE ✓"
 
+    # Timing edge — median runway between our ≥0.70 call and the bonding
+    # curve completing. The headline number on the website too.
+    timing = (d.get("headline") or {}).get("time_to_grad") or {}
+    last30 = (d.get("headline") or {}).get("last_30d") or {}
+    if timing.get("status") == "ok" and timing.get("p50_s", 0) > 0:
+        p50 = timing["p50_s"]
+        runway = f"{p50}s" if p50 < 60 else f"{p50 // 60}m"
+        n_grads = timing.get("n_grads", 0)
+        runway_line_a = f"⚡ *Median runway:* `{runway}` between our ≥0.70 call and the bonding curve completing"
+        runway_line_b = f"   _n={_n(n_grads)} grads · bot-actionable in real time_"
+    else:
+        runway_line_a = "⚡ *Median runway:* _warming_"
+        runway_line_b = "   _accruing resolved graduations_"
+
+    if last30.get("status") == "ok" and last30.get("n_resolved", 0) > 0:
+        hit_line_a = f"🎯 *Calibrated accuracy:* *{_pct(last30['hit_rate'])}* of ≥0.70 calls graduate within 24h"
+        hit_line_b = f"   _last 30d · n={_n(last30['n_resolved'])} · hashed before outcome_"
+    else:
+        hit_line_a = "🎯 *Calibrated accuracy:* _warming_"
+        hit_line_b = "   _accruing resolved outcomes_"
+
     lines = [
         "*graduate-oracle — the receipts*",
-        "_three numbers, three different questions — read them together._",
+        "_real-time pump.fun graduation alert · built for fast traders + bots_",
         "",
-        f"📊 *Graduates · on-chain verified:* *{_pct(backtest_pct)}* of "
-        f"≥{_band_pct if _band_pct else '50'}%-confidence calls",
-        f"   _forward, resolved on-chain, n={_n(backtest_n)} · hashed before outcome_",
+        runway_line_a,
+        runway_line_b,
         "",
-        live_line_a,
-        live_line_b,
+        hit_line_a,
+        hit_line_b,
         "",
         sustain_line_a,
         sustain_line_b,
         "",
         f"_System: {status}_",
         "",
-        "→ Full breakdown: graduateoracle.fun/accuracy",
-        "→ Verify any prediction: graduateoracle.fun/receipts",
+        "→ Full receipts: graduateoracle.fun/accuracy",
+        "→ Pre-launch audit: graduateoracle.fun/verdict",
         "",
         "_NFA · DYOR · graduation alone is not a profit thesis — see post-bond above_",
     ]
