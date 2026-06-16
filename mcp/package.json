@@ -1,0 +1,52 @@
+{
+  "name": "goracle-mcp",
+  "version": "0.1.4",
+  "description": "MCP server for graduate-oracle — real-time pump.fun graduation signal as a native tool in Claude / Cursor / any MCP-aware AI agent.",
+  "type": "module",
+  "bin": {
+    "goracle-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "cursor",
+    "ai-agent",
+    "llm",
+    "solana",
+    "pump.fun",
+    "graduate-oracle",
+    "memecoin",
+    "trading-signal"
+  ],
+  "author": "graduate-oracle",
+  "license": "MIT",
+  "homepage": "https://graduateoracle.fun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Based-LTD/graduate-oracle.git",
+    "directory": "mcp"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
