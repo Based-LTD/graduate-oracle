@@ -654,7 +654,11 @@ async fn submit_bundle_to_regions(
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "sendBundle",
-                    "params": [&bundle],
+                    // Second positional param tells Jito the encoding. Default
+                    // would be base58 → bincode/base64 txs fail to decode with
+                    // "transaction #0 could not be decoded". Must match the
+                    // base64 encoding used in handle_build_buy_tx.
+                    "params": [&bundle, {"encoding": "base64"}],
                 }))
                 .send()
                 .await;
