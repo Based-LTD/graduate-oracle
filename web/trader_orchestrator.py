@@ -50,6 +50,7 @@ class OrchestratorError(RuntimeError):
 DEFAULT_SLIPPAGE_BPS                 = 500       # 5%
 DEFAULT_PRIORITY_FEE_MICROLAMPORTS   = 100_000   # matches tg_trader.rs
 DEFAULT_COMPUTE_UNITS                = 200_000   # matches tg_trader.rs
+DEFAULT_JITO_TIP_LAMPORTS            = 10_000    # 0.00001 SOL — minimum to be prioritized
 DEFAULT_SUBMIT_REGIONS: Optional[list[str]] = None  # None = Rust's 5-region default
 
 
@@ -61,6 +62,7 @@ def buy(
     slippage_bps: int = DEFAULT_SLIPPAGE_BPS,
     priority_fee_microlamports: int = DEFAULT_PRIORITY_FEE_MICROLAMPORTS,
     compute_units: int = DEFAULT_COMPUTE_UNITS,
+    jito_tip_lamports: Optional[int] = None,
     signal_source: str = "manual",
     tier: Optional[str] = None,
     live: bool = False,
@@ -139,12 +141,18 @@ def buy(
         raise OrchestratorError("blockhash", str(e)) from e
 
     # ── Stage 4: BUILD the unsigned tx (Rust) ──────────────────────────
+    # Apply default tip ONLY on live submissions — dry-runs don't need it
+    # and surfacing it on every test wastes the audit-trail signal.
+    effective_tip = jito_tip_lamports
+    if effective_tip is None and live:
+        effective_tip = DEFAULT_JITO_TIP_LAMPORTS
     try:
         built = tg_trader_runner.build_buy_tx(
             user_id, mint, payer, sol, curve, recent_blockhash,
             slippage_bps=slippage_bps,
             priority_fee_microlamports=priority_fee_microlamports,
             compute_units=compute_units,
+            jito_tip_lamports=effective_tip,
         )
     except tg_trader_runner.TgTraderError as e:
         raise OrchestratorError("build", str(e)) from e
