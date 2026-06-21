@@ -74,6 +74,9 @@ class BondingCurve(TypedDict, total=False):
     complete: bool
     creator: str                  # base58
     is_cashback_coin: bool        # optional, default False
+    token_program: str            # optional, base58 mint owner. Needed for
+                                  # SPL Token-2022 mints (cashback variants)
+                                  # — see web/bonding_curve.fetch().
 
 
 # Resolve the binary path. In the deploy image it's at /usr/local/bin/tg-trader.

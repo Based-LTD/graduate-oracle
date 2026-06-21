@@ -94,6 +94,13 @@ struct BondingCurveInput {
     creator: String,
     #[serde(default)]
     is_cashback_coin: bool,
+    /// base58 token program (mint owner). Default = SPL Token. For
+    /// SPL Token-2022 cashback/mayhem mints, Python fetches the mint's
+    /// owner and passes "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+    /// here. Hardcoding spl_token::id() in the binary caused on-chain
+    /// IncorrectProgramId rejections for Token-2022 mints (Day 4.7).
+    #[serde(default)]
+    token_program: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -159,6 +166,11 @@ enum Command {
         priority_fee_microlamports: Option<u64>,
         #[serde(default)]
         compute_units: Option<u32>,
+        /// base58 token program (mint's owner — saved at buy time in the
+        /// position row). Default SPL Token. Required for SPL Token-2022
+        /// mints (cashback / mayhem variants).
+        #[serde(default)]
+        token_program: Option<String>,
     },
     SubmitBundle {
         user_id: String,
@@ -227,6 +239,16 @@ fn validate_mint(mint: &str) -> Result<&str> {
         return Err(anyhow!("mint contains non-base58 characters"));
     }
     Ok(mint)
+}
+
+/// Parse the token_program string Python sent, or fall back to SPL Token.
+/// Centralized so build-buy-tx and build-sell-tx behave identically.
+fn resolve_token_program(input: Option<&str>) -> Result<Pubkey> {
+    match input {
+        Some(s) if !s.trim().is_empty() => Pubkey::from_str(s.trim())
+            .map_err(|e| anyhow!("bonding_curve.token_program invalid: {}", e)),
+        _ => Ok(spl_token::id()),
+    }
 }
 
 fn validate_sol(sol: f64) -> Result<()> {
@@ -363,7 +385,11 @@ fn handle_build_buy_tx(
     }
 
     // ── Derive accounts + assemble instructions ───────────────────────
-    let token_program = spl_token::id();
+    // Token program comes from the mint account's owner — Python fetches
+    // it in bonding_curve.fetch and passes it through. SPL Token-2022
+    // mints (cashback / mayhem variants) would otherwise crash on-chain
+    // with IncorrectProgramId on the create-ATA ix (Day 4.7 finding).
+    let token_program = resolve_token_program(curve.token_program.as_deref())?;
     let pump_accounts = pump::derive_accounts(&mint, &payer, &creator, &token_program);
 
     let cu_limit = compute_units.unwrap_or(DEFAULT_COMPUTE_UNITS);
@@ -466,6 +492,7 @@ fn handle_build_buy_tx(
 /// curve's compute_sell_output() formula × (1 - slippage_bps/10000). We
 /// don't compute it here so the build path stays pure and inspectable.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn handle_build_sell_tx(
     user_id: &str,
     mint_str: &str,
@@ -477,6 +504,7 @@ fn handle_build_sell_tx(
     recent_blockhash_str: &str,
     priority_fee_microlamports: Option<u64>,
     compute_units: Option<u32>,
+    token_program_str: Option<&str>,
 ) -> Result<Value> {
     // ── Validation ────────────────────────────────────────────────────
     validate_user_id(user_id)?;
@@ -497,7 +525,10 @@ fn handle_build_sell_tx(
         .map_err(|e| anyhow!("recent_blockhash is not a valid hash: {}", e))?;
 
     // ── Derive accounts + assemble instructions ───────────────────────
-    let token_program = spl_token::id();
+    // Token program comes from the saved position's token_program (the
+    // mint's owner at buy time). Same SPL Token vs Token-2022 concern as
+    // build-buy-tx. Sell-side fix: caller passes token_program string.
+    let token_program = resolve_token_program(token_program_str)?;
     let pump_accounts = pump::derive_accounts(&mint, &payer, &creator, &token_program);
 
     let cu_limit = compute_units.unwrap_or(DEFAULT_COMPUTE_UNITS);
@@ -802,12 +833,14 @@ fn main() -> Result<()> {
                 user_id, mint, payer, creator,
                 token_amount, min_sol_output_lamports, is_cashback_coin,
                 recent_blockhash, priority_fee_microlamports, compute_units,
+                token_program,
             }) => {
                 match handle_build_sell_tx(
                     &user_id, &mint, &payer, &creator,
                     token_amount, min_sol_output_lamports, is_cashback_coin,
                     &recent_blockhash,
                     priority_fee_microlamports, compute_units,
+                    token_program.as_deref(),
                 ) {
                     Ok(v) => Response::ok(v), Err(e) => Response::err(e),
                 }
@@ -860,6 +893,7 @@ mod tests {
             complete:               false,
             creator:                VALID_CREATOR.to_string(),
             is_cashback_coin:       false,
+            token_program:          None,  // tests default to SPL Token
         }
     }
 
@@ -1288,7 +1322,7 @@ mod tests {
         handle_build_sell_tx(
             "42", VALID_MINT, VALID_PAYER, VALID_CREATOR,
             token_amount, min_sol_output, is_cashback,
-            VALID_BLOCKHASH, None, None,
+            VALID_BLOCKHASH, None, None, None,
         )
     }
 
@@ -1377,7 +1411,7 @@ mod tests {
         let v = handle_build_sell_tx(
             "42", VALID_MINT, VALID_PAYER, VALID_CREATOR,
             17_000_000_000_000, 450_000_000, false,
-            VALID_BLOCKHASH, Some(750_000), Some(350_000),
+            VALID_BLOCKHASH, Some(750_000), Some(350_000), None,
         ).unwrap();
         assert_eq!(v["priority_fee_microlamports"].as_u64().unwrap(), 750_000);
         assert_eq!(v["compute_units"].as_u64().unwrap(), 350_000);
@@ -1415,7 +1449,7 @@ mod tests {
         let err = handle_build_sell_tx(
             "", VALID_MINT, VALID_PAYER, VALID_CREATOR,
             17_000_000_000_000, 450_000_000, false,
-            VALID_BLOCKHASH, None, None,
+            VALID_BLOCKHASH, None, None, None,
         ).unwrap_err();
         assert!(err.to_string().contains("user_id"));
     }
@@ -1425,7 +1459,7 @@ mod tests {
         let err = handle_build_sell_tx(
             "42", "tooshort", VALID_PAYER, VALID_CREATOR,
             17_000_000_000_000, 450_000_000, false,
-            VALID_BLOCKHASH, None, None,
+            VALID_BLOCKHASH, None, None, None,
         ).unwrap_err();
         assert!(err.to_string().contains("malformed"));
     }
@@ -1435,7 +1469,7 @@ mod tests {
         let err = handle_build_sell_tx(
             "42", VALID_MINT, "not-a-pubkey", VALID_CREATOR,
             17_000_000_000_000, 450_000_000, false,
-            VALID_BLOCKHASH, None, None,
+            VALID_BLOCKHASH, None, None, None,
         ).unwrap_err();
         assert!(err.to_string().contains("payer"));
     }
@@ -1445,7 +1479,7 @@ mod tests {
         let err = handle_build_sell_tx(
             "42", VALID_MINT, VALID_PAYER, "not-a-pubkey",
             17_000_000_000_000, 450_000_000, false,
-            VALID_BLOCKHASH, None, None,
+            VALID_BLOCKHASH, None, None, None,
         ).unwrap_err();
         assert!(err.to_string().contains("creator"));
     }
@@ -1455,7 +1489,7 @@ mod tests {
         let err = handle_build_sell_tx(
             "42", VALID_MINT, VALID_PAYER, VALID_CREATOR,
             17_000_000_000_000, 450_000_000, false,
-            "not-a-hash", None, None,
+            "not-a-hash", None, None, None,
         ).unwrap_err();
         assert!(err.to_string().contains("blockhash"));
     }

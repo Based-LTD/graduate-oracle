@@ -57,40 +57,23 @@ def _load_master_key(store: Path) -> str:
     return key_path.read_text().strip()
 
 
-def _poll_signature(rpc_url: str, signature: str, *,
-                    timeout_s: float = 30.0, poll_s: float = 1.5) -> dict:
-    """Poll getSignatureStatuses until confirmed or timeout. Returns
-    {confirmed, slot, err, elapsed_s}."""
-    import json
-    import urllib.request
-    deadline = time.time() + timeout_s
-    payload = {
-        "jsonrpc": "2.0", "id": 1,
-        "method":  "getSignatureStatuses",
-        "params":  [[signature], {"searchTransactionHistory": True}],
-    }
-    body = json.dumps(payload).encode()
-    started = time.time()
-    while time.time() < deadline:
+def _extract_bundle_ids(submit_envelope: dict) -> list[str]:
+    """Pull the bundle IDs out of the per-region submit responses.
+    Multiple regions may return the same ID; dedup'd here."""
+    import json as _j
+    ids: list[str] = []
+    for region in submit_envelope.get("regions") or []:
+        if not isinstance(region, dict) or not region.get("ok"):
+            continue
+        body_str = region.get("body") or ""
         try:
-            req = urllib.request.Request(
-                rpc_url, data=body, headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=5) as r:
-                resp = json.loads(r.read())
-            value = (resp.get("result") or {}).get("value") or []
-            status = value[0] if value and value[0] else None
-            if status and status.get("confirmationStatus") in ("confirmed", "finalized"):
-                return {
-                    "confirmed": True,
-                    "slot":      status.get("slot"),
-                    "err":       status.get("err"),
-                    "elapsed_s": round(time.time() - started, 2),
-                }
+            body = _j.loads(body_str)
         except Exception:
-            pass
-        time.sleep(poll_s)
-    return {"confirmed": False, "elapsed_s": round(time.time() - started, 2)}
+            continue
+        bid = body.get("result")
+        if isinstance(bid, str) and bid not in ids:
+            ids.append(bid)
+    return ids
 
 
 def main():
@@ -100,8 +83,10 @@ def main():
                         help="SOL to buy with (default 0.001 = 1/1000 SOL)")
     parser.add_argument("--slippage-bps", type=int, default=500,
                         help="Slippage in bps (default 500 = 5%%)")
-    parser.add_argument("--tip-lamports", type=int, default=10_000,
-                        help="Jito tip in lamports (default 10000 = 0.00001 SOL)")
+    parser.add_argument("--tip-lamports", type=int, default=None,
+                        help="Jito tip in lamports. Default: query Jito's live "
+                             "tip floor at p95 + 20%% headroom (~lands 95%% of "
+                             "competing bundles in current window).")
     parser.add_argument("--user-id", default="operator",
                         help="Operator user_id (default 'operator')")
     parser.add_argument("--confirm", action="store_true",
@@ -120,6 +105,18 @@ def main():
 
     import trader_wallets as tw
     import trader_orchestrator as orch
+    import jito_tip_floor
+    import jito_confirm
+
+    # Loud warning if running against public RPC — public mainnet times out
+    # 10-30% of the time under load. Helius (or any paid endpoint) is the
+    # only way to get sub-second reliable RPC.
+    rpc_url_check = os.environ.get("RPC_HTTP", "")
+    if "helius" not in rpc_url_check and "mainnet-beta.solana.com" in rpc_url_check or not rpc_url_check:
+        print("[WARN] Using PUBLIC Solana RPC. Reliable submission needs Helius.")
+        print(f"       Set RPC_HTTP env var, e.g.:")
+        print(f"       export RPC_HTTP='https://mainnet.helius-rpc.com/?api-key=YOUR_KEY'")
+        print()
 
     # ── Pre-flight balance + safety checks ──────────────────────────────
     wallet = tw.wallet_for(args.user_id)
@@ -134,19 +131,33 @@ def main():
     print("─" * 60)
     print(f"  DAY 4.7 LIVE MICRO-BUY  ({'CONFIRM' if args.confirm else 'DRY-RUN PREVIEW'})")
     print("─" * 60)
+    # Resolve effective tip — either user-provided OR Jito's live p95+20%.
+    if args.tip_lamports is not None:
+        effective_tip = args.tip_lamports
+        tip_source = "user-provided"
+    else:
+        try:
+            effective_tip = jito_tip_floor.get_tip_lamports(percentile="p95")
+            tip_source = "Jito p95+20% (live)"
+        except jito_tip_floor.TipFloorError as e:
+            print(f"[WARN] tip_floor lookup failed: {e}")
+            effective_tip = 100_000
+            tip_source = "fallback (tip_floor down)"
+
     print(f"  pubkey         = {pubkey}")
     print(f"  balance        = {balance_sol:.6f} SOL")
     print(f"  rpc            = {rpc_url}")
     print(f"  mint           = {args.mint}")
     print(f"  sol            = {args.sol}")
     print(f"  slippage_bps   = {args.slippage_bps}")
-    print(f"  jito_tip       = {args.tip_lamports} lamports ({args.tip_lamports/1e9:.6f} SOL)")
+    print(f"  jito_tip       = {effective_tip:,} lamports "
+          f"({effective_tip/1e9:.6f} SOL) — {tip_source}")
     print(f"  TG_TRADER_LIVE = {os.environ.get('TG_TRADER_LIVE', '(unset)')}")
     print()
 
     # Estimated max debit: buy + slippage + tip + fee headroom
     max_debit_lamports = int(args.sol * (1 + args.slippage_bps / 10_000) * 1e9) \
-                         + args.tip_lamports + 10_000
+                         + effective_tip + 10_000
     max_debit_sol = max_debit_lamports / 1e9
     print(f"  max debit est. = {max_debit_sol:.6f} SOL "
           f"(buy + slippage + tip + ~10k fee headroom)")
@@ -170,7 +181,7 @@ def main():
         result = orch.buy(
             args.user_id, args.mint, args.sol,
             slippage_bps=args.slippage_bps,
-            jito_tip_lamports=args.tip_lamports,
+            jito_tip_lamports=effective_tip,
             signal_source="day_4_7_operator_live",
             live=live_flag,
         )
@@ -195,22 +206,36 @@ def main():
         print(f"    {args.mint} --sol {args.sol} --tip-lamports {args.tip_lamports} --confirm")
         return
 
-    # ── Live: poll for on-chain confirmation ───────────────────────────
-    print("[on-chain] polling getSignatureStatuses for confirmation …")
-    print(f"  https://solscan.io/tx/{sig}")
+    # ── Live: dual-source confirmation (Jito + Solana RPC) ─────────────
+    bundle_ids = _extract_bundle_ids(result["submit"])
+    n_accepted = result["submit"].get("n_accepted", 0)
+    print(f"[submit] Jito: accepted in {n_accepted}/5 regions"
+          + (f", bundle_id={bundle_ids[0][:24]}…" if bundle_ids else ""))
+    rpc_path = result.get("submit_rpc")
+    if rpc_path:
+        if rpc_path.get("ok"):
+            print(f"[submit] RPC:  submitted via sendTransaction")
+        else:
+            print(f"[submit] RPC:  FAILED — {rpc_path.get('error', '?')[:200]}")
+    print(f"  signature      = {sig}")
+    print(f"  solscan        = https://solscan.io/tx/{sig}")
     print()
-    status = _poll_signature(rpc_url, sig)
-    if status.get("confirmed"):
-        if status.get("err"):
-            print(f"  ✗ Tx confirmed but FAILED on-chain: {status['err']}")
-            print(f"    slot={status.get('slot')}  elapsed={status['elapsed_s']}s")
-            sys.exit(6)
-        print(f"  ✅ CONFIRMED in slot {status.get('slot')} after {status['elapsed_s']}s")
-    else:
-        print(f"  ⚠ Not confirmed within {status['elapsed_s']}s — could mean:")
-        print(f"     • Jito dropped the bundle (tip too low for competition)")
-        print(f"     • RPC propagation lag (check Solscan link above)")
-        print(f"     • Real failure (check signature manually)")
+    print("[confirm] dual-polling Jito + Solana (90s timeout)…")
+    res = jito_confirm.wait_for_confirmation(
+        signature=sig, rpc_url=rpc_url, bundle_ids=bundle_ids,
+        timeout_s=90.0, poll_interval_s=1.0,
+    )
+    if res.landed:
+        print(f"  ✅ CONFIRMED via {res.source} in slot {res.slot} after {res.elapsed_s}s")
+    elif res.failed:
+        print(f"  ✗ Bundle landed but tx FAILED on-chain ({res.source}): {res.err}")
+        print(f"    Common causes: slippage exceeded, ATA mismatch, curve graduated mid-flight")
+        sys.exit(6)
+    else:  # timed out — bundle never landed
+        print(f"  ⚠ Not confirmed within {res.elapsed_s}s. Bundle accepted by Jito ({n_accepted}/5 "
+              f"regions) but never won an auction slot.")
+        print(f"     Most likely cause: tip {effective_tip:,} lamports below current competition.")
+        print(f"     Check live floor: python3 web/jito_tip_floor.py --snapshot")
         sys.exit(7)
 
     # ── Post-confirmation balance check ────────────────────────────────

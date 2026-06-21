@@ -30,6 +30,9 @@ import time
 from typing import Optional
 
 import bonding_curve
+import jito_tip_floor
+import jupiter_buy
+import rpc_submit
 import tg_trader_runner
 import trader_positions
 import trader_wallets
@@ -140,22 +143,32 @@ def buy(
     except Exception as e:
         raise OrchestratorError("blockhash", str(e)) from e
 
-    # ── Stage 4: BUILD the unsigned tx (Rust) ──────────────────────────
-    # Apply default tip ONLY on live submissions — dry-runs don't need it
-    # and surfacing it on every test wastes the audit-trail signal.
+    # ── Stage 4: BUILD via Jupiter ─────────────────────────────────────
+    # Pivot from pump-ix builder → Jupiter (2026-06-21). Jupiter routes
+    # to pump.fun / Raydium / PumpSwap depending on the mint's state.
+    # Their SDK absorbs every pump.fun ABI change so we don't have to.
+    # Trade-off: Jupiter charges 0.3-1% per trade (negligible at our
+    # sizes) and adds 100-300ms latency (irrelevant for TG-bot trades).
     effective_tip = jito_tip_lamports
     if effective_tip is None and live:
-        effective_tip = DEFAULT_JITO_TIP_LAMPORTS
+        try:
+            effective_tip = jito_tip_floor.get_tip_lamports(percentile="p95")
+        except jito_tip_floor.TipFloorError as e:
+            effective_tip = DEFAULT_JITO_TIP_LAMPORTS
+            print(f"[orchestrator] tip_floor lookup failed ({e}) — "
+                  f"falling back to default {effective_tip} lamports", flush=True)
     try:
-        built = tg_trader_runner.build_buy_tx(
-            user_id, mint, payer, sol, curve, recent_blockhash,
+        built = jupiter_buy.build_buy_tx(
+            user_id=user_id, mint=mint, payer_pubkey=payer, sol=sol,
             slippage_bps=slippage_bps,
             priority_fee_microlamports=priority_fee_microlamports,
-            compute_units=compute_units,
             jito_tip_lamports=effective_tip,
+            compute_units=compute_units,
         )
-    except tg_trader_runner.TgTraderError as e:
+    except jupiter_buy.JupiterError as e:
         raise OrchestratorError("build", str(e)) from e
+    # Jupiter doesn't need recent_blockhash — it's embedded in the swap tx.
+    _ = recent_blockhash  # kept for symmetry / future direct-ix fallback
 
     unsigned_tx_b64 = built["tx_b64"]
 
@@ -165,16 +178,39 @@ def buy(
     except Exception as e:
         raise OrchestratorError("sign", str(e)) from e
 
-    # ── Stage 6: SUBMIT (Jito) ─────────────────────────────────────────
-    try:
-        submit_kwargs = {"live": live}
-        if submit_regions is not None:
-            submit_kwargs["regions"] = submit_regions
-        submitted = tg_trader_runner.submit_bundle(
-            user_id, signed_tx_b64, **submit_kwargs,
-        )
-    except tg_trader_runner.TgTraderError as e:
-        raise OrchestratorError("submit", str(e)) from e
+    # ── Stage 6: SUBMIT ────────────────────────────────────────────────
+    # Jupiter returns a VersionedTransaction (v0) with address lookup
+    # tables. Jito would accept it but our Rust submit-bundle path was
+    # built for legacy txs (validation rejects v0 with "unexpected EOF").
+    # Going RPC-only for live: Jupiter's prioritizationFeeLamports gets
+    # validators to prioritize inclusion — that's enough for our trade
+    # cadence (TG-bot triggered, not snipe-racing).
+    # Dry-run still goes through the Rust binary's dry-run path so the
+    # unit-test contract holds.
+    rpc_result: Optional[dict] = None
+    submitted: dict
+    if not live:
+        try:
+            submit_kwargs = {"live": False}
+            if submit_regions is not None:
+                submit_kwargs["regions"] = submit_regions
+            submitted = tg_trader_runner.submit_bundle(
+                user_id, signed_tx_b64, **submit_kwargs,
+            )
+        except tg_trader_runner.TgTraderError as jito_err:
+            raise OrchestratorError("submit", str(jito_err)) from jito_err
+    else:
+        rpc_url = trader_wallets._RPC
+        rpc_result = rpc_submit.send_via_rpc(signed_tx_b64, rpc_url=rpc_url)
+        if not rpc_result.get("ok"):
+            raise OrchestratorError(
+                "submit", f"RPC submit failed: {rpc_result.get('error')}",
+            )
+        submitted = {
+            "phase":     "submitted",
+            "signature": rpc_result["signature"],
+            "route":     "rpc",
+        }
 
     # ── Stage 7: write the position row ────────────────────────────────
     phase = submitted.get("phase", "dry-run")  # 'submitted' or 'dry-run'
@@ -219,4 +255,6 @@ def buy(
         "is_cashback_coin":                 is_cashback,
         "route":                            built["route"],
         "submit":                           submitted,
+        # Dual-submit metadata — present only when live=True
+        "submit_rpc":                       rpc_result,
     }
