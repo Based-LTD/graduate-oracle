@@ -1979,7 +1979,10 @@ def _format_composite_alert(snap: dict, msg_extra: str) -> str:
     lines = [
         header,
         conviction_line,
-        f"smart-money *{smart}* in  ·  *{mm:.2f}×* launch  ·  age *{age_s}s*  ·  *${mc:,.0f}* MC",
+        # Dropped "X× launch" — backward-looking, inflates the receipt for
+        # late entries. Every number on the alert must be honest FROM the
+        # signal moment forward (we sell measurement, not window-dressing).
+        f"smart-money *{smart}* in  ·  age *{age_s}s*  ·  *${mc:,.0f}* MC",
         f"composite *{score:.1f}* ({ratio:.2f}× threshold)",
         f"`{mint}`",
     ]
