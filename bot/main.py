@@ -60,6 +60,50 @@ WEB_BASE = os.environ.get("WEB_BASE_URL", "http://127.0.0.1:8765").rstrip("/")
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
+
+# ── Launch-month TG promo ──────────────────────────────────────────────
+# Set TG_FREE_UNTIL (unix timestamp) to make composite_score free for
+# ALL telegram users through that timestamp. Read on every check so the
+# window can be extended / cut short by flipping the secret — no deploy
+# required. After the timestamp, paywall snaps back automatically.
+def _tg_free_trial_active() -> bool:
+    raw = os.environ.get("TG_FREE_UNTIL", "0").strip()
+    try:
+        return int(raw) > int(time.time())
+    except ValueError:
+        return False
+
+
+def _tg_free_trial_end_label() -> str:
+    """Human-readable end date for the launch-week TG promo. Used in copy
+    so users see exactly when the free window closes."""
+    raw = os.environ.get("TG_FREE_UNTIL", "0").strip()
+    try:
+        ts = int(raw)
+        if ts <= 0: return ""
+        import datetime as _dt
+        d = _dt.datetime.utcfromtimestamp(ts)
+        return d.strftime("%b %-d, %Y %H:%M UTC")
+    except Exception:
+        return ""
+
+
+def _tg_free_banner() -> str:
+    """Returns a celebratory promo banner when the TG trial is active,
+    else an empty string. Prepended to /start, /plans, /upgrade copy so
+    every visitor sees the offer immediately."""
+    if not _tg_free_trial_active():
+        return ""
+    end = _tg_free_trial_end_label()
+    return (
+        "🎉 *LAUNCH PROMO — FREE THIS MONTH*\n"
+        f"Composite signal ACT/WATCH/SCOUT alerts open to everyone through *{end}*.\n"
+        "No SOL, no token, no signup. Subscribe with `/alert composite_score` and "
+        "alerts start firing immediately. After the window closes, the paywall "
+        "snaps back automatically.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
 # Admin allow-list for the /grant command. Set on Fly via:
 #   fly secrets set ADMIN_TG_IDS=123456789,987654321
 # Comma-separated telegram_ids. Anyone in this list can /grant any tier
@@ -142,6 +186,45 @@ def _check_and_inc_probe(tg_id: int, cap: int) -> tuple[bool, int, int]:
         return True, used + 1, cap
 
 
+def _maybe_auto_subscribe_composite(telegram_id: int) -> Optional[bool]:
+    """During the TG_FREE_UNTIL launch promo, silently ensure a user has a
+    composite_score rule. Returns:
+      • None  — promo not active (no-op)
+      • False — user already had an active rule
+      • True  — newly inserted
+
+    Called from `_upsert_user` so EVERY interaction with the bot retro-
+    actively subscribes legacy users (those who joined before the
+    /start auto-subscribe was added 2026-06-17). After the promo expires,
+    this is a no-op and the PAID_ALERT_KINDS gate at the dispatcher
+    transparently stops free users — no rule cleanup needed.
+
+    Wrapped in try/except so a DB hiccup never breaks the command path
+    this helper is called from."""
+    if not _tg_free_trial_active():
+        return None
+    try:
+        now_ts = int(time.time())
+        with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c, c:
+            row = c.execute(
+                "SELECT id FROM tg_alert_rules "
+                "WHERE telegram_id = ? AND kind = 'composite_score' AND active = 1",
+                (telegram_id,),
+            ).fetchone()
+            if row:
+                return False
+            c.execute(
+                "INSERT INTO tg_alert_rules "
+                "(telegram_id, kind, threshold, params, active, created_at, activated_at) "
+                "VALUES (?, 'composite_score', 0, '{}', 1, ?, ?)",
+                (telegram_id, now_ts, now_ts),
+            )
+            return True
+    except Exception as e:
+        print(f"[auto_subscribe] failed for {telegram_id}: {e}", flush=True)
+        return False
+
+
 def _upsert_user(update: Update):
     u = update.effective_user
     chat = update.effective_chat
@@ -156,6 +239,11 @@ def _upsert_user(update: Update):
                        chat_id = excluded.chat_id,
                        last_seen_at = excluded.last_seen_at""",
                   (u.id, u.username or "", chat.id if chat else None, now, now))
+    # During the launch promo, any user who touches the bot gets retroactively
+    # subscribed to composite_score. Legacy users (joined pre-2026-06-17) who
+    # never re-tapped /start would otherwise stay invisible to the dispatcher
+    # because they have no rule. This closes the gap silently.
+    _maybe_auto_subscribe_composite(u.id)
 
 
 def _user_tier(telegram_id: int) -> tuple[str, dict]:
@@ -233,13 +321,14 @@ def _live_headline_line() -> str:
 def welcome_text() -> str:
     """Hero pulled live each /start hit. The verdict line stays as the
     receipts-grade discipline anchor below the live number."""
-    return (
+    return _tg_free_banner() + (
         "🎯 *graduate-oracle*\n"
         "_pump.fun decoded · launching on @prooflaunch\\__\n\n"
         + _live_headline_line() + "\n\n"
         "🛡 _Every prediction publicly hashed before outcome._ "
         "950,000+ mints in our receipts chain.\n"
-        "🤖 _Built for fast traders + sniper bots — actionable runway every alert._\n\n"
+        "📊 _Three urgency tiers — ACT (~4min runway), WATCH (~7min), "
+        "SCOUT (~10min). Pick what your speed allows._\n\n"
         "*This is a paid signal. Two ways in:*\n\n"
         "💎 *Subscribe in SOL* — `0.2 SOL/mo`\n"
         "    Founding rate locks forever. Type `/upgrade` for Phantom QR.\n\n"
@@ -259,7 +348,11 @@ def welcome_text() -> str:
 # I pay?" Surfaced via /plans, /upgrade with no args, and embedded in /start
 # for first-time users. Gives every visitor a clear answer without having to
 # leave Telegram for the website.
-PLANS_EXPLAINER = (
+#
+# 2026-06-16: wrapped in plans_explainer_text() so the launch-month TG promo
+# banner can be prepended dynamically without a deploy. The constant remains
+# for any external imports; the helper is what new call sites should use.
+_PLANS_BODY = (
     "*GRADUATE — real-time pump.fun graduation alert*\n\n"
     "Median runway between our ≥0.70 confidence call and the bonding curve "
     "completing is seconds — enough for any sub-second bot or fast TG-sniper "
@@ -283,13 +376,77 @@ PLANS_EXPLAINER = (
 )
 
 
+def plans_explainer_text() -> str:
+    """Prepends the TG free-trial banner when the promo window is open."""
+    return _tg_free_banner() + _PLANS_BODY
+
+
+# Back-compat alias for any callers still reading the constant. The helper
+# above is the right thing to call going forward — it adapts to the trial.
+PLANS_EXPLAINER = _PLANS_BODY
+
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Dead-simple paywall-first welcome. We used to auto-subscribe new
     users to free grad_prob at threshold 0.70 — removed 2026-06-12 to
     align with the "paid or token-holder" pre-launch positioning. Users
     can still opt into the free signal explicitly with `/alert grad_prob`.
+
+    2026-06-17: during the launch promo window (TG_FREE_UNTIL), /start
+    auto-subscribes the user to composite_score so they have ZERO
+    commands to learn. Just tap START → see celebration → wait for the
+    first signal. Removes the "how do I actually start?" confusion users
+    reported on day 1 of the promo.
     """
+    # _upsert_user runs the auto-subscribe helper internally during the
+    # promo, so by the time we get here the user already has a rule (if
+    # eligible). We just need to know which case to render copy for.
     _upsert_user(update)
+    tg_id = update.effective_user.id
+
+    # Launch-promo fast path — celebratory copy.
+    if _tg_free_trial_active():
+        # Recheck rule existence to decide copy. _upsert_user just ensured
+        # one exists; this tells us whether it was already there or new.
+        # (We can't reuse the helper's return value because _upsert_user
+        # doesn't propagate it — and that's fine, this is a single SELECT.)
+        try:
+            with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c:
+                row = c.execute(
+                    "SELECT created_at FROM tg_alert_rules "
+                    "WHERE telegram_id = ? AND kind = 'composite_score' AND active = 1",
+                    (tg_id,),
+                ).fetchone()
+            # If the rule was created in the last 5 seconds, treat as "just
+            # subscribed" (this exact /start call). Otherwise "already".
+            already = bool(row and (int(time.time()) - int(row[0]) > 5))
+        except Exception:
+            already = False
+
+        end = _tg_free_trial_end_label()
+        head = "You're already subscribed." if already else "Just subscribed you to *composite_score*."
+        msg = (
+            "🎉 *YOU'RE IN — FREE THIS MONTH*\n\n"
+            f"{head} ⚡ACT / 📊WATCH / 🛰SCOUT alerts will fire to this chat automatically "
+            f"as they hit, all the way through *{end}*.\n\n"
+            "*What this is:* the same composite signal we publish at "
+            "graduateoracle.fun/accuracy — real-time, hashed before outcome was known.\n\n"
+            "*That's it. Sit back and wait for the first ACT to hit.*\n\n"
+            "_Useful commands:_\n"
+            "  `/alerts` — see your active subscriptions\n"
+            "  `/probe <CA>` — score any mint right now (free)\n"
+            "  `/sample` — last 10 ACT calls + outcomes\n"
+            "  `/verdict` — the pre-launch audit chain\n\n"
+            "_NFA · DYOR · pump.fun is high-risk, positions can go to zero._"
+        )
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📊 Live demo",  url="https://graduateoracle.fun/"),
+            InlineKeyboardButton("🔍 Receipts",   url="https://graduateoracle.fun/accuracy"),
+        ]])
+        await update.message.reply_text(msg, parse_mode=constants.ParseMode.MARKDOWN, reply_markup=kb)
+        return
+
+    # Default (post-promo) — paywall pitch with subscribe buttons.
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton("💎 Subscribe in SOL", url="https://graduateoracle.fun/api"),
         InlineKeyboardButton("🪙 $GO info",         url="https://graduateoracle.fun/for-terminals"),
@@ -307,7 +464,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_plans(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Side-by-side tier comparison. Most-asked question; this is the answer."""
     _upsert_user(update)
-    await update.message.reply_text(PLANS_EXPLAINER, parse_mode=constants.ParseMode.MARKDOWN)
+    await update.message.reply_text(plans_explainer_text(), parse_mode=constants.ParseMode.MARKDOWN)
 
 
 async def cmd_grant(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -858,6 +1015,12 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
     tier, lim = _user_tier(tg_id)
     cap = lim["alerts"]
+    # During TG_FREE_UNTIL window, the bot is fully free — and that has to
+    # mean *no* slot caps either, otherwise free users get pushed into a
+    # swap dance and the promo is hostile. After the window the paid cap
+    # (1 for free tier) snaps back.
+    if tier == "free" and _tg_free_trial_active():
+        cap = -1
     kind = ctx.args[0]
 
     # Handle remove (e.g. /alert remove grad_prob)
@@ -885,8 +1048,9 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         # pilot is over. Check effective_tier (paid OR token-held) against
         # db.COMPOSITE_SIGNAL_REQUIRED_TIER. Token holders auto-qualify the
         # moment ORACLE_MINT is set + their wallet is linked.
+        # During TG_FREE_UNTIL window, skip the gate entirely — launch promo.
         req = getattr(db, "COMPOSITE_SIGNAL_REQUIRED_TIER", None)
-        if req is not None:
+        if req is not None and not _tg_free_trial_active():
             # Look up paid tier + token-held tier; allow higher of the two.
             # expires_at IS NULL: token-holder / comp key (no time bound).
             # expires_at > now: still within paid window.
@@ -934,15 +1098,51 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 return
         with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c, c:
             c.row_factory = sqlite3.Row
-            n = c.execute(
-                "SELECT COUNT(*) AS n FROM tg_alert_rules WHERE telegram_id = ? AND active = 1",
+            existing_rows = c.execute(
+                "SELECT id, kind, threshold FROM tg_alert_rules "
+                "WHERE telegram_id = ? AND active = 1 ORDER BY id",
                 (tg_id,),
-            ).fetchone()["n"]
+            ).fetchall()
+            n = len(existing_rows)
+            # Free-tier convenience: a user with only ONE non-composite slot
+            # in use almost always wants to swap it for composite — that IS
+            # the live product. Auto-deactivate the old rule, log clearly so
+            # they know what happened, and keep going. Anything more nuanced
+            # (multiple rules, paid tier) falls through to the explicit
+            # "swap or upgrade" prompt below.
+            non_composite = [r for r in existing_rows if r["kind"] != "composite_score"]
             if cap >= 0 and n >= cap:
-                tier_pitch = ("/upgrade builder for more rules" if tier == "free"
-                              else "/upgrade pro for unlimited")
-                await update.message.reply_text(f"alert quota full ({n}/{cap}). {tier_pitch}.")
-                return
+                if tier == "free" and len(non_composite) == 1 and len(existing_rows) == n:
+                    old = non_composite[0]
+                    c.execute(
+                        "UPDATE tg_alert_rules SET active = 0 WHERE id = ?",
+                        (old["id"],),
+                    )
+                    swap_note = (
+                        f"_(swapped your existing `{old['kind']}` rule for composite "
+                        f"— free tier allows 1 active alert. Re-add it any time with "
+                        f"`/alert {old['kind']}`)_"
+                    )
+                else:
+                    lines = [f"⚠️ *Alert quota full* ({n}/{cap}).", "", "*You currently have:*"]
+                    for r in existing_rows:
+                        thr = f" @ {int(r['threshold']*100)}%" if r["threshold"] else ""
+                        lines.append(f"  `#{r['id']}` · {r['kind']}{thr}")
+                    lines.append("")
+                    lines.append("*To swap in composite_score:*")
+                    if existing_rows:
+                        first = existing_rows[0]
+                        lines.append(f"  `/alert remove {first['kind']}` _(or any kind above)_")
+                        lines.append(f"  then `/alert composite_score`")
+                    if tier == "free":
+                        lines.append("")
+                        lines.append("*Or upgrade:* `/upgrade tg_paid` — *0.2 SOL/mo* — unlimited alerts.")
+                    await update.message.reply_text(
+                        "\n".join(lines), parse_mode=constants.ParseMode.MARKDOWN,
+                    )
+                    return
+            else:
+                swap_note = ""
             c.execute(
                 "UPDATE tg_alert_rules SET active = 0 "
                 "WHERE telegram_id = ? AND kind = 'composite_score' AND active = 1",
@@ -960,7 +1160,7 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "WATCH": "⚡ACT + 📊WATCH",
             "SCOUT": "all tiers (ACT+WATCH+SCOUT)",
         }[min_tier]
-        await update.message.reply_text(
+        body = (
             f"✓ subscribed to *composite_score* — {tier_desc}\n\n"
             f"Composite-receipts: smart-money × momentum × freshness, gated by "
             f"the model's confidence gradient. Each fire shows tier, grad_prob, "
@@ -968,9 +1168,11 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"_Pilot phase — performance is forward-validating in public "
             f"(graduateoracle.fun). No price during the pilot; that's deliberate, "
             f"not an oversight._\n\n"
-            f"`/alert remove composite_score` to unsubscribe.",
-            parse_mode=constants.ParseMode.MARKDOWN,
+            f"`/alert remove composite_score` to unsubscribe."
         )
+        if swap_note:
+            body = swap_note + "\n\n" + body
+        await update.message.reply_text(body, parse_mode=constants.ParseMode.MARKDOWN)
         return
 
     # SIMPLIFICATION 2026-05-04: only grad_prob is a real alert kind. All
@@ -1019,12 +1221,32 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c, c:
         c.row_factory = sqlite3.Row
-        n = c.execute("SELECT COUNT(*) AS n FROM tg_alert_rules WHERE telegram_id = ? AND active = 1",
-                      (tg_id,)).fetchone()["n"]
-        if cap >= 0 and n >= cap:
-            tier_pitch = "/upgrade builder for 10 rules" if tier == "free" else "/upgrade pro for unlimited"
+        existing_rows = c.execute(
+            "SELECT id, kind, threshold FROM tg_alert_rules "
+            "WHERE telegram_id = ? AND active = 1 ORDER BY id",
+            (tg_id,),
+        ).fetchall()
+        n = len(existing_rows)
+        # If the user already has an active grad_prob rule, this call is a
+        # threshold change — we fall through and dedupe-replace below, no
+        # quota block. The quota only blocks NEW kinds.
+        has_same_kind = any(r["kind"] == kind for r in existing_rows)
+        if cap >= 0 and n >= cap and not has_same_kind:
+            lines = [f"⚠️ *Alert quota full* ({n}/{cap}).", "", "*You currently have:*"]
+            for r in existing_rows:
+                thr = f" @ {int(r['threshold']*100)}%" if r["threshold"] else ""
+                lines.append(f"  `#{r['id']}` · {r['kind']}{thr}")
+            lines.append("")
+            lines.append(f"*To add `{kind}`:*")
+            first = existing_rows[0]
+            lines.append(f"  `/alert remove {first['kind']}` _(or any kind above)_")
+            lines.append(f"  then re-run your /alert command")
+            if tier == "free":
+                lines.append("")
+                lines.append("*Or upgrade:* `/upgrade tg_paid` — *0.2 SOL/mo* — unlimited alerts.")
             await update.message.reply_text(
-                f"alert quota full ({n}/{cap}). {tier_pitch}.")
+                "\n".join(lines), parse_mode=constants.ParseMode.MARKDOWN,
+            )
             return
         # Only grad_prob is allowed (validated above). Threshold is
         # user-tunable but FLOORED at 0.50 (below that is model noise per
@@ -1082,18 +1304,43 @@ async def cmd_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_alerts(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _upsert_user(update)
+    tg_id = update.effective_user.id
+    tier, lim = _user_tier(tg_id)
+    cap = lim["alerts"]
+    if tier == "free" and _tg_free_trial_active():
+        cap = -1
     with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c, c:
         c.row_factory = sqlite3.Row
         rows = c.execute("""SELECT id, kind, threshold, params FROM tg_alert_rules
                              WHERE telegram_id = ? AND active = 1 ORDER BY id""",
-                         (update.effective_user.id,)).fetchall()
+                         (tg_id,)).fetchall()
+    cap_str = "unlimited" if cap < 0 else f"{len(rows)}/{cap}"
     if not rows:
-        await update.message.reply_text("no active alerts. add one: `/alert grad_prob 70`",
-                                        parse_mode=constants.ParseMode.MARKDOWN)
+        await update.message.reply_text(
+            f"📭 *No active alerts* (slots used: {cap_str}).\n\n"
+            f"*Try one:*\n"
+            f"  `/alert composite_score` — the live product (ACT/WATCH/SCOUT)\n"
+            f"  `/alert grad_prob 70`    — graduation-probability track",
+            parse_mode=constants.ParseMode.MARKDOWN,
+        )
         return
-    lines = ["*your active alerts*"]
+    lines = [f"🔔 *Your active alerts* (slots used: {cap_str})", ""]
     for r in rows:
-        lines.append(f"`#{r['id']}` · {r['kind']} @ {r['threshold']}  {r['params']}")
+        thr_pct = int((r['threshold'] or 0) * 100)
+        if r['kind'] == 'composite_score':
+            desc = "live composite signal (ACT/WATCH/SCOUT)"
+            thr_part = ""
+        elif r['kind'] == 'grad_prob':
+            desc = f"graduation probability ≥ *{thr_pct}%*"
+            thr_part = ""
+        else:
+            desc = r['kind']
+            thr_part = f" @ {thr_pct}%" if r['threshold'] else ""
+        lines.append(f"  `#{r['id']}` — {desc}{thr_part}")
+    lines.append("")
+    lines.append("*Manage:*")
+    for r in rows[:3]:
+        lines.append(f"  `/alert remove {r['kind']}`")
     await update.message.reply_text("\n".join(lines), parse_mode=constants.ParseMode.MARKDOWN)
 
 
@@ -1218,24 +1465,24 @@ async def cmd_verdict(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_tiers(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """The composite signal stack — three confidence tiers feeding the
-    same graduation-timing alert."""
+    """The composite signal stack — three urgency tiers with measurably
+    different runway windows."""
     _upsert_user(update)
     msg = (
-        "📊 *The composite signal stack*\n\n"
-        "All three tiers feed the same real-time graduation-timing alert. "
-        "Higher tier = the model is more confident the bonding curve will "
-        "complete soon.\n\n"
-        "⚡ *ACT* — highest conviction\n"
-        "  `bestgp ≥ 0.15`. The model's strongest calls — typically fire "
-        "when graduation is imminent.\n\n"
-        "📈 *WATCH* — meaningful signal\n"
-        "  `bestgp 0.05–0.15`. Lower conviction than ACT but worth eyes.\n\n"
-        "🛰 *SCOUT* — recovery / lower conviction\n"
-        "  `bestgp 0.02–0.05` OR `smart≥7 AND mult≥4`. Catches late-cross "
-        "strong movers.\n\n"
-        "_Median runway between our ≥0.70 call and the curve completing is "
-        "live on_ `/verdict`. Built for fast traders + sniper bots.\n\n"
+        "📊 *The composite signal stack — pick your urgency*\n\n"
+        "All three tiers fire the same alert kind. The tier represents "
+        "*how soon* the bonding curve completes — the runway you have to "
+        "enter before migration.\n\n"
+        "⚡ *ACT* — graduating soonest\n"
+        "  Median runway: *~4 min* · 29% fire within 60s · for fast TG-sniper "
+        "users with one-tap entry.\n\n"
+        "📈 *WATCH* — graduating in minutes\n"
+        "  Median runway: *~7 min* · comfortable entry window for manual "
+        "traders running on a hot wallet.\n\n"
+        "🛰 *SCOUT* — most runway\n"
+        "  Median runway: *~10 min* · the relaxed tier — phone traders, "
+        "slower execution stacks.\n\n"
+        "Same model, same calibration, three urgency windows.\n\n"
         "_Subscribe via_ `/alert composite_score` _— gets all three tiers._\n"
         "_Pre-launch audit: graduateoracle.fun/verdict_"
     )
@@ -1243,50 +1490,107 @@ async def cmd_tiers(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_sample(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Last 10 ACT calls + actual graduation timing — the runway between
-    our alert and the bonding curve completing, plus did-it-graduate flag.
-    Public-style rolling receipts."""
+    """Honest rolling receipts for ACT calls — headline graduation rate
+    over 30 days, plus a balanced mix of recent resolved wins, resolved
+    misses, and still-cooking calls.
+
+    2026-06-19 rewrite: the previous version showed only the 10 most
+    recent ACT calls, which were almost always still 'cooking' (the 24h
+    outcome resolver hadn't run yet) — combined with a marketing tagline
+    that implied 'sub-second execution catches most before migration',
+    users reasonably concluded every ACT graduates. Actual graduation
+    rate is ~37%. This rewrite shows that number prominently and gives
+    the user real wins AND real misses in the same view."""
     _upsert_user(update)
     now = int(time.time())
+    cutoff_30d = now - 30 * 86400
+
     with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c, c:
         c.row_factory = sqlite3.Row
-        # Join to post_grad_outcomes for the actual graduated_at timestamp,
-        # so we can show the real runway (alert → grad) per row.
-        rows = c.execute("""
+
+        # Headline: 30d graduation rate over RESOLVED ACT calls. This is the
+        # one number users react to — and the one we were burying before.
+        agg = c.execute("""
+            SELECT COUNT(*) AS n,
+                   SUM(CASE WHEN did_graduate=1 THEN 1 ELSE 0 END) AS n_grad
+              FROM composite_predictions
+             WHERE tg_tier='ACT' AND tier_logic_version='v2'
+               AND outcome_resolved_at IS NOT NULL
+               AND predicted_at > ?
+        """, (cutoff_30d,)).fetchone()
+        n_resolved = int(agg["n"] or 0)
+        n_grad     = int(agg["n_grad"] or 0)
+        grad_rate  = (n_grad / n_resolved * 100) if n_resolved else None
+
+        n_cooking = c.execute("""
+            SELECT COUNT(*) FROM composite_predictions
+             WHERE tg_tier='ACT' AND tier_logic_version='v2'
+               AND outcome_resolved_at IS NULL
+               AND predicted_at > ?
+        """, (cutoff_30d,)).fetchone()[0]
+
+        # 5 most recent RESOLVED ACT calls (mix of grad + no_grad — the
+        # honest sample). LEFT JOIN to get the actual graduated_at runway.
+        resolved_rows = c.execute("""
             SELECT cp.mint, cp.predicted_at, cp.did_graduate,
                    cp.outcome_resolved_at, o.graduated_at
               FROM composite_predictions cp
          LEFT JOIN post_grad_outcomes o ON o.mint = cp.mint
              WHERE cp.tg_tier = 'ACT' AND cp.tier_logic_version = 'v2'
-             ORDER BY cp.predicted_at DESC LIMIT 10
+               AND cp.outcome_resolved_at IS NOT NULL
+             ORDER BY cp.predicted_at DESC LIMIT 5
         """).fetchall()
 
-    if not rows:
+        # 5 most recent still-cooking — surfaced separately so users see
+        # that resolution is still pending, not silently treated as wins.
+        cooking_rows = c.execute("""
+            SELECT mint, predicted_at FROM composite_predictions
+             WHERE tg_tier = 'ACT' AND tier_logic_version = 'v2'
+               AND outcome_resolved_at IS NULL
+             ORDER BY predicted_at DESC LIMIT 5
+        """).fetchall()
+
+    if not n_resolved and not cooking_rows:
         await update.message.reply_text("no recent ACT calls.")
         return
 
-    lines = ["⚡ *Last 10 ACT calls — runway between alert + graduation*\n"]
-    for r in rows:
-        age_h = (now - (r["predicted_at"] or now)) / 3600
-        if r["outcome_resolved_at"] is None:
-            out = f"_cooking ({age_h:.0f}h)_"
-        elif r["did_graduate"] == 1 and r["graduated_at"]:
-            runway = r["graduated_at"] - r["predicted_at"]
-            if runway < 60: runway_str = f"{runway}s"
-            elif runway < 3600: runway_str = f"{runway // 60}m"
-            else: runway_str = f"{runway // 3600}h"
-            out = f"🚀 *grad in {runway_str}*"
-        elif r["did_graduate"] == 1:
-            out = "🚀 *grad* _(timestamp missing)_"
-        else:
-            out = "· _no grad_"
-        lines.append(f"`{r['mint'][:10]}…` — {out}")
-
+    lines = ["⚡ *ACT calls — honest 30-day receipts*\n"]
+    if grad_rate is not None:
+        lines.append(
+            f"📊 *Graduation rate:* {grad_rate:.1f}% "
+            f"({n_grad} of {n_resolved} resolved)"
+        )
+    else:
+        lines.append("📊 *Graduation rate:* _no resolved samples yet_")
+    lines.append(f"⏳ *Still resolving:* {n_cooking} calls awaiting 24h outcome")
     lines.append("")
+
+    if resolved_rows:
+        lines.append("*Recent 5 resolved* (wins AND misses):")
+        for r in resolved_rows:
+            if r["did_graduate"] == 1 and r["graduated_at"]:
+                runway = r["graduated_at"] - r["predicted_at"]
+                if runway < 60: runway_str = f"{runway}s"
+                elif runway < 3600: runway_str = f"{runway // 60}m"
+                else: runway_str = f"{runway // 3600}h"
+                out = f"🚀 *grad in {runway_str}*"
+            elif r["did_graduate"] == 1:
+                out = "🚀 *grad*"
+            else:
+                out = "❌ _did not graduate_"
+            lines.append(f"  `{r['mint'][:10]}…` — {out}")
+        lines.append("")
+
+    if cooking_rows:
+        lines.append("*Recent 5 still cooking* (outcome pending):")
+        for r in cooking_rows:
+            age_h = (now - r["predicted_at"]) / 3600
+            lines.append(f"  `{r['mint'][:10]}…` — ⏳ _{age_h:.1f}h old_")
+        lines.append("")
+
     lines.append(
-        "_Bot-actionable in real time — sub-second execution catches most "
-        "of these on the bonding curve before migration. "
-        "graduateoracle.fun/verdict_"
+        "_Honest receipts — every ACT call is hash-committed before its "
+        "outcome resolves. Full forward-validation: graduateoracle.fun/accuracy_"
     )
     await update.message.reply_text("\n".join(lines), parse_mode=constants.ParseMode.MARKDOWN)
 
@@ -1335,7 +1639,7 @@ async def cmd_upgrade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args:
         # No args — show the full free-vs-paid explainer + how to commit.
         await update.message.reply_text(
-            PLANS_EXPLAINER + "\n\n_Add `yearly` for 17% off, e.g._ `/upgrade pro yearly`",
+            plans_explainer_text() + "\n\n_Add `yearly` for 17% off, e.g._ `/upgrade pro yearly`",
             parse_mode=constants.ParseMode.MARKDOWN,
         )
         return
@@ -1664,13 +1968,13 @@ def _format_composite_alert(snap: dict, msg_extra: str) -> str:
     # user's eye is the precision filter.
     if tier == "ACT":
         header = f"⚡ *ACT* — {title}"
-        conviction_line = f"*{gp_str}* grad_prob  ·  _~71% hit ≥5× (back-test, forward-validating)_"
+        conviction_line = f"*{gp_str}* chance to graduate  ·  _~71% of these hit 5×_"
     elif tier == "SCOUT":
         header = f"🛰 *SCOUT* — {title}"
-        conviction_line = f"*{gp_str}* grad_prob  ·  _lower-confidence — ML flags signal, judge it yourself_"
+        conviction_line = f"*{gp_str}* chance to graduate  ·  _weaker signal — judge it yourself_"
     else:  # WATCH
         header = f"📊 *WATCH* — {title}"
-        conviction_line = f"*{gp_str}* grad_prob  ·  _~56% hit ≥5× (back-test, forward-validating)_"
+        conviction_line = f"*{gp_str}* chance to graduate  ·  _~56% of these hit 5×_"
 
     lines = [
         header,
@@ -1977,7 +2281,9 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
                     rank = ["free", "tg_paid", "builder", "pro", "unlimited"]
                     def _idx(t): return rank.index(t) if t in rank else 0
                     eff_idx = max(_idx(paid_t), _idx(token_t))
-                    if eff_idx < _idx(req):
+                    # During TG_FREE_UNTIL window, deliver to everyone subscribed
+                    # regardless of tier. After window expires, normal gate applies.
+                    if eff_idx < _idx(req) and not _tg_free_trial_active():
                         # Below required tier — skip the fire. We don't DM
                         # an upgrade prompt here (would spam every fire);
                         # cmd_alert handles that at rule-creation time.
@@ -1985,16 +2291,20 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
 
             # Render via the same paid-tier format the polling path uses.
             tier, _ = _user_tier(tg_id)
-            # FREE-TIER THROTTLE: free users get a 15% sample of the live
-            # firehose. Same threshold (≥70%), same gates, same calibration —
-            # just less volume. Proves the product works without giving away
-            # the value. Paid users get the full feed. The skipped-for-free
-            # rows are still marked delivered (so we don't keep retrying
-            # them), but a counter is kept so we can show the user how many
-            # they missed (FOMO upgrade prompt).
+            # FREE-TIER THROTTLE: free users normally get a 15% sample of the
+            # live firehose (proves the product works without giving away the
+            # full value). Paid users get the full feed.
+            #
+            # During the TG_FREE_UNTIL launch promo window we DISABLE the
+            # throttle entirely — every subscribed user gets every fire,
+            # tier-agnostic. This matches the paid-gate bypass at line ~2242
+            # so the "EVERYONE IS FREE RIGHT NOW" promise actually holds.
+            # After the promo expires, the 15% sample auto-restores.
             FREE_SAMPLE_RATE = 0.15
             import random as _random
-            if tier == "free" and _random.random() >= FREE_SAMPLE_RATE:
+            if (tier == "free"
+                    and not _tg_free_trial_active()
+                    and _random.random() >= FREE_SAMPLE_RATE):
                 # Mark this fire as "skipped for free tier" — track the
                 # missed count for upgrade prompt context.
                 _free_skipped[tg_id] = _free_skipped.get(tg_id, 0) + 1
