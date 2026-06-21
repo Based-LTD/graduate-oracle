@@ -325,6 +325,57 @@ def _withdraw_total_today(user_id: str) -> int:
         return 0
 
 
+def internal_send_sol(
+    user_id: str | int,
+    to_address: str,
+    lamports: int,
+) -> str:
+    """SERVER-INTERNAL SOL transfer. Used by fee_skim and other server-side
+    flows that need to move SOL out of a user's wallet WITHOUT the
+    user-facing safeguards (password, daily limit, audit trail).
+
+    Use this ONLY from trusted server code (fee_skim.apply_fee). Never
+    expose this via an API or TG command — it has zero authorization
+    checks beyond "the calling code has the user_id."
+
+    Returns the tx signature. Raises ValueError / RuntimeError on
+    validation or RPC failure. Does NOT poll for confirmation — the
+    caller decides whether to wait.
+    """
+    from solders.transaction import VersionedTransaction
+    from solders.message import MessageV0
+    from solders.system_program import TransferParams, transfer as sys_transfer
+    from solders.hash import Hash
+    user_id = str(user_id)
+    to_address = (to_address or "").strip()
+    lamports = int(lamports)
+    if lamports <= 0:
+        raise ValueError(f"lamports must be > 0, got {lamports}")
+    try:
+        to_pubkey = Pubkey.from_string(to_address)
+    except Exception as e:
+        raise ValueError(f"invalid destination address: {e}") from e
+    kp = _decrypt_keypair(user_id)
+    bh = _rpc_call("getLatestBlockhash", [{"commitment": "confirmed"}])
+    blockhash = Hash.from_string(bh["value"]["blockhash"])
+    ix = sys_transfer(TransferParams(
+        from_pubkey=kp.pubkey(), to_pubkey=to_pubkey, lamports=lamports,
+    ))
+    msg = MessageV0.try_compile(
+        payer=kp.pubkey(), instructions=[ix],
+        address_lookup_table_accounts=[], recent_blockhash=blockhash,
+    )
+    signed = VersionedTransaction(msg, [kp])
+    signed_b64 = base64.b64encode(bytes(signed)).decode("ascii")
+    sig = _rpc_call(
+        "sendTransaction",
+        [signed_b64, {"encoding": "base64", "skipPreflight": True,
+                       "preflightCommitment": "confirmed"}],
+        timeout=15.0,
+    )
+    return sig
+
+
 def withdraw(
     user_id: str | int,
     to_address: str,

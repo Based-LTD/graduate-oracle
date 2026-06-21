@@ -1,5 +1,8 @@
 """
-jupiter_buy — buy a pump.fun mint via Jupiter's swap API.
+jupiter_buy — buy AND sell pump.fun mints via Jupiter's swap API.
+
+(Module retains its original name for import compatibility — exports both
+build_buy_tx and build_sell_tx.)
 
 Why Jupiter instead of building pump.fun ix directly:
   • Pump.fun ships breaking ABI changes (account order, new required
@@ -30,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from typing import Optional
 
@@ -46,12 +50,28 @@ class JupiterError(RuntimeError):
     malformed response."""
 
 
+class JupiterNotTradableError(JupiterError):
+    """Specific subclass for Jupiter's TOKEN_NOT_TRADABLE error code —
+    means Jupiter's indexer hasn't picked up the mint yet (typically
+    happens for brand-new pump.fun launches in their first 30-90s).
+
+    Distinct exception so callers can render a 'too new, try again later'
+    message instead of a generic 'build failed.'"""
+
+
 def _http_json(method: str, url: str, *,
                body: Optional[dict] = None,
                timeout_s: float = 6.0,
                retries: int = 2,
                backoff_base_s: float = 0.5) -> dict:
-    """POST/GET JSON with retry on transient failures."""
+    """POST/GET JSON with retry on transient failures.
+
+    Special handling: HTTP 400 responses are NOT retried — they're
+    application-level errors (bad mint, no route, etc.) that won't
+    fix themselves. The body is parsed and surfaced as a specific
+    exception (JupiterNotTradableError when error code matches) so
+    the orchestrator can render a user-friendly message.
+    """
     last_err: Optional[Exception] = None
     for attempt in range(retries + 1):
         if attempt > 0:
@@ -69,10 +89,51 @@ def _http_json(method: str, url: str, *,
                 payload = r.read()
             resp = json.loads(payload)
             return resp
+        except urllib.error.HTTPError as e:
+            # Application-level errors don't retry. Parse + surface.
+            try:
+                body_str = e.read().decode("utf-8", errors="replace")
+                body_json = json.loads(body_str)
+            except Exception:
+                body_json = {"error": "<unparseable>", "errorCode": "UNKNOWN"}
+            code = body_json.get("errorCode", "")
+            msg = body_json.get("error", str(e))
+            if code == "TOKEN_NOT_TRADABLE":
+                raise JupiterNotTradableError(msg) from e
+            # Other 400s: raise generic JupiterError with the actual message
+            raise JupiterError(f"{e.code} {msg} (errorCode={code})") from e
         except Exception as e:
             last_err = e
             continue
     raise JupiterError(f"{method} {url} failed after {retries+1} attempts: {last_err}")
+
+
+def _quote_raw(
+    *,
+    input_mint: str,
+    output_mint: str,
+    amount: int,
+    slippage_bps: int,
+    only_direct_routes: bool,
+    timeout_s: float,
+) -> dict:
+    """Generic Jupiter quote — direction agnostic."""
+    params = {
+        "inputMint":         input_mint.strip(),
+        "outputMint":        output_mint.strip(),
+        "amount":            str(int(amount)),
+        "slippageBps":       str(int(slippage_bps)),
+        "swapMode":          "ExactIn",
+        "onlyDirectRoutes":  "true" if only_direct_routes else "false",
+    }
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    url = f"{JUP_BASE}/swap/v1/quote?{qs}"
+    resp = _http_json("GET", url, timeout_s=timeout_s)
+    if "error" in resp:
+        raise JupiterError(f"quote error: {resp['error']}")
+    if not resp.get("outAmount"):
+        raise JupiterError(f"unexpected quote response: {resp}")
+    return resp
 
 
 def quote(
@@ -83,36 +144,28 @@ def quote(
     only_direct_routes: bool = True,
     timeout_s: float = 4.0,
 ) -> dict:
-    """Get a Jupiter swap quote (SOL → mint).
+    """Get a Jupiter swap quote SOL → mint (the buy direction)."""
+    return _quote_raw(
+        input_mint=WSOL_MINT, output_mint=mint, amount=sol_lamports,
+        slippage_bps=slippage_bps, only_direct_routes=only_direct_routes,
+        timeout_s=timeout_s,
+    )
 
-    Args:
-      mint:                output mint (the pump.fun token)
-      sol_lamports:        how much SOL (in lamports) to swap in
-      slippage_bps:        max slippage in basis points (500 = 5%)
-      only_direct_routes:  prefer a single-hop route for speed/simplicity.
-                            Set False to allow multi-hop (rarely needed for
-                            pump.fun, which is direct).
-    """
-    params = {
-        "inputMint":         WSOL_MINT,
-        "outputMint":        mint.strip(),
-        "amount":            str(int(sol_lamports)),
-        "slippageBps":       str(int(slippage_bps)),
-        "swapMode":          "ExactIn",
-        "onlyDirectRoutes":  "true" if only_direct_routes else "false",
-        # Restrict to pump.fun-relevant DEXes so we don't get rerouted
-        # through obscure pools mid-flight. Comma-separated.
-        # Removing this would let Jupiter use any AMM it knows.
-        # "dexes":             "Pump.fun,Raydium,PumpSwap",
-    }
-    qs = "&".join(f"{k}={v}" for k, v in params.items())
-    url = f"{JUP_BASE}/swap/v1/quote?{qs}"
-    resp = _http_json("GET", url, timeout_s=timeout_s)
-    if "error" in resp:
-        raise JupiterError(f"quote error: {resp['error']}")
-    if not resp.get("outAmount"):
-        raise JupiterError(f"unexpected quote response: {resp}")
-    return resp
+
+def quote_sell(
+    *,
+    mint: str,
+    token_amount: int,
+    slippage_bps: int = 500,
+    only_direct_routes: bool = True,
+    timeout_s: float = 4.0,
+) -> dict:
+    """Get a Jupiter swap quote mint → SOL (the sell direction)."""
+    return _quote_raw(
+        input_mint=mint, output_mint=WSOL_MINT, amount=token_amount,
+        slippage_bps=slippage_bps, only_direct_routes=only_direct_routes,
+        timeout_s=timeout_s,
+    )
 
 
 def build_buy_tx(
@@ -218,5 +271,84 @@ def build_buy_tx(
         # row. SPL Token is the safe default — sell side can detect on read.
         "accounts": {
             "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        },
+    }
+
+
+def build_sell_tx(
+    *,
+    user_id: str | int,
+    mint: str,
+    payer_pubkey: str,
+    token_amount: int,
+    slippage_bps: int = 500,
+    priority_fee_microlamports: Optional[int] = None,
+    jito_tip_lamports: Optional[int] = None,
+    timeout_s: float = 8.0,
+) -> dict:
+    """Build an unsigned versioned sell tx via Jupiter (mint → SOL).
+
+    Mirrors build_buy_tx but in reverse. Jupiter handles the token side
+    (which program, ATA closures, etc.). We pass in the raw token amount
+    to sell and get a swap that unwraps the resulting WSOL to native SOL.
+
+    Returns:
+      {
+        route, tx_b64, token_amount_in, slippage_bps,
+        expected_sol_out_lamports, min_sol_out_lamports,
+        exit_price_lamports_per_token, jupiter_route, price_impact_pct,
+        jupiter_quote
+      }
+    """
+    if token_amount <= 0:
+        raise JupiterError(f"token_amount {token_amount} must be > 0")
+
+    # ── 1. Quote (mint → SOL) ──────────────────────────────────────────
+    q = quote_sell(mint=mint, token_amount=int(token_amount),
+                   slippage_bps=slippage_bps, timeout_s=timeout_s/2)
+    out_lamports = int(q["outAmount"])
+    other_amount_threshold = int(q.get("otherAmountThreshold", out_lamports))
+    price_impact_pct = float(q.get("priceImpactPct") or 0)
+    route_labels = [step["swapInfo"]["label"] for step in q.get("routePlan") or []]
+    primary_route = route_labels[0] if route_labels else "unknown"
+
+    # ── 2. Swap ────────────────────────────────────────────────────────
+    swap_req: dict = {
+        "quoteResponse":               q,
+        "userPublicKey":               payer_pubkey,
+        "wrapAndUnwrapSol":            True,
+        "dynamicComputeUnitLimit":     True,
+    }
+    # Same fee-handling rule as build_buy_tx: prioritizationFeeLamports
+    # and computeUnitPriceMicroLamports are mutually exclusive.
+    fee_lamports = jito_tip_lamports if jito_tip_lamports is not None else priority_fee_microlamports
+    if fee_lamports is not None and fee_lamports > 0:
+        swap_req["prioritizationFeeLamports"] = int(fee_lamports)
+
+    swap = _http_json("POST", f"{JUP_BASE}/swap/v1/swap",
+                      body=swap_req, timeout_s=timeout_s)
+    if "swapTransaction" not in swap:
+        raise JupiterError(f"swap endpoint missing swapTransaction: {swap}")
+    tx_b64 = swap["swapTransaction"]
+
+    # Trader-friendly fields. exit_price = SOL per raw token (conservative —
+    # uses the worst-case other_amount_threshold as the denominator basis).
+    exit_price = (out_lamports / token_amount) if token_amount else 0
+
+    return {
+        "route":                          f"jupiter:{primary_route}",
+        "tx_b64":                         tx_b64,
+        "token_amount_in":                int(token_amount),
+        "slippage_bps":                   slippage_bps,
+        "expected_sol_out_lamports":      out_lamports,
+        "min_sol_out_lamports":           other_amount_threshold,
+        "exit_price_lamports_per_token":  exit_price,
+        "jupiter_route":                  route_labels,
+        "price_impact_pct":               price_impact_pct,
+        "jupiter_quote":                  {
+            "outAmount":               q.get("outAmount"),
+            "otherAmountThreshold":    q.get("otherAmountThreshold"),
+            "contextSlot":             q.get("contextSlot"),
+            "primary_route":           primary_route,
         },
     }

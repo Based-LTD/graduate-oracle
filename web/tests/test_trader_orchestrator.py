@@ -6,8 +6,9 @@ Every external dependency is mocked:
   - trader_wallets._rpc_call             (blockhash fetch)
   - trader_wallets.sign_transaction      (custody)
   - bonding_curve.fetch                  (RPC + decode)
-  - tg_trader_runner.build_buy_tx        (Rust IPC)
-  - tg_trader_runner.submit_bundle       (Rust IPC)
+  - jupiter_buy.build_buy_tx             (Jupiter quote + swap-tx, post-pivot)
+  - tg_trader_runner.submit_bundle       (Rust dry-run path)
+  - rpc_submit.send_via_rpc              (live path)
 
 Position DB is a per-test temp file via TRADER_DB_PATH.
 
@@ -19,7 +20,6 @@ The tests cover:
   - input validation rejects bad sol / slippage
   - cashback flag propagates from curve → position row
   - tier + signal_source persist
-  - custom submit_regions pass through
 
 Run with:
     python3 -m unittest web.tests.test_trader_orchestrator -v
@@ -60,29 +60,29 @@ def _fresh_curve(**overrides) -> dict:
 
 
 def _build_envelope(**overrides) -> dict:
-    """Mock return value for tg_trader_runner.build_buy_tx — mirrors the
-    real Rust envelope shape so the orchestrator finds every field."""
+    """Mock return value for jupiter_buy.build_buy_tx — matches the
+    Jupiter envelope the orchestrator now consumes."""
     base = {
-        "route":                          "pumpfun-pregrad",
+        "route":                          "jupiter:Pump.fun",
         "tx_b64":                         "UNSIGNED-B64",
         "buy_lamports":                   500_000_000,
         "slippage_bps":                   500,
         "max_sol_cost_lamports":          525_000_000,
         "expected_tokens_out":            17_883_333_333_333,
+        "min_tokens_out":                 17_000_000_000_000,
         "entry_price_lamports_per_token": 27.96,
         "entry_mcap_sol":                 27.96,
         "is_cashback_coin":               False,
+        "jupiter_route":                  ["Pump.fun"],
+        "price_impact_pct":               0.0,
+        "jupiter_quote":                  {
+            "outAmount":               "17883333333333",
+            "otherAmountThreshold":    "17000000000000",
+            "contextSlot":             427000000,
+            "primary_route":           "Pump.fun",
+        },
         "accounts": {
             "token_program":           "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "bonding_curve":           "x",
-            "associated_bonding_curve":"y",
-            "user_ata":                "z",
-            "creator_vault":           "v",
-            "event_authority":         "e",
-            "global_volume_accumulator":"g",
-            "user_volume_accumulator": "u",
-            "fee_config":              "f",
-            "bonding_curve_v2":        "b",
         },
     }
     base.update(overrides)
@@ -90,6 +90,7 @@ def _build_envelope(**overrides) -> dict:
 
 
 def _dry_run_submit(signature: str = "SIG-DRY") -> dict:
+    """Mock for the Rust dry-run submit_bundle path."""
     return {
         "phase":         "dry-run",
         "would_submit":  False,
@@ -101,17 +102,14 @@ def _dry_run_submit(signature: str = "SIG-DRY") -> dict:
     }
 
 
-def _live_submit(signature: str = "SIG-LIVE", n_accepted: int = 5) -> dict:
+def _live_rpc_submit(signature: str = "SIG-LIVE") -> dict:
+    """Mock for rpc_submit.send_via_rpc — the live submission path."""
     return {
-        "phase":         "submitted",
-        "would_submit":  True,
-        "signature":     signature,
-        "n_signatures":  1,
-        "tx_bytes":      300,
-        "regions":       [{"region": r, "ok": True, "status": 200, "body": "{}"}
-                          for r in ("ny", "amsterdam", "frankfurt", "tokyo", "slc")],
-        "n_regions":     5,
-        "n_accepted":    n_accepted,
+        "phase":          "submitted_via_rpc",
+        "ok":             True,
+        "signature":      signature,
+        "rpc_url":        "https://mocked-rpc",
+        "skip_preflight": True,
     }
 
 
@@ -144,8 +142,12 @@ class _Base(unittest.TestCase):
 
 class TestHappyPath(_Base):
 
-    def _patches(self, *, curve=None, submit=None, envelope=None):
-        """Build the standard set of patches for the success path."""
+    def _patches(self, *, curve=None, envelope=None,
+                 dry_run_submit=None, rpc_submit_result=None):
+        """Build the standard set of patches for the success path.
+
+        Dry-run path uses orch.tg_trader_runner.submit_bundle (Rust dry-run).
+        Live path uses orch.rpc_submit.send_via_rpc (the real submission)."""
         return [
             patch.object(orch.trader_wallets, "get_or_create_wallet",
                          return_value={"public_key": PAYER}),
@@ -155,10 +157,12 @@ class TestHappyPath(_Base):
                          return_value="SIGNED-B64"),
             patch.object(orch.bonding_curve, "fetch",
                          return_value=curve or _fresh_curve()),
-            patch.object(orch.tg_trader_runner, "build_buy_tx",
+            patch.object(orch.jupiter_buy, "build_buy_tx",
                          return_value=envelope or _build_envelope()),
             patch.object(orch.tg_trader_runner, "submit_bundle",
-                         return_value=submit or _dry_run_submit()),
+                         return_value=dry_run_submit or _dry_run_submit()),
+            patch.object(orch.rpc_submit, "send_via_rpc",
+                         return_value=rpc_submit_result or _live_rpc_submit()),
         ]
 
     def test_dry_run_end_to_end(self):
@@ -177,7 +181,7 @@ class TestHappyPath(_Base):
         self.assertEqual(result["mint"], MINT)
         self.assertEqual(result["buy_lamports"], 500_000_000)
         self.assertEqual(result["buy_signature"], "SIG-DRY")
-        self.assertEqual(result["route"], "pumpfun-pregrad")
+        self.assertEqual(result["route"], "jupiter:Pump.fun")
         self.assertGreater(result["position_id"], 0)
 
         # Position row was written with correct fields
@@ -195,9 +199,11 @@ class TestHappyPath(_Base):
     def test_live_mocked_path_writes_submitted_phase(self):
         from contextlib import ExitStack
         with ExitStack() as stack:
-            for p in self._patches(submit=_live_submit("SIG-LIVE")):
+            for p in self._patches(rpc_submit_result=_live_rpc_submit("SIG-LIVE")):
                 stack.enter_context(p)
             result = orch.buy(42, MINT, 0.5, live=True)
+        # Live path uses rpc_submit which returns phase="submitted_via_rpc",
+        # but the orchestrator normalizes that to "submitted" in its envelope.
         self.assertEqual(result["phase"], "submitted")
         self.assertEqual(result["buy_signature"], "SIG-LIVE")
         row = tp.get_position(result["position_id"])
@@ -225,6 +231,7 @@ class TestHappyPath(_Base):
         self.assertEqual(row["buy_signal_source"], "composite_score")
 
     def test_custom_submit_regions_passed_through(self):
+        """For dry-runs, submit_regions is forwarded to the Rust submit_bundle."""
         captured = {}
         def fake_submit(user_id, signed_tx_b64, *, regions=None, live=False, **kw):
             captured["regions"] = regions
@@ -233,16 +240,9 @@ class TestHappyPath(_Base):
 
         from contextlib import ExitStack
         with ExitStack() as stack:
-            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
-                                             return_value={"public_key": PAYER}))
-            stack.enter_context(patch.object(orch.trader_wallets, "_rpc_call",
-                                             return_value={"value": {"blockhash": BLOCKHASH}}))
-            stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
-                                             return_value="SIGNED-B64"))
-            stack.enter_context(patch.object(orch.bonding_curve, "fetch",
-                                             return_value=_fresh_curve()))
-            stack.enter_context(patch.object(orch.tg_trader_runner, "build_buy_tx",
-                                             return_value=_build_envelope()))
+            for p in self._patches():
+                stack.enter_context(p)
+            # Replace the submit_bundle mock with our spy
             stack.enter_context(patch.object(orch.tg_trader_runner, "submit_bundle",
                                              side_effect=fake_submit))
             orch.buy(42, MINT, 0.5, submit_regions=["ny", "frankfurt"])
@@ -251,7 +251,7 @@ class TestHappyPath(_Base):
 
     def test_signing_step_is_called_with_unsigned_tx_from_builder(self):
         """Custody check: sign_transaction MUST receive the unsigned tx
-        the Rust builder produced — not something else."""
+        Jupiter produced — not something else."""
         captured = {}
         def fake_sign(user_id, tx_b64):
             captured["tx_b64"] = tx_b64
@@ -259,18 +259,11 @@ class TestHappyPath(_Base):
 
         from contextlib import ExitStack
         with ExitStack() as stack:
-            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
-                                             return_value={"public_key": PAYER}))
-            stack.enter_context(patch.object(orch.trader_wallets, "_rpc_call",
-                                             return_value={"value": {"blockhash": BLOCKHASH}}))
+            for p in self._patches(envelope=_build_envelope(tx_b64="MY-UNSIGNED")):
+                stack.enter_context(p)
+            # Override sign with our spy
             stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
                                              side_effect=fake_sign))
-            stack.enter_context(patch.object(orch.bonding_curve, "fetch",
-                                             return_value=_fresh_curve()))
-            stack.enter_context(patch.object(orch.tg_trader_runner, "build_buy_tx",
-                                             return_value=_build_envelope(tx_b64="MY-UNSIGNED")))
-            stack.enter_context(patch.object(orch.tg_trader_runner, "submit_bundle",
-                                             return_value=_dry_run_submit()))
             orch.buy(42, MINT, 0.5)
         self.assertEqual(captured["tx_b64"], "MY-UNSIGNED")
 
@@ -296,10 +289,27 @@ class TestFailurePaths(_Base):
                                          return_value=_dry_run_submit()))
         return stack
 
+    def test_orchestrator_error_carries_user_facing_msg(self):
+        """Every OrchestratorError must expose .user_facing_msg —
+        the TG bot renders this directly to users, so it can't be empty
+        or contain Python tracebacks/internals."""
+        for stage in ("validate", "wallet", "balance", "curve", "blockhash",
+                      "build", "sign", "submit", "post_submit_accounting",
+                      "position", "unknown_stage_xyz"):
+            err = orch.OrchestratorError(stage, "some technical detail")
+            self.assertTrue(err.user_facing_msg,
+                            f"empty user_facing_msg for stage={stage!r}")
+            self.assertNotIn("Traceback", err.user_facing_msg)
+            self.assertNotIn("Exception", err.user_facing_msg)
+            self.assertEqual(err.stage, stage)
+            self.assertEqual(err.detail, "some technical detail")
+
     def test_validate_rejects_zero_sol(self):
         with self.assertRaises(orch.OrchestratorError) as ctx:
             orch.buy(42, MINT, 0)
         self.assertEqual(ctx.exception.stage, "validate")
+        # Verify the user-facing message is filled in
+        self.assertIn("Invalid trade", ctx.exception.user_facing_msg)
 
     def test_validate_rejects_negative_sol(self):
         with self.assertRaises(orch.OrchestratorError) as ctx:
@@ -317,6 +327,85 @@ class TestFailurePaths(_Base):
             with self.assertRaises(orch.OrchestratorError) as ctx:
                 orch.buy(42, MINT, 0.5)
             self.assertEqual(ctx.exception.stage, "wallet")
+
+    def test_balance_check_blocks_buy_when_insufficient_live(self):
+        """Live buy with balance < (sol + slippage + tip + tx_overhead)
+        must raise OrchestratorError(balance), saving the wasted tx fee."""
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
+                                             return_value={"public_key": PAYER}))
+            # 100k lamports balance, but we want to buy 0.5 SOL
+            stack.enter_context(patch.object(orch.trader_wallets, "get_balance_lamports",
+                                             return_value=100_000))
+            stack.enter_context(patch.object(orch.jito_tip_floor, "get_tip_lamports",
+                                             return_value=50_000))
+            with self.assertRaises(orch.OrchestratorError) as ctx:
+                orch.buy(42, MINT, 0.5, live=True)
+            self.assertEqual(ctx.exception.stage, "balance")
+            self.assertIn("insufficient", str(ctx.exception))
+
+    def test_balance_check_passes_when_sufficient_live(self):
+        """Sufficient balance → buy proceeds past stage 1.5 without raising."""
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            for p in self._full_happy_patches_list():
+                stack.enter_context(p)
+            stack.enter_context(patch.object(orch.trader_wallets, "get_balance_lamports",
+                                             return_value=1_000_000_000))  # 1 SOL
+            stack.enter_context(patch.object(orch.jito_tip_floor, "get_tip_lamports",
+                                             return_value=50_000))
+            # Should reach build stage and succeed
+            result = orch.buy(42, MINT, 0.5, live=True)
+            self.assertEqual(result["phase"], "submitted")
+
+    def test_balance_check_skipped_on_dry_run(self):
+        """Dry-runs should NOT block on balance — they're for testing the
+        pipeline without owning funds."""
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            for p in self._patches_list_no_balance_or_rpc():
+                stack.enter_context(p)
+            # No balance mock — if check ran, this would AttributeError or
+            # hit real RPC. Default live=False should skip the check.
+            result = orch.buy(42, MINT, 0.5)
+            self.assertEqual(result["phase"], "dry-run")
+
+    def _full_happy_patches_list(self):
+        """Builder for the FULL set of patches needed for a successful live
+        buy (used by balance check tests)."""
+        return [
+            patch.object(orch.trader_wallets, "get_or_create_wallet",
+                         return_value={"public_key": PAYER}),
+            patch.object(orch.bonding_curve, "fetch",
+                         return_value=_fresh_curve()),
+            patch.object(orch.trader_wallets, "_rpc_call",
+                         return_value={"value": {"blockhash": BLOCKHASH}}),
+            patch.object(orch.jupiter_buy, "build_buy_tx",
+                         return_value=_build_envelope()),
+            patch.object(orch.trader_wallets, "sign_transaction",
+                         return_value="SIGNED-B64"),
+            patch.object(orch.rpc_submit, "send_via_rpc",
+                         return_value=_live_rpc_submit()),
+        ]
+
+    def _patches_list_no_balance_or_rpc(self):
+        """Dry-run happy-path patches without balance/rpc — used to verify
+        the balance check is correctly skipped on dry-runs."""
+        return [
+            patch.object(orch.trader_wallets, "get_or_create_wallet",
+                         return_value={"public_key": PAYER}),
+            patch.object(orch.bonding_curve, "fetch",
+                         return_value=_fresh_curve()),
+            patch.object(orch.trader_wallets, "_rpc_call",
+                         return_value={"value": {"blockhash": BLOCKHASH}}),
+            patch.object(orch.jupiter_buy, "build_buy_tx",
+                         return_value=_build_envelope()),
+            patch.object(orch.trader_wallets, "sign_transaction",
+                         return_value="SIGNED-B64"),
+            patch.object(orch.tg_trader_runner, "submit_bundle",
+                         return_value=_dry_run_submit()),
+        ]
 
     def test_curve_fetch_failure_routes_to_curve_stage(self):
         from contextlib import ExitStack
@@ -364,8 +453,8 @@ class TestFailurePaths(_Base):
                                              return_value=_fresh_curve()))
             stack.enter_context(patch.object(orch.trader_wallets, "_rpc_call",
                                              return_value={"value": {"blockhash": BLOCKHASH}}))
-            stack.enter_context(patch.object(orch.tg_trader_runner, "build_buy_tx",
-                                             side_effect=orch.tg_trader_runner.TgTraderError("bad mint")))
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_buy_tx",
+                                             side_effect=orch.jupiter_buy.JupiterError("quote failed")))
             with self.assertRaises(orch.OrchestratorError) as ctx:
                 orch.buy(42, MINT, 0.5)
             self.assertEqual(ctx.exception.stage, "build")
@@ -379,7 +468,7 @@ class TestFailurePaths(_Base):
                                              return_value=_fresh_curve()))
             stack.enter_context(patch.object(orch.trader_wallets, "_rpc_call",
                                              return_value={"value": {"blockhash": BLOCKHASH}}))
-            stack.enter_context(patch.object(orch.tg_trader_runner, "build_buy_tx",
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_buy_tx",
                                              return_value=_build_envelope()))
             stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
                                              side_effect=RuntimeError("key decrypt failed")))
@@ -387,7 +476,8 @@ class TestFailurePaths(_Base):
                 orch.buy(42, MINT, 0.5)
             self.assertEqual(ctx.exception.stage, "sign")
 
-    def test_submit_failure_routes_to_submit_stage(self):
+    def test_submit_failure_dry_run_routes_to_submit_stage(self):
+        """Dry-run Jito submit failure → OrchestratorError(submit)."""
         from contextlib import ExitStack
         with ExitStack() as stack:
             stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
@@ -396,15 +486,36 @@ class TestFailurePaths(_Base):
                                              return_value=_fresh_curve()))
             stack.enter_context(patch.object(orch.trader_wallets, "_rpc_call",
                                              return_value={"value": {"blockhash": BLOCKHASH}}))
-            stack.enter_context(patch.object(orch.tg_trader_runner, "build_buy_tx",
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_buy_tx",
                                              return_value=_build_envelope()))
             stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
                                              return_value="SIGNED-B64"))
             stack.enter_context(patch.object(orch.tg_trader_runner, "submit_bundle",
                                              side_effect=orch.tg_trader_runner.TgTraderError("jito 500")))
             with self.assertRaises(orch.OrchestratorError) as ctx:
-                orch.buy(42, MINT, 0.5)
+                orch.buy(42, MINT, 0.5)  # live=False
             self.assertEqual(ctx.exception.stage, "submit")
+
+    def test_submit_failure_live_rpc_routes_to_submit_stage(self):
+        """Live RPC submit failure → OrchestratorError(submit)."""
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
+                                             return_value={"public_key": PAYER}))
+            stack.enter_context(patch.object(orch.bonding_curve, "fetch",
+                                             return_value=_fresh_curve()))
+            stack.enter_context(patch.object(orch.trader_wallets, "_rpc_call",
+                                             return_value={"value": {"blockhash": BLOCKHASH}}))
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_buy_tx",
+                                             return_value=_build_envelope()))
+            stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
+                                             return_value="SIGNED-B64"))
+            stack.enter_context(patch.object(orch.rpc_submit, "send_via_rpc",
+                                             return_value={"ok": False, "error": "RPC simulated failure"}))
+            with self.assertRaises(orch.OrchestratorError) as ctx:
+                orch.buy(42, MINT, 0.5, live=True)
+            self.assertEqual(ctx.exception.stage, "submit")
+            self.assertIn("RPC", str(ctx.exception))
 
     def test_failure_before_position_write_leaves_no_position_row(self):
         """Property check: if anything before stage 7 fails, the position
@@ -420,6 +531,143 @@ class TestFailurePaths(_Base):
             except orch.OrchestratorError:
                 pass
         self.assertEqual(tp.list_open_positions("42"), [])
+
+
+# ── Sell ────────────────────────────────────────────────────────────────
+
+def _sell_envelope(**overrides) -> dict:
+    """Mock return for jupiter_buy.build_sell_tx."""
+    base = {
+        "route":                          "jupiter:Pump.fun",
+        "tx_b64":                         "UNSIGNED-SELL-B64",
+        "token_amount_in":                17_883_333_333_333,
+        "slippage_bps":                   500,
+        "expected_sol_out_lamports":      750_000_000,  # 0.75 SOL
+        "min_sol_out_lamports":           712_500_000,
+        "exit_price_lamports_per_token":  4.19e-5,
+        "jupiter_route":                  ["Pump.fun"],
+        "price_impact_pct":               0.5,
+        "jupiter_quote":                  {
+            "outAmount":               "750000000",
+            "otherAmountThreshold":    "712500000",
+            "contextSlot":             427000000,
+            "primary_route":           "Pump.fun",
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+class TestSellPath(_Base):
+    """Sell tests — set up a buy first, then exercise sell()."""
+
+    def _seed_open_position(self) -> int:
+        """Insert one open position row and return its id."""
+        return tp.create_position(
+            user_id="42",
+            mint=MINT,
+            payer_pubkey=PAYER,
+            creator=CREATOR,
+            is_cashback_coin=False,
+            token_program="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            buy_sol_lamports=500_000_000,
+            token_amount=17_883_333_333_333,
+            entry_price_lamports_per_token=27.96,
+            entry_mcap_sol=None,
+            slippage_bps=500,
+            max_sol_cost_lamports=525_000_000,
+            buy_signature="BUY-SIG",
+            buy_phase="submitted",
+            buy_route="jupiter:Pump.fun",
+            buy_tier=None,
+            buy_signal_source="manual",
+        )
+
+    def test_sell_dry_run_returns_envelope_without_position_write(self):
+        pid = self._seed_open_position()
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
+                                             return_value={"public_key": PAYER}))
+            stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
+                                             return_value="SIGNED-SELL-B64"))
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_sell_tx",
+                                             return_value=_sell_envelope()))
+            result = orch.sell("42", pid)  # live=False default
+        self.assertEqual(result["phase"], "dry-run")
+        self.assertEqual(result["tokens_sold"], 17_883_333_333_333)
+        self.assertEqual(result["expected_sol_out_lamports"], 750_000_000)
+        # Position must still be open
+        row = tp.get_position(pid)
+        self.assertEqual(row["status"], "open")
+
+    def test_sell_live_marks_position_sold_with_pnl(self):
+        pid = self._seed_open_position()
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
+                                             return_value={"public_key": PAYER}))
+            stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
+                                             return_value="SIGNED-SELL-B64"))
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_sell_tx",
+                                             return_value=_sell_envelope()))
+            stack.enter_context(patch.object(orch.rpc_submit, "send_via_rpc",
+                                             return_value=_live_rpc_submit("SELL-SIG")))
+            result = orch.sell("42", pid, live=True)
+        self.assertEqual(result["phase"], "submitted")
+        self.assertEqual(result["sell_signature"], "SELL-SIG")
+        self.assertEqual(result["new_status"], "sold")
+        row = tp.get_position(pid)
+        self.assertEqual(row["status"], "sold")
+        self.assertEqual(row["sell_signature"], "SELL-SIG")
+        self.assertEqual(row["sell_sol_lamports"], 750_000_000)
+        # realized_pnl = sell - buy = 0.75 - 0.5 SOL
+        self.assertEqual(row["realized_pnl_lamports"], 250_000_000)
+
+    def test_sell_partial_keeps_position_open_with_remaining_tokens(self):
+        pid = self._seed_open_position()
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
+                                             return_value={"public_key": PAYER}))
+            stack.enter_context(patch.object(orch.trader_wallets, "sign_transaction",
+                                             return_value="SIGNED-SELL-B64"))
+            stack.enter_context(patch.object(orch.jupiter_buy, "build_sell_tx",
+                                             return_value=_sell_envelope(token_amount_in=8_941_666_666_666)))
+            stack.enter_context(patch.object(orch.rpc_submit, "send_via_rpc",
+                                             return_value=_live_rpc_submit("PARTIAL-SIG")))
+            result = orch.sell("42", pid, sell_pct=0.5, live=True)
+        self.assertEqual(result["new_status"], "open")
+        self.assertEqual(result["tokens_sold"], 8_941_666_666_666)
+        row = tp.get_position(pid)
+        self.assertEqual(row["status"], "open")
+        # token_amount halved (one rounding loss permitted)
+        self.assertAlmostEqual(row["token_amount"], 8_941_666_666_667, delta=1)
+
+    def test_sell_rejects_invalid_pct(self):
+        for bad in (0, -0.1, 1.1, 2.0):
+            with self.assertRaises(orch.OrchestratorError) as ctx:
+                orch.sell("42", 1, sell_pct=bad)
+            self.assertEqual(ctx.exception.stage, "validate")
+
+    def test_sell_rejects_unknown_position(self):
+        with self.assertRaises(orch.OrchestratorError) as ctx:
+            orch.sell("42", 99999)
+        self.assertEqual(ctx.exception.stage, "position")
+
+    def test_sell_rejects_position_owned_by_other_user(self):
+        pid = self._seed_open_position()
+        with self.assertRaises(orch.OrchestratorError) as ctx:
+            orch.sell("999", pid)
+        self.assertEqual(ctx.exception.stage, "position")
+
+    def test_sell_rejects_already_closed_position(self):
+        pid = self._seed_open_position()
+        tp.mark_sold(pid, sell_signature="prior", sell_sol_lamports=600_000_000)
+        with self.assertRaises(orch.OrchestratorError) as ctx:
+            orch.sell("42", pid)
+        self.assertEqual(ctx.exception.stage, "position")
+        self.assertIn("sold", str(ctx.exception))
 
 
 if __name__ == "__main__":

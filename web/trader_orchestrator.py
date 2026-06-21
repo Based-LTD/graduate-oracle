@@ -26,10 +26,12 @@ Safety defaults:
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Optional
 
 import bonding_curve
+import fee_skim
 import jito_tip_floor
 import jupiter_buy
 import rpc_submit
@@ -40,12 +42,46 @@ import trader_wallets
 
 # ── Errors ──────────────────────────────────────────────────────────────
 
+# Stage → user-facing message template. {detail} is the raw error.
+# These get rendered by the TG bot directly; the bot never shows raw
+# stage names or Python tracebacks to users. Keep them short, plain,
+# and actionable.
+_USER_FACING: dict[str, str] = {
+    "validate": "Invalid trade: {detail}",
+    "wallet":   "Wallet not ready. Try /start, then retry.",
+    "balance":  "{detail}",  # balance error messages are already user-friendly
+    "curve":    "Couldn't read this coin from the chain. Try again in a moment.",
+    "route":    "{detail}",
+    "blockhash": "Network is slow — try again in a few seconds.",
+    "build":    "Couldn't price this trade — Jupiter route may be unavailable. Try again.",
+    "build_too_new": "This mint is too new for Jupiter — try again in 30 seconds.",
+    "sign":     "Wallet signing failed. Contact support.",
+    "submit":   "Couldn't submit the trade. Try again or contact support.",
+    "position": "{detail}",
+    "post_submit_accounting":
+        "Trade went through but our records didn't update. Your tokens are "
+        "safe — contact support with the signature.",
+}
+
+
 class OrchestratorError(RuntimeError):
-    """Raised when the buy pipeline can't complete. The .stage attribute
-    names where it failed so the caller can render an honest error."""
+    """Raised when the buy or sell pipeline can't complete.
+
+    Three attributes for callers:
+      • .stage           — short identifier of where it failed (e.g. "balance")
+      • .detail          — the raw underlying error message
+      • .user_facing_msg — short plain-English string safe to show users
+
+    The TG bot renders .user_facing_msg; logs use the full str() form."""
     def __init__(self, stage: str, message: str):
         super().__init__(f"[{stage}] {message}")
         self.stage = stage
+        self.detail = message
+        template = _USER_FACING.get(stage, "Trade failed: {detail}")
+        try:
+            self.user_facing_msg = template.format(detail=message)
+        except Exception:
+            self.user_facing_msg = "Trade failed. Please try again."
 
 
 # ── Buy ─────────────────────────────────────────────────────────────────
@@ -116,6 +152,46 @@ def buy(
     except Exception as e:
         raise OrchestratorError("wallet", f"get_or_create_wallet failed: {e}") from e
 
+    # ── Stage 1.5: pre-flight balance check ────────────────────────────
+    # Refuse buys when balance can't cover the trade. Each failed-on-chain
+    # tx still costs ~5_000 lamports tx fee + Jupiter priority fee burn,
+    # so a customer with 0.0001 SOL trying to buy 0.01 SOL would silently
+    # bleed dust on every attempt. This stage stops that.
+    #
+    # Headroom = sol + (sol × slippage_bps/10_000) + estimated Jito tip
+    # + 50_000 lamports floor for tx fee + priority fee + ATA rent.
+    if live:
+        try:
+            balance_lamports = trader_wallets.get_balance_lamports(payer)
+        except Exception as e:
+            raise OrchestratorError("balance", f"balance check failed: {e}") from e
+        sol_lamports = int(sol * 1e9)
+        slip_headroom = int(sol_lamports * slippage_bps / 10_000)
+        # Tip estimate matches what stage 4 will use (Jito p95+20%) — but
+        # cheap to look up since jito_tip_floor caches.
+        if jito_tip_lamports is not None:
+            tip_estimate = jito_tip_lamports
+        else:
+            try:
+                tip_estimate = jito_tip_floor.get_tip_lamports(percentile="p95")
+            except jito_tip_floor.TipFloorError:
+                tip_estimate = DEFAULT_JITO_TIP_LAMPORTS
+        # 50_000 lamports floor covers tx fee (5k) + ATA rent (~2M sometimes
+        # but usually pre-existing) + priority fee headroom. Conservative.
+        tx_overhead = 50_000
+        # Include the 1% fee (if enabled) so we don't approve a trade the
+        # user can complete but can't pay the fee on.
+        fee_estimate = fee_skim.compute_fee_split(sol_lamports)["total_fee_lamports"] \
+                       if fee_skim.is_enabled() else 0
+        required = sol_lamports + slip_headroom + tip_estimate + tx_overhead + fee_estimate
+        if balance_lamports < required:
+            raise OrchestratorError(
+                "balance",
+                f"insufficient balance: have {balance_lamports} lamports "
+                f"({balance_lamports/1e9:.6f} SOL), need at least {required} "
+                f"({required/1e9:.6f} SOL) for buy + slippage + tip + tx overhead",
+            )
+
     # ── Stage 2: fetch curve + route decision ──────────────────────────
     try:
         curve = bonding_curve.fetch(mint, rpc_url=rpc_url)
@@ -165,6 +241,11 @@ def buy(
             jito_tip_lamports=effective_tip,
             compute_units=compute_units,
         )
+    except jupiter_buy.JupiterNotTradableError as e:
+        # Brand-new pump.fun mints aren't in Jupiter's index for the
+        # first 30-90s after launch. Surface as a clean retry-later
+        # message instead of a generic build failure.
+        raise OrchestratorError("build_too_new", str(e)) from e
     except jupiter_buy.JupiterError as e:
         raise OrchestratorError("build", str(e)) from e
     # Jupiter doesn't need recent_blockhash — it's embedded in the swap tx.
@@ -238,6 +319,22 @@ def buy(
     except Exception as e:
         raise OrchestratorError("position", f"create_position failed: {e}") from e
 
+    # ── Stage 8: collect fee (live only, never blocks the trade) ──────
+    # Skim 1% of the trade size (split 50/50 operator + $GO buyback)
+    # AFTER the buy confirms. If FEE_OPERATOR_WALLET / FEE_BUYBACK_WALLET
+    # aren't set, this is a no-op. If the transfer fails, we log + put
+    # the error in the result envelope but don't raise — the user's
+    # trade succeeded and they shouldn't see a scary error.
+    fee_result = None
+    if live and buy_signature:
+        fee_result = fee_skim.apply_fee(
+            user_id=user_id,
+            trade_sol_lamports=int(built["buy_lamports"]),
+            trade_kind="buy",
+            trade_signature=buy_signature,
+            dry_run=False,
+        )
+
     return {
         "phase":                            phase,
         "position_id":                      position_id,
@@ -257,4 +354,193 @@ def buy(
         "submit":                           submitted,
         # Dual-submit metadata — present only when live=True
         "submit_rpc":                       rpc_result,
+        "fee":                              fee_result,
     }
+
+
+# ── Sell ────────────────────────────────────────────────────────────────
+
+def sell(
+    user_id: str | int,
+    position_id: int,
+    *,
+    sell_pct: float = 1.0,
+    slippage_bps: int = DEFAULT_SLIPPAGE_BPS,
+    priority_fee_microlamports: int = DEFAULT_PRIORITY_FEE_MICROLAMPORTS,
+    jito_tip_lamports: Optional[int] = None,
+    live: bool = False,
+    rpc_url: Optional[str] = None,
+) -> dict:
+    """Close (or partially close) a position via Jupiter (mint → SOL).
+
+    Args:
+      user_id:          owner of the position (validated)
+      position_id:      row id from trader_positions
+      sell_pct:         fraction of the position's token_amount to sell.
+                        Default 1.0 = full close. 0.5 = half. Must be in
+                        (0, 1].
+      slippage_bps:     500 = 5%
+      jito_tip_lamports: live tips come from jito_tip_floor.p95 if None
+      live:             False = dry-run (validation + Jupiter quote only,
+                        no submission). True = real submission via RPC.
+
+    Returns a result envelope similar to buy(): phase, signature,
+    expected_sol_out_lamports, actual route, position_id.
+
+    Raises OrchestratorError(stage=...) at the first failing stage. The
+    position row is updated to status='sold' ONLY on successful live
+    submission. Dry-runs do not write.
+    """
+    if not (0 < sell_pct <= 1.0):
+        raise OrchestratorError("validate", f"sell_pct {sell_pct} must be in (0, 1]")
+    if slippage_bps < 0 or slippage_bps > 10_000:
+        raise OrchestratorError("validate", f"slippage_bps {slippage_bps} out of range")
+
+    # ── Stage 1: load position ────────────────────────────────────────
+    pos = trader_positions.get_position(int(position_id))
+    if pos is None:
+        raise OrchestratorError("position", f"no position with id={position_id}")
+    if str(pos["user_id"]) != str(user_id):
+        raise OrchestratorError("position",
+            f"position {position_id} belongs to {pos['user_id']!r}, not {user_id!r}")
+    if pos["status"] != "open":
+        raise OrchestratorError("position",
+            f"position {position_id} is {pos['status']!r}, not open — already sold/failed")
+
+    mint = pos["mint"]
+    payer = pos["payer_pubkey"]
+    tokens_to_sell = int(pos["token_amount"] * sell_pct)
+    if tokens_to_sell <= 0:
+        raise OrchestratorError("validate",
+            f"computed 0 tokens to sell (position has {pos['token_amount']}, pct {sell_pct})")
+
+    # ── Stage 2: wallet sanity check ──────────────────────────────────
+    try:
+        wallet = trader_wallets.get_or_create_wallet(user_id)
+        if wallet["public_key"] != payer:
+            raise OrchestratorError("wallet",
+                f"position payer {payer!r} doesn't match wallet pubkey "
+                f"{wallet['public_key']!r}")
+    except OrchestratorError:
+        raise
+    except Exception as e:
+        raise OrchestratorError("wallet", f"wallet lookup failed: {e}") from e
+
+    # ── Stage 3: tip strategy (live only) ──────────────────────────────
+    effective_tip = jito_tip_lamports
+    if effective_tip is None and live:
+        try:
+            effective_tip = jito_tip_floor.get_tip_lamports(percentile="p95")
+        except jito_tip_floor.TipFloorError:
+            effective_tip = DEFAULT_JITO_TIP_LAMPORTS
+
+    # ── Stage 4: BUILD via Jupiter ─────────────────────────────────────
+    try:
+        built = jupiter_buy.build_sell_tx(
+            user_id=user_id, mint=mint, payer_pubkey=payer,
+            token_amount=tokens_to_sell,
+            slippage_bps=slippage_bps,
+            priority_fee_microlamports=priority_fee_microlamports,
+            jito_tip_lamports=effective_tip,
+        )
+    except jupiter_buy.JupiterError as e:
+        raise OrchestratorError("build", str(e)) from e
+
+    unsigned_tx_b64 = built["tx_b64"]
+
+    # ── Stage 5: SIGN ──────────────────────────────────────────────────
+    try:
+        signed_tx_b64 = trader_wallets.sign_transaction(user_id, unsigned_tx_b64)
+    except Exception as e:
+        raise OrchestratorError("sign", str(e)) from e
+
+    # ── Stage 6: SUBMIT ────────────────────────────────────────────────
+    if not live:
+        # Dry-run: don't hit RPC, don't mutate position.
+        return {
+            "phase":                       "dry-run",
+            "position_id":                 int(position_id),
+            "user_id":                     str(user_id),
+            "mint":                        mint,
+            "tokens_sold":                 tokens_to_sell,
+            "sell_pct":                    sell_pct,
+            "expected_sol_out_lamports":   int(built["expected_sol_out_lamports"]),
+            "min_sol_out_lamports":        int(built["min_sol_out_lamports"]),
+            "exit_price_lamports_per_token": float(built["exit_price_lamports_per_token"]),
+            "route":                       built["route"],
+            "would_submit":                False,
+        }
+
+    rpc_url_eff = (rpc_url or trader_wallets._RPC)
+    rpc_result = rpc_submit.send_via_rpc(signed_tx_b64, rpc_url=rpc_url_eff)
+    if not rpc_result.get("ok"):
+        raise OrchestratorError(
+            "submit", f"RPC sell submit failed: {rpc_result.get('error')}",
+        )
+    sell_signature = rpc_result["signature"]
+
+    # ── Stage 7: mark position as sold ─────────────────────────────────
+    # Important: we use the EXPECTED out lamports for PnL accounting NOW.
+    # The actual realized amount can be reconciled later by polling the
+    # tx logs (added in Day 4.9 — graceful error envelope).
+    try:
+        if sell_pct >= 1.0:
+            trader_positions.mark_sold(
+                int(position_id),
+                sell_signature=sell_signature,
+                sell_sol_lamports=int(built["expected_sol_out_lamports"]),
+            )
+            new_status = "sold"
+        else:
+            # Partial sell: don't close the position. Reduce token_amount
+            # by the sold portion and leave status='open'. (Day 4.9+ may
+            # add partial_sell tracking on a separate table.)
+            remaining = pos["token_amount"] - tokens_to_sell
+            with contextlib.closing(_open_positions_db()) as c, c:
+                c.execute(
+                    "UPDATE trader_positions SET token_amount = ? WHERE id = ?",
+                    (remaining, int(position_id)),
+                )
+            new_status = "open"
+    except Exception as e:
+        # Submission already happened — surface but don't raise so the
+        # caller knows the tx landed. Use a dedicated stage so the bot
+        # can render "tx ok, accounting failed" honestly.
+        raise OrchestratorError(
+            "post_submit_accounting",
+            f"sell tx {sell_signature} landed but DB update failed: {e}",
+        ) from e
+
+    # Fee on the SOL received from the sell. Same skim model as buy.
+    fee_result = fee_skim.apply_fee(
+        user_id=user_id,
+        trade_sol_lamports=int(built["expected_sol_out_lamports"]),
+        trade_kind="sell",
+        trade_signature=sell_signature,
+        dry_run=False,
+    )
+
+    return {
+        "phase":                       "submitted",
+        "position_id":                 int(position_id),
+        "user_id":                     str(user_id),
+        "mint":                        mint,
+        "tokens_sold":                 tokens_to_sell,
+        "sell_pct":                    sell_pct,
+        "sell_signature":              sell_signature,
+        "expected_sol_out_lamports":   int(built["expected_sol_out_lamports"]),
+        "min_sol_out_lamports":        int(built["min_sol_out_lamports"]),
+        "exit_price_lamports_per_token": float(built["exit_price_lamports_per_token"]),
+        "route":                       built["route"],
+        "new_status":                  new_status,
+        "would_submit":                True,
+        "submit_rpc":                  rpc_result,
+        "fee":                         fee_result,
+    }
+
+
+def _open_positions_db():
+    """Direct sqlite connection to the trader DB for sell-side updates
+    that don't have first-class API in trader_positions yet."""
+    import sqlite3
+    return sqlite3.connect(str(trader_positions._db_path()), timeout=10)
