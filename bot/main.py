@@ -935,8 +935,38 @@ async def cmd_leaderboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _upsert_user(update)
     if not ctx.args:
-        await update.message.reply_text("usage: `/wallet <address>`",
-                                        parse_mode=constants.ParseMode.MARKDOWN)
+        # No address → show the user's TRADER wallet (custodial) instead of
+        # bouncing with a usage error. The trader hub uses /trader → Wallet
+        # but /wallet directly here is a faster path for the common case.
+        # Falls through to the old smart-money lookup when an address IS
+        # passed (preserves backward compatibility).
+        tg_id = update.effective_user.id
+        if tg_id in _ADMIN_TG_IDS:
+            try:
+                import trader_wallets
+                wallet = trader_wallets.get_or_create_wallet(str(tg_id))
+                pk = wallet["public_key"]
+                try:
+                    bal = trader_wallets.get_balance_sol(pk)
+                    bal_str = f"*{bal:.6f}* SOL"
+                except Exception:
+                    bal_str = "_RPC unavailable_"
+                await update.message.reply_text(
+                    f"💰 *Your trader wallet*\n\n"
+                    f"Balance: {bal_str}\n\n"
+                    f"`{pk}`\n\n"
+                    "_For deposit / withdraw, tap /trader → 💰 Wallet._",
+                    parse_mode=constants.ParseMode.MARKDOWN,
+                )
+                return
+            except Exception as e:
+                await update.message.reply_text(f"❌ wallet view failed: {str(e)[:200]}")
+                return
+        # Non-admin: original usage hint
+        await update.message.reply_text(
+            "usage: `/wallet <address>` (smart-money lookup)",
+            parse_mode=constants.ParseMode.MARKDOWN,
+        )
         return
     addr = ctx.args[0].strip()
     short = addr[:12]
