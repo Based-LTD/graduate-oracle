@@ -662,14 +662,22 @@ def sell(
             new_status = "sold"
         else:
             # Partial sell: don't close the position. Reduce token_amount
-            # by the sold portion and leave status='open'. (Day 4.9+ may
-            # add partial_sell tracking on a separate table.)
+            # by the sold portion AND accumulate the leg's proceeds +
+            # fee onto the row so multi-rung PnL math is honest. Without
+            # this accumulation, the final-leg mark_sold would only see
+            # the last leg's proceeds and report a phantom loss on a
+            # net-profitable multi-rung trade (bug fixed 2026-06-22).
             remaining = pos["token_amount"] - tokens_to_sell
             with contextlib.closing(_open_positions_db()) as c, c:
                 c.execute(
                     "UPDATE trader_positions SET token_amount = ? WHERE id = ?",
                     (remaining, int(position_id)),
                 )
+            trader_positions.record_partial_sell(
+                int(position_id),
+                leg_sol_lamports=int(built["expected_sol_out_lamports"]),
+                leg_fee_lamports=sell_fee_lamports,
+            )
             new_status = "open"
     except Exception as e:
         # Submission already happened — surface but don't raise so the

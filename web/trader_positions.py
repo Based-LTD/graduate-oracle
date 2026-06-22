@@ -298,32 +298,42 @@ def mark_sold(
     sell_fee_lamports: int = 0,
     sell_timestamp: Optional[int] = None,
 ):
-    """Close out a position with the sell outcome.
+    """Close out a position with the sell outcome. ACCUMULATES across
+    multiple sell legs (TP rungs + final sell) — older bug overwrote.
+
+    For a multi-rung exit (e.g. TP1 partial → TP2 final), this is called
+    on the FINAL leg only. Partial legs use record_partial_sell() to
+    accumulate their proceeds onto the row first.
 
     Stores two PnL numbers:
-      • realized_pnl_lamports (GROSS): sell - buy. Naïve swap delta.
-      • net_pnl_lamports (NET): sell - buy - buy_fee - sell_fee. What the
-        wallet actually netted. The user receipt should ALWAYS show this
-        one — gross alone misleads when the bot is taking a fee skim.
+      • realized_pnl_lamports (GROSS): TOTAL sell across all legs - buy
+      • net_pnl_lamports (NET): GROSS - buy_fee - TOTAL sell_fees. What
+        the wallet actually netted. Receipts should ALWAYS show this one.
 
     Idempotent for the same sell_signature (caller's job to not double-sell).
     """
     ts = sell_timestamp if sell_timestamp is not None else int(time.time())
     with contextlib.closing(_conn()) as c, c:
         row = c.execute(
-            "SELECT buy_sol_lamports, buy_fee_lamports FROM trader_positions WHERE id = ?",
+            "SELECT buy_sol_lamports, buy_fee_lamports, sell_sol_lamports, "
+            "sell_fee_lamports FROM trader_positions WHERE id = ?",
             (int(position_id),),
         ).fetchone()
         if row is None:
             raise KeyError(f"no position with id={position_id}")
         buy = int(row["buy_sol_lamports"])
-        # buy_fee_lamports column was added Day 4.22 — defensive default
         try:
             buy_fee = int(row["buy_fee_lamports"] or 0)
         except (KeyError, TypeError):
             buy_fee = 0
-        gross = int(sell_sol_lamports) - buy
-        net = gross - buy_fee - int(sell_fee_lamports)
+        # Accumulate: any partial-leg proceeds already recorded on the
+        # row get added to this final leg's proceeds.
+        prior_sell = int(row["sell_sol_lamports"] or 0)
+        prior_fee  = int(row["sell_fee_lamports"] or 0)
+        total_sell = prior_sell + int(sell_sol_lamports)
+        total_fee  = prior_fee  + int(sell_fee_lamports)
+        gross = total_sell - buy
+        net = gross - buy_fee - total_fee
         c.execute("""
             UPDATE trader_positions
                SET status = 'sold',
@@ -334,8 +344,32 @@ def mark_sold(
                    sell_fee_lamports = ?,
                    net_pnl_lamports = ?
              WHERE id = ?
-        """, (sell_signature, int(sell_sol_lamports), ts, gross,
-              int(sell_fee_lamports), net, int(position_id)))
+        """, (sell_signature, total_sell, ts, gross, total_fee, net,
+              int(position_id)))
+
+
+def record_partial_sell(
+    position_id: int,
+    *,
+    leg_sol_lamports: int,
+    leg_fee_lamports: int = 0,
+):
+    """Accumulate proceeds from a partial sell (e.g. TP1) onto the
+    position row. Does NOT change status — partial sells leave the
+    position open. The remaining token_amount is updated separately
+    by the caller (orchestrator).
+
+    When the final leg fires, mark_sold() will ADD its proceeds to the
+    accumulated total, so the receipt reflects ALL legs, not just last.
+    """
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            "UPDATE trader_positions "
+            "   SET sell_sol_lamports = COALESCE(sell_sol_lamports, 0) + ?, "
+            "       sell_fee_lamports = COALESCE(sell_fee_lamports, 0) + ? "
+            " WHERE id = ?",
+            (int(leg_sol_lamports), int(leg_fee_lamports), int(position_id)),
+        )
 
 
 def compute_mcap_lamports(sol_lamports: int, tokens_raw: int,
