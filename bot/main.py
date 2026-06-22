@@ -893,6 +893,19 @@ async def cmd_unwatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_portfolio(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _upsert_user(update)
     tg_id = update.effective_user.id
+    # Admins (operators using the trader): route /portfolio to the
+    # TRADER portfolio (positions), not the legacy watchlist. The
+    # trader portfolio is what the persistent home keyboard + menu
+    # imply, so the watchlist meaning would surprise them.
+    if tg_id in _ADMIN_TG_IDS:
+        try:
+            import trader_commands as _tc
+            return await _tc.cmd_portfolio(update, ctx)
+        except Exception as e:
+            print(f"[bot] /portfolio trader path failed, falling back to watchlist: {e}",
+                  flush=True)
+            # Fall through to legacy watchlist if trader path crashes —
+            # better to show something than nothing
     with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=10)) as c, c:
         c.row_factory = sqlite3.Row
         rows = c.execute("SELECT mint FROM tg_watchlist WHERE telegram_id = ? ORDER BY added_at DESC",
