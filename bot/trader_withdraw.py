@@ -356,9 +356,14 @@ def register(app: Application, admin_tg_ids: set) -> bool:
         # Stateful text handler — runs in group -10 so it sees text BEFORE
         # any default-group handlers. It only consumes when wd_state is set;
         # otherwise it returns silently and the next handler can match.
+        # group=-9 so this runs AFTER trader_setup's group=-10 handler.
+        # PTB only runs ONE matching handler per group — the first
+        # one registered wins. Putting these in DIFFERENT groups lets
+        # both modules' state-checking handlers run on every text
+        # message; the one whose state is set processes + ApplicationHandlerStop.
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text),
-            group=-10,
+            group=-9,
         )
         print("[trader_withdraw] registered", flush=True)
         return True
