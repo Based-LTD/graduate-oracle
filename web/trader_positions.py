@@ -211,6 +211,10 @@ _MIGRATIONS = [
         "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_min_tier TEXT DEFAULT 'ACT'"),
     ("trader_user_settings", "auto_trade_max_concurrent",
         "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_max_concurrent INTEGER DEFAULT 3"),
+    # Day 4.42 — price-per-token HWM. Replaces value-based HWM for
+    # trailing-stop math so partial TP fills don't shift thresholds.
+    ("trader_positions", "hwm_price_per_token_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN hwm_price_per_token_lamports REAL"),
 ]
 
 
@@ -763,6 +767,7 @@ def get_position_auto_exit(position_id: int) -> Optional[dict]:
 def update_position_monitor_state(
     position_id: int, *,
     high_water_mark_lamports: Optional[int] = None,
+    hwm_price_per_token_lamports: Optional[float] = None,
     next_tp_index: Optional[int] = None,
     sl_armed_at_breakeven: Optional[bool] = None,
     last_monitor_check_at: Optional[int] = None,
@@ -774,6 +779,9 @@ def update_position_monitor_state(
     if high_water_mark_lamports is not None:
         fields.append("high_water_mark_lamports = ?")
         args.append(int(high_water_mark_lamports))
+    if hwm_price_per_token_lamports is not None:
+        fields.append("hwm_price_per_token_lamports = ?")
+        args.append(float(hwm_price_per_token_lamports))
     if next_tp_index is not None:
         fields.append("next_tp_index = ?")
         args.append(int(next_tp_index))

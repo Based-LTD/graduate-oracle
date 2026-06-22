@@ -86,10 +86,31 @@ def evaluate_position(
     tsl_pct        = pos.get("tsl_pct")
     breakeven_pct  = pos.get("breakeven_pct")
     next_tp_index  = pos.get("next_tp_index") or 0
-    hwm            = pos.get("high_water_mark_lamports")
     armed          = bool(pos.get("sl_armed_at_breakeven"))
 
-    gain_pct = (current_sol_value_lamports - entry_lamports) / entry_lamports * 100
+    # Day 4.42: PRICE-PER-TOKEN based thresholds (was value-vs-cost).
+    # Old logic: gain_pct = (current_value - entry_cost) / entry_cost.
+    # Bug: after a partial TP fired, current_value reflects the SMALLER
+    # remaining position, so the displayed gain dropped artificially.
+    # TP2 at +300% then required price to rise to ~6× entry instead of 4×.
+    #
+    # New logic: compare CURRENT price-per-token vs ENTRY price-per-token.
+    # Quantity-invariant — partial sells don't shift thresholds.
+    entry_pp     = pos.get("entry_price_lamports_per_token") or 0
+    token_amount = pos.get("token_amount") or 0
+    if entry_pp > 0 and token_amount > 0:
+        current_pp = current_sol_value_lamports / token_amount
+        gain_pct = (current_pp - entry_pp) / entry_pp * 100
+    else:
+        # Defensive fallback for any legacy / corrupt row missing entry_pp
+        current_pp = None
+        gain_pct = (current_sol_value_lamports - entry_lamports) / entry_lamports * 100
+
+    # HWM also tracked in price-per-token terms. Existing positions
+    # without the new column get initialized from entry_pp on first read.
+    hwm_pp = pos.get("hwm_price_per_token_lamports")
+    if hwm_pp is None or hwm_pp <= 0:
+        hwm_pp = entry_pp if entry_pp > 0 else None
 
     # 1. Breakeven arm — gain crossed the threshold for the first time
     if (breakeven_pct is not None and not armed
@@ -101,12 +122,13 @@ def evaluate_position(
     if effective_sl is not None and gain_pct <= float(effective_sl):
         return {"kind": "sl"}
 
-    # 3. Trailing stop — HWM must exceed entry first; otherwise the
-    # "trail" would just be a redundant SL trigger.
-    if (tsl_pct is not None and hwm is not None
-            and hwm > entry_lamports):
-        floor = int(hwm * (1.0 - float(tsl_pct) / 100.0))
-        if current_sol_value_lamports < floor:
+    # 3. Trailing stop — based on price-per-token now. HWM must exceed
+    # entry price first; otherwise the "trail" would be redundant with SL.
+    if (tsl_pct is not None and hwm_pp is not None
+            and current_pp is not None and entry_pp > 0
+            and hwm_pp > entry_pp):
+        floor_pp = hwm_pp * (1.0 - float(tsl_pct) / 100.0)
+        if current_pp < floor_pp:
             return {"kind": "tsl"}
 
     # 4. Take-profit ladder
@@ -198,19 +220,23 @@ def tick(user_id: str | int, *, live: bool = False,
             out["n_unquotable"] += 1
             continue
 
-        # 2. Update HWM if exceeded
-        hwm = pos.get("high_water_mark_lamports") or 0
-        if current > hwm:
-            trader_positions.update_position_monitor_state(
-                pid, high_water_mark_lamports=current,
-                last_monitor_check_at=now,
-            )
-            # Refresh pos with the new HWM so evaluate_position sees it
+        # 2. Update HWM — both the legacy value-based one (kept for
+        # historical reporting) and the new price-per-token HWM that
+        # the trailing-stop logic actually reads.
+        hwm_value = pos.get("high_water_mark_lamports") or 0
+        token_amount = pos.get("token_amount") or 0
+        entry_pp = pos.get("entry_price_lamports_per_token") or 0
+        current_pp = (current / token_amount) if token_amount > 0 else 0
+        hwm_pp_existing = pos.get("hwm_price_per_token_lamports") or entry_pp
+
+        updates = {"last_monitor_check_at": now}
+        if current > hwm_value:
+            updates["high_water_mark_lamports"] = current
             pos["high_water_mark_lamports"] = current
-        else:
-            trader_positions.update_position_monitor_state(
-                pid, last_monitor_check_at=now,
-            )
+        if current_pp > hwm_pp_existing:
+            updates["hwm_price_per_token_lamports"] = current_pp
+            pos["hwm_price_per_token_lamports"] = current_pp
+        trader_positions.update_position_monitor_state(pid, **updates)
 
         # 3. Evaluate action
         action = evaluate_position(pos, current)

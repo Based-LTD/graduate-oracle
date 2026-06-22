@@ -27,20 +27,29 @@ def _pos(*, buy_lamports=1_000_000_000, token_amount=1_000_000,
          tp_ladder=None, sl_pct=None, tsl_pct=None, breakeven_pct=None,
          next_tp_index=0, hwm=None, armed=False,
          mint="ABC"*12, position_id=1, user_id="42") -> dict:
-    """Build a position row dict like the DB would return."""
+    """Build a position row dict like the DB would return.
+
+    Day 4.42: every position now also has entry_price_lamports_per_token
+    and hwm_price_per_token_lamports — derived here from the buy/HWM
+    values for convenience so existing tests don't need rewriting."""
+    entry_pp = buy_lamports / token_amount if token_amount > 0 else 0
+    # If the test set a value-based hwm, derive the price-based one from it.
+    hwm_pp = (hwm / token_amount) if (hwm and token_amount > 0) else None
     return {
-        "id":                          position_id,
-        "user_id":                     user_id,
-        "mint":                        mint,
-        "buy_sol_lamports":            buy_lamports,
-        "token_amount":                token_amount,
-        "tp_ladder_json":              json.dumps(tp_ladder) if tp_ladder is not None else None,
-        "sl_pct":                      sl_pct,
-        "tsl_pct":                     tsl_pct,
-        "breakeven_pct":               breakeven_pct,
-        "next_tp_index":               next_tp_index,
-        "high_water_mark_lamports":    hwm,
-        "sl_armed_at_breakeven":       1 if armed else 0,
+        "id":                              position_id,
+        "user_id":                         user_id,
+        "mint":                            mint,
+        "buy_sol_lamports":                buy_lamports,
+        "token_amount":                    token_amount,
+        "entry_price_lamports_per_token":  entry_pp,
+        "tp_ladder_json":                  json.dumps(tp_ladder) if tp_ladder is not None else None,
+        "sl_pct":                          sl_pct,
+        "tsl_pct":                         tsl_pct,
+        "breakeven_pct":                   breakeven_pct,
+        "next_tp_index":                   next_tp_index,
+        "high_water_mark_lamports":        hwm,
+        "hwm_price_per_token_lamports":    hwm_pp,
+        "sl_armed_at_breakeven":           1 if armed else 0,
     }
 
 
