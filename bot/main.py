@@ -2739,7 +2739,31 @@ def main():
         print("get one from @BotFather on Telegram, then add to .env")
         sys.exit(1)
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    async def _post_init(application):
+        """Register the bot's command menu + chat menu button so users
+        see a 'Menu' icon next to the text input that opens the command
+        list (with /trader as the top item). This is the 'home button'
+        — one tap from anywhere instead of typing /trader."""
+        from telegram import BotCommand, MenuButtonCommands
+        try:
+            await application.bot.set_my_commands([
+                BotCommand("trader",      "🏠 Trader hub — buy/sell/portfolio/settings"),
+                BotCommand("portfolio",   "📊 Your open + closed positions"),
+                BotCommand("wallet",      "💰 Wallet balance + deposit/withdraw"),
+                BotCommand("me",          "👤 Account info + tier"),
+                BotCommand("help",        "📖 What this bot does"),
+            ])
+            await application.bot.set_chat_menu_button(
+                menu_button=MenuButtonCommands(),
+            )
+            print("[bot] command menu + chat menu button set", flush=True)
+        except Exception as e:
+            print(f"[bot] menu setup failed (non-fatal): {e}", flush=True)
+
+    app = (Application.builder()
+              .token(BOT_TOKEN)
+              .post_init(_post_init)
+              .build())
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
