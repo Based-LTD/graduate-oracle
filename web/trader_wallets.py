@@ -299,7 +299,12 @@ def verify_withdraw_password(user_id: str | int, password: str) -> bool:
 # Reasonable defaults; can be overridden per call by the TG handler.
 WITHDRAW_FEE_RESERVE_LAMPORTS = 5_000      # min keep-alive after withdraw (~rent)
 WITHDRAW_MIN_LAMPORTS         = 100_000    # 0.0001 SOL — anti-dust
-WITHDRAW_DAILY_LIMIT_LAMPORTS = 50_000_000_000  # 50 SOL/day default ceiling
+WITHDRAW_DAILY_LIMIT_LAMPORTS = 500_000_000      # 0.5 SOL/day default for NEW users
+# Existing admin / trusted users can be bumped via the future
+# trader_user_settings.withdraw_daily_limit_lamports column (TODO).
+# This conservative default drops blast radius if a TG account is
+# compromised — attacker can drain at most 0.5 SOL/24h before being
+# rate-limited at the audit layer.
 WITHDRAW_CONFIRM_TIMEOUT_S    = 60
 WITHDRAW_CONFIRM_POLL_S       = 2.0
 

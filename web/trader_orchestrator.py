@@ -50,6 +50,7 @@ _USER_FACING: dict[str, str] = {
     "validate": "Invalid trade: {detail}",
     "wallet":   "Wallet not ready. Try /start, then retry.",
     "balance":  "{detail}",  # balance error messages are already user-friendly
+    "rate_limit": "{detail}",
     "curve":    "Couldn't read this coin from the chain. Try again in a moment.",
     "route":    "{detail}",  # rarely reached; kept for future routing rejections
     "blockhash": "Network is slow — try again in a few seconds.",
@@ -62,6 +63,46 @@ _USER_FACING: dict[str, str] = {
         "Trade went through but our records didn't update. Your tokens are "
         "safe — contact support with the signature.",
 }
+
+
+# ── Buy rate limiter ───────────────────────────────────────────────────
+# Per-user in-memory; resets on bot restart (acceptable — restart is
+# rare and a fresh limit window is fine). Two guards:
+#   1. Min-spacing — 3s between consecutive buys. Stops double-taps and
+#      rapid-fire bugs that could submit a dozen txs from one alert.
+#   2. Burst cap — max 10 buys per 60s window. Stops an attacker (or
+#      buggy script) from draining a wallet faster than auto-exits can
+#      react.
+
+import time as _time
+from collections import deque as _deque
+
+_BUY_RATE_HISTORY: dict[str, "_deque[float]"] = {}
+_RATE_MIN_SPACING_S = 3.0
+_RATE_BURST_WINDOW_S = 60.0
+_RATE_BURST_MAX = 10
+
+
+def _check_buy_rate_limit(user_id: str):
+    """Raises OrchestratorError("rate_limit", ...) if the user is
+    over either limit. Call BEFORE any expensive work."""
+    user_id = str(user_id)
+    now = _time.monotonic()
+    history = _BUY_RATE_HISTORY.setdefault(user_id, _deque(maxlen=64))
+    if history and (now - history[-1]) < _RATE_MIN_SPACING_S:
+        wait = _RATE_MIN_SPACING_S - (now - history[-1])
+        raise OrchestratorError(
+            "rate_limit",
+            f"Slow down — wait {wait:.1f}s between buys",
+        )
+    recent = sum(1 for ts in history if (now - ts) < _RATE_BURST_WINDOW_S)
+    if recent >= _RATE_BURST_MAX:
+        raise OrchestratorError(
+            "rate_limit",
+            f"Too many buys — {_RATE_BURST_MAX}/min limit reached. "
+            "Wait a minute and retry.",
+        )
+    history.append(now)
 
 
 class OrchestratorError(RuntimeError):
@@ -147,6 +188,12 @@ def buy(
     """
     if sol <= 0:
         raise OrchestratorError("validate", "sol must be positive")
+
+    # Rate limit check — runs BEFORE any RPC / Jupiter / DB work so a
+    # spammy/buggy client doesn't burn credits on rejected attempts.
+    # Skipped in dry-run because tests can run buys back-to-back fast.
+    if live:
+        _check_buy_rate_limit(user_id)
 
     # Resolve user settings ONCE up-front so we use them in slippage, tip,
     # and max-trade gating consistently. None values fall through to package
