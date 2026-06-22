@@ -2798,6 +2798,12 @@ def main():
                 trader_setup.register(app, _ADMIN_TG_IDS)
             except Exception as e:
                 print(f"[bot] trader_setup registration failed: {e}", flush=True)
+            # Withdraw wizard — isolated so wizard bugs can't crash buys/sells.
+            try:
+                import trader_withdraw
+                trader_withdraw.register(app, _ADMIN_TG_IDS)
+            except Exception as e:
+                print(f"[bot] trader_withdraw registration failed: {e}", flush=True)
     except Exception as e:
         # Importing the trader module pulls in web/* — if anything goes
         # wrong we log + skip. The bot keeps running with the existing

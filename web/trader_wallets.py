@@ -263,6 +263,19 @@ def set_withdraw_password(user_id: str | int, password: str):
         raise RuntimeError(f"no wallet for user {user_id}")
 
 
+def has_withdraw_password(user_id: str | int) -> bool:
+    """Returns True iff the user has already set a withdraw password.
+    Used by the TG wizard to decide whether to show first-time setup."""
+    user_id = str(user_id)
+    init_schema()
+    with contextlib.closing(_conn()) as c:
+        row = c.execute(
+            "SELECT withdraw_pwd_hash FROM trader_wallets WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    return bool(row and row["withdraw_pwd_hash"])
+
+
 def verify_withdraw_password(user_id: str | int, password: str) -> bool:
     """Returns True iff `password` matches the stored hash for this
     user. Returns False if no password has been set OR the password

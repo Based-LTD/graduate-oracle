@@ -858,6 +858,7 @@ def _fmt_wallet(uid: str) -> str:
 
 def _kb_wallet() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💸 Withdraw", callback_data="wd:start")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="h:w"),
          InlineKeyboardButton("🏠 Home",   callback_data="h:m")],
     ])
