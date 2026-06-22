@@ -42,6 +42,13 @@ WD_ENTER_TO   = "wd:enter_to"      # enter destination address
 WD_ENTER_AMT  = "wd:enter_amt"     # enter amount in SOL
 WD_ENTER_PWD  = "wd:enter_pwd"     # final step: enter password to execute
 
+# Daily withdraw limit override for admins. Public users default to
+# WITHDRAW_DAILY_LIMIT_LAMPORTS (0.5 SOL/day). Admins get a much higher
+# ceiling since they're operating the bot, not being protected from a
+# compromise. Module-level mutable; gets populated by register().
+_ADMIN_DAILY_LIMIT_LAMPORTS = 50_000_000_000   # 50 SOL/day for admins
+_ADMIN_IDS: set = set()
+
 
 def _admin_only(_admin_ids):
     """Decorator-builder so we don't expose withdraw outside the admin
@@ -268,12 +275,21 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         await ctx.bot.send_message(chat_id, "💸 Submitting withdrawal...")
         import trader_wallets
+        # Admins (operator team) get the higher daily cap; public users
+        # are limited to WITHDRAW_DAILY_LIMIT_LAMPORTS (0.5 SOL/day).
+        try:
+            is_admin = int(uid) in _ADMIN_IDS
+        except Exception:
+            is_admin = False
+        daily_limit = (_ADMIN_DAILY_LIMIT_LAMPORTS if is_admin
+                       else trader_wallets.WITHDRAW_DAILY_LIMIT_LAMPORTS)
         try:
             result = trader_wallets.withdraw(
                 user_id=uid,
                 to_address=to_addr,
                 lamports=int(amt * 1e9),
                 password=password,
+                daily_limit_lamports=daily_limit,
             )
         except PermissionError as e:
             await ctx.bot.send_message(chat_id, f"❌ Withdraw rejected: {e}")
@@ -329,6 +345,10 @@ def register(app: Application, admin_tg_ids: set) -> bool:
         # Beta: only admins can withdraw. After public, drop this guard.
         print("[trader_withdraw] no admins set, skipping", flush=True)
         return False
+
+    # Stash for the wizard's per-user limit decision
+    global _ADMIN_IDS
+    _ADMIN_IDS = set(admin_tg_ids)
 
     try:
         # Entry point: tap "💸 Withdraw" in wallet view
