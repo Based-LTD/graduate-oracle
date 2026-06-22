@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pump.fun Conditions · Graduate Oracle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Real-time pump.fun market temperature. Self-relative tiering vs our own 35-day distribution. Every number derived from data, no assumptions.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.cond-main { max-width: 980px; margin: 28px auto 80px; padding: 0 18px; font-family: 'JetBrains Mono', monospace; }
+
+/* Tier banner with gauge */
+.tier-banner {
+  border: 1px solid rgba(200, 162, 255, 0.18);
+  border-radius: 12px;
+  padding: 32px 24px 28px;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(200,162,255,0.10) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(10, 5, 18, 0.85) 0%, rgba(4, 2, 9, 0.65) 100%);
+  margin-bottom: 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 24px 80px -20px rgba(200, 162, 255, 0.12),
+    inset 0 1px 0 0 rgba(200, 162, 255, 0.06);
+}
+.tier-banner::before {
+  content: ''; position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
+  width: 420px; height: 420px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(200,162,255,0.08) 0%, transparent 60%);
+  pointer-events: none; z-index: 0;
+}
+.tier-banner > * { position: relative; z-index: 1; }
+.tier-banner .eyebrow {
+  font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 0.24em;
+  color: rgba(244, 240, 255, 0.45); text-transform: uppercase; margin-bottom: 8px;
+}
+
+/* Gauge wrap */
+.gauge-wrap {
+  position: relative; max-width: 520px; margin: 4px auto 0; padding-top: 4px;
+}
+.gauge-svg {
+  width: 100%; height: auto; display: block;
+  overflow: visible;
+}
+
+/* Outer thin decorative ring */
+.gauge-outer-ring {
+  fill: none; stroke: rgba(200, 162, 255, 0.18);
+  stroke-width: 1; stroke-dasharray: 2 3;
+}
+
+/* Main color arcs — thick with gradient */
+.gauge-arc {
+  fill: none; stroke-width: 34; stroke-linecap: butt;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 12px var(--zone-color));
+  animation: arcDrawIn 900ms ease-out backwards;
+}
+.gauge-arc.muted {
+  opacity: 0.16; filter: none;
+}
+.gauge-arc.active {
+  animation: arcDrawIn 900ms ease-out backwards, pulseZone 2.8s ease-in-out 900ms infinite;
+}
+
+/* Inner glow ring under the active zone */
+.gauge-arc-glow {
+  fill: none; stroke-width: 8; stroke-linecap: butt;
+  opacity: 0; transition: opacity 600ms;
+}
+.gauge-arc-glow.active { opacity: 0.6; }
+
+@keyframes arcDrawIn {
+  from { stroke-dasharray: 0 600; }
+  to   { stroke-dasharray: 600 0; }
+}
+@keyframes pulseZone {
+  0%, 100% { filter: drop-shadow(0 0 12px var(--zone-color)) drop-shadow(0 0 4px var(--zone-color)); }
+  50%      { filter: drop-shadow(0 0 24px var(--zone-color)) drop-shadow(0 0 8px var(--zone-color)); }
+}
+
+/* Tick marks */
+.gauge-tick {
+  stroke: rgba(244, 240, 255, 0.30); stroke-linecap: round;
+}
+.gauge-tick.major { stroke: rgba(244, 240, 255, 0.65); stroke-width: 2.5; }
+.gauge-tick.minor { stroke: rgba(244, 240, 255, 0.18); stroke-width: 1; }
+
+.gauge-tick-num {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+  fill: rgba(244, 240, 255, 0.65); text-anchor: middle;
+}
+
+/* Needle — gradient line with strong glow */
+.gauge-needle {
+  stroke: url(#needleGrad); stroke-width: 4; stroke-linecap: round;
+  transform-origin: 200px 180px;
+  transition: transform 1400ms cubic-bezier(0.22, 1.2, 0.36, 1);
+  filter:
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.75))
+    drop-shadow(0 0 12px rgba(200, 162, 255, 0.45));
+  animation: needleSweep 1800ms cubic-bezier(0.22, 1.2, 0.36, 1) 200ms backwards;
+}
+.gauge-needle-ghost {
+  stroke: rgba(200, 162, 255, 0.25); stroke-width: 8; stroke-linecap: round;
+  transform-origin: 200px 180px;
+  transition: transform 1400ms cubic-bezier(0.22, 1.2, 0.36, 1);
+  filter: blur(2px);
+}
+@keyframes needleSweep {
+  from { transform: rotate(-75deg); opacity: 0; }
+  60%  { opacity: 1; }
+  to   { /* final state controlled by inline style */ }
+}
+
+/* Hub — layered for depth */
+.gauge-hub-outer { fill: rgba(200, 162, 255, 0.08); stroke: rgba(200, 162, 255, 0.40); stroke-width: 1; }
+.gauge-hub-mid   { fill: #0a0512; stroke: #c8a2ff; stroke-width: 1.5; }
+.gauge-hub-core  { fill: #c8a2ff; filter: drop-shadow(0 0 6px rgba(200, 162, 255, 0.8)); }
+
+/* Zone labels — under the arc */
+.gauge-zone-label {
+  font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 800;
+  letter-spacing: 0.18em; fill: rgba(244, 240, 255, 0.40); text-anchor: middle;
+  transition: fill 300ms;
+}
+.gauge-zone-label.active { fill: #fff; }
+
+/* Score readout — large number positioned ABOVE the hub, inside the semicircle.
+   The hub sits at SVG y=180; the score sits roughly between the arc top
+   (y=30) and the hub. Using top: 56% of the wrap puts it ~y=125, well above
+   the hub and below the arc apex. */
+.gauge-readout {
+  position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none;
+  z-index: 2;
+}
+.gauge-readout .score-row {
+  display: inline-flex; align-items: baseline; justify-content: center; gap: 4px;
+  line-height: 1;
+}
+.gauge-readout .score {
+  font-family: 'Orbitron', sans-serif; font-size: 52px; font-weight: 900;
+  line-height: 0.9; letter-spacing: -0.02em;
+  text-shadow: 0 0 28px currentColor, 0 4px 12px rgba(0,0,0,0.65);
+  animation: scorePop 1100ms cubic-bezier(0.34, 1.56, 0.64, 1) 300ms backwards;
+}
+.gauge-readout .score-max {
+  font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500;
+  color: rgba(244, 240, 255, 0.45); letter-spacing: 0.02em;
+}
+.gauge-readout .score-label {
+  display: block; font-family: 'Orbitron', sans-serif; font-size: 9px;
+  letter-spacing: 0.32em; font-weight: 700;
+  color: rgba(244, 240, 255, 0.55); margin-top: 4px;
+  text-transform: uppercase;
+}
+.tier-banner.low      .gauge-readout .score { color: #9fffb5; }
+.tier-banner.moderate .gauge-readout .score { color: #ffd07a; }
+.tier-banner.elevated .gauge-readout .score { color: #ffb066; }
+.tier-banner.high     .gauge-readout .score { color: #ff8a8a; }
+@keyframes scorePop {
+  from { transform: scale(0.4); opacity: 0; filter: blur(8px); }
+  to   { transform: scale(1);   opacity: 1; filter: blur(0); }
+}
+
+.tier-banner .tier-label {
+  font-family: 'Orbitron', sans-serif; font-size: clamp(26px, 4.5vw, 38px);
+  font-weight: 900; letter-spacing: 0.06em;
+  margin: 8px 0 12px; position: relative;
+  text-shadow: 0 0 24px currentColor;
+}
+.tier-banner .tier-desc {
+  font-size: 14px; line-height: 1.6; color: rgba(244, 240, 255, 0.75);
+  max-width: 640px; margin: 0 auto 12px; position: relative;
+}
+.tier-banner .as-of {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(244, 240, 255, 0.40); position: relative;
+}
+.tier-banner.low      .tier-label { color: #9fffb5; }
+.tier-banner.moderate .tier-label { color: #ffd07a; }
+.tier-banner.elevated .tier-label { color: #ffb066; }
+.tier-banner.high     .tier-label { color: #ff8a8a; }
+
+/* Metric grid */
+.metric-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin-bottom: 28px;
+}
+.metric-card {
+  position: relative;
+  border: 1px solid rgba(200, 162, 255, 0.12);
+  border-radius: 10px; padding: 18px 20px 20px;
+  background:
+    linear-gradient(135deg, rgba(200,162,255,0.04) 0%, rgba(0,0,0,0) 60%),
+    rgba(0, 0, 0, 0.50);
+  overflow: hidden;
+  transition: border-color 200ms, transform 200ms;
+}
+.metric-card:hover { border-color: rgba(200, 162, 255, 0.30); transform: translateY(-1px); }
+/* Top accent stripe (color matches tier) */
+.metric-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(to right, transparent 0%, var(--accent) 50%, transparent 100%);
+  opacity: 0.7;
+}
+.metric-card.q-best  { --accent: #9fffb5; }
+.metric-card.q-good  { --accent: #ffd07a; }
+.metric-card.q-poor  { --accent: #ffb066; }
+.metric-card.q-worst { --accent: #ff8a8a; }
+
+/* Header row: label + badge */
+.metric-card .card-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 10px; margin-bottom: 12px;
+}
+.metric-card .label {
+  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: rgba(244, 240, 255, 0.45); font-weight: 700;
+  flex: 1; padding-top: 4px;
+}
+/* Colored status pill */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: 800;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 99px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.status-pill::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+.status-pill.q-best  { color: #9fffb5; border-color: rgba(159,255,181,0.40); background: rgba(159,255,181,0.06); }
+.status-pill.q-good  { color: #ffd07a; border-color: rgba(255,208,122,0.40); background: rgba(255,208,122,0.06); }
+.status-pill.q-poor  { color: #ffb066; border-color: rgba(255,176,102,0.40); background: rgba(255,176,102,0.06); }
+.status-pill.q-worst { color: #ff8a8a; border-color: rgba(255,138,138,0.40); background: rgba(255,138,138,0.06); }
+
+/* Big value */
+.metric-card .value {
+  font-family: 'Orbitron', sans-serif; font-size: 38px; font-weight: 900;
+  color: #fff; line-height: 1; letter-spacing: -0.01em;
+  margin-bottom: 8px;
+  text-shadow: 0 0 24px var(--accent);
+}
+.metric-card .plain {
+  font-size: 13px; color: rgba(244, 240, 255, 0.80); margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* Range visualization — replaces the broken-looking fill bar */
+.metric-card .range {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px dashed rgba(255,255,255,0.06);
+}
+.metric-card .range-track {
+  position: relative; height: 8px; border-radius: 4px;
+  background: linear-gradient(to right,
+    rgba(159,255,181,0.25) 0%,
+    rgba(255,208,122,0.25) 33%,
+    rgba(255,176,102,0.25) 66%,
+    rgba(255,138,138,0.25) 100%);
+  margin-bottom: 8px;
+}
+.metric-card .range-marker {
+  position: absolute; top: -5px; width: 4px; height: 18px;
+  background: #fff; border-radius: 2px;
+  transform: translateX(-50%);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 12px var(--accent),
+    0 2px 8px rgba(0,0,0,0.7);
+}
+.metric-card .range-marker::after {
+  content: ''; position: absolute; left: 50%; bottom: -6px;
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid #fff;
+  transform: translateX(-50%);
+}
+.metric-card .range-labels {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: rgba(244,240,255,0.45);
+  letter-spacing: 0.04em;
+}
+.metric-card .range-labels b { color: rgba(244,240,255,0.65); font-weight: 600; }
+
+/* Section header */
+.sec {
+  font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: #c8a2ff; margin: 28px 0 12px;
+}
+.sec .sub { color: rgba(244, 240, 255, 0.45); font-size: 10px; margin-left: 10px; text-transform: none; letter-spacing: 0.04em; }
+
+/* History strip */
+.history {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 4px; border: 1px solid var(--border); border-radius: 6px; padding: 14px;
+  background: rgba(0, 0, 0, 0.3);
+}
+.history .h-day { text-align: center; padding: 4px 0; font-size: 10px; }
+.history .h-day .h-date { color: rgba(244, 240, 255, 0.45); font-size: 9px; letter-spacing: 0.04em; margin-bottom: 4px; }
+.history .h-day .h-bars { display: flex; flex-direction: column; gap: 2px; }
+.history .h-day .h-bar  { height: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 1px; overflow: hidden; }
+.history .h-day .h-bar-fill { height: 100%; }
+.history .h-day .h-bar.rug  .h-bar-fill { background: #ff8a8a; }
+.history .h-day .h-bar.grad .h-bar-fill { background: #9fffb5; }
+.history .h-day .h-bar.peak .h-bar-fill { background: #c8a2ff; }
+
+/* Migration MC strip */
+.migration {
+  border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.4); margin-bottom: 28px;
+}
+.migration .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+.migration .row:first-child { font-weight: 700; }
+.migration .label { color: rgba(244, 240, 255, 0.55); }
+.migration .v { color: #fff; font-weight: 700; }
+.migration .note { font-size: 11px; color: rgba(244, 240, 255, 0.45); margin-top: 10px; line-height: 1.5; }
+
+/* Methodology callout */
+.method-callout {
+  border-left: 2px solid #c8a2ff; background: rgba(200, 162, 255, 0.04);
+  padding: 14px 18px; border-radius: 0 4px 4px 0; margin-top: 32px;
+  font-size: 12px; line-height: 1.6; color: rgba(244, 240, 255, 0.75);
+}
+.method-callout a { color: #c8a2ff; text-decoration: none; }
+.method-callout a:hover { text-decoration: underline; }
+.method-callout b { color: #fff; }
+
+.receipt {
+  font-size: 10px; color: rgba(244, 240, 255, 0.35); letter-spacing: 0.04em;
+  word-break: break-all; padding: 8px 12px; background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px; margin-top: 12px;
+}
+
+.warmup { color: var(--muted); padding: 40px 0; text-align: center; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link active" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="cond-main">
+  <div id="container">
+    <div class="warmup">Computing today's reading…</div>
+  </div>
+</main>
+
+<script>
+function fmtPct(v) { return v == null ? '—' : (v*100).toFixed(1) + '%'; }
+function fmtX(v)   { return v == null ? '—' : v.toFixed(2) + 'x'; }
+function fmtN(v)   { return v == null ? '—' : v.toLocaleString(); }
+function fmtUsd(v) {
+  if (v == null) return '—';
+  if (v >= 1e6) return '$' + (v/1e6).toFixed(2) + 'M';
+  if (v >= 1e3) return '$' + (v/1e3).toFixed(1) + 'K';
+  return '$' + v.toFixed(0);
+}
+function qClass(q) {
+  if (q === 1) return 'q-best';
+  if (q === 2) return 'q-good';
+  if (q === 3) return 'q-poor';
+  if (q === 4) return 'q-worst';
+  return '';
+}
+function qLabel(q) {
+  return ['—','BEST','GOOD','POOR','WORST'][q || 0];
+}
+function qWidth(q) { return q ? (q*25) + '%' : '0%'; }
+
+async function load() {
+  const r = await fetch('/api/v1/conditions');
+  const d = await r.json();
+  if (d.status !== 'ok') {
+    document.getElementById('container').innerHTML =
+      `<div class="warmup">${d.note || 'Reading not yet available.'}</div>`;
+    return;
+  }
+
+  const t = d.today;
+  const tier = d.tier;
+  const m = d.migration_mc;
+
+  let html = '';
+
+  // Gauge — danger score 1-10 with animated needle
+  const score = tier.danger_score || 5;
+  const scoreMax = tier.danger_max || 10;
+  // Map score 1-10 to SVG rotation:
+  //   Needle defaults pointing straight up (rotation 0).
+  //   score 1 (best)  → rotate -75° (points left toward LOW)
+  //   score 5-6       → rotate 0°   (points up toward MODERATE/ELEVATED boundary)
+  //   score 10 (worst)→ rotate +75° (points right toward HIGH)
+  const needleRotation = ((score - 5.5) / 4.5) * 75;
+  // Arc geometry: semicircle radius 150, center (200, 180)
+  // Arcs sweep from 180° (left) to 0° (right) along the top.
+  // 4 colored zones, each ~45° of arc.
+  const zones = [
+    { color: '#9fffb5', from:180, to:135, label:'LOW',      key:'low' },
+    { color: '#ffd07a', from:135, to:90,  label:'MODERATE', key:'moderate' },
+    { color: '#ffb066', from:90,  to:45,  label:'ELEVATED', key:'elevated' },
+    { color: '#ff8a8a', from:45,  to:0,   label:'HIGH',     key:'high' },
+  ];
+  function polar(cx, cy, r, deg) {
+    const rad = (deg) * Math.PI / 180;
+    return { x: cx + r*Math.cos(rad), y: cy - r*Math.sin(rad) };
+  }
+  function arcPath(cx, cy, r, fromDeg, toDeg) {
+    const a = polar(cx, cy, r, fromDeg);
+    const b = polar(cx, cy, r, toDeg);
+    const large = 0; // each zone is ≤45°
+    const sweep = fromDeg > toDeg ? 1 : 0; // 1 = clockwise (we go right)
+    return `M ${a.x.toFixed(1)},${a.y.toFixed(1)} A ${r},${r} 0 ${large} ${sweep} ${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+  }
+  function labelPos(cx, cy, r, deg) { return polar(cx, cy, r, deg); }
+
+  let gaugeHtml = `<svg class="gauge-svg" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="needleGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+        <stop offset="0%"  stop-color="#c8a2ff" stop-opacity="0.4"/>
+        <stop offset="60%" stop-color="#ffffff" stop-opacity="1"/>
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="1"/>
+      </linearGradient>
+      <linearGradient id="arcLow" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#7be09c"/><stop offset="100%" stop-color="#bfffd2"/>
+      </linearGradient>
+      <linearGradient id="arcMod" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ffd07a"/><stop offset="100%" stop-color="#ffe2a8"/>
+      </linearGradient>
+      <linearGradient id="arcElev" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ffb066"/><stop offset="100%" stop-color="#ffc999"/>
+      </linearGradient>
+      <linearGradient id="arcHigh" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ff8a8a"/><stop offset="100%" stop-color="#ffafaf"/>
+      </linearGradient>
+      <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"  stop-color="rgba(200,162,255,0.4)"/>
+        <stop offset="100%" stop-color="rgba(200,162,255,0)"/>
+      </radialGradient>
+    </defs>`;
+
+  const arcGradMap = { low:'arcLow', moderate:'arcMod', elevated:'arcElev', high:'arcHigh' };
+
+  // Outer decorative ring (just a thin dashed semi-circle behind everything)
+  gaugeHtml += `<path class="gauge-outer-ring" d="${arcPath(200,180,168,180,0)}"/>`;
+
+  // 4 zone arcs — main band, gradient stroke
+  zones.forEach((z, i) => {
+    const active = (z.key === tier.key);
+    const cssVar = `--zone-color:${z.color};`;
+    gaugeHtml += `<path class="gauge-arc${active?' active':' muted'}" d="${arcPath(200,180,150,z.from,z.to)}" stroke="url(#${arcGradMap[z.key]})" style="${cssVar}animation-delay:${i*120}ms"/>`;
+  });
+
+  // Inner glow ring under the active zone
+  const activeZone = zones.find(z => z.key === tier.key);
+  if (activeZone) {
+    gaugeHtml += `<path class="gauge-arc-glow active" d="${arcPath(200,180,125,activeZone.from,activeZone.to)}" stroke="${activeZone.color}"/>`;
+  }
+
+  // Hub glow base
+  gaugeHtml += `<circle cx="200" cy="180" r="42" fill="url(#hubGlow)"/>`;
+
+  // Tick marks for 1–10 (numbers placed OUTSIDE the arc to avoid clashing with center score)
+  for (let i = 1; i <= scoreMax; i++) {
+    const tDeg = 180 - ((i - 0.5) / scoreMax) * 180;
+    const major = (i === 1 || i === scoreMax || i === Math.round(scoreMax/2));
+    const innerR = major ? 132 : 135;
+    const outerR = major ? 148 : 143;
+    const inner = polar(200, 180, innerR, tDeg);
+    const outer = polar(200, 180, outerR, tDeg);
+    gaugeHtml += `<line class="gauge-tick ${major?'major':'minor'}" x1="${inner.x.toFixed(1)}" y1="${inner.y.toFixed(1)}" x2="${outer.x.toFixed(1)}" y2="${outer.y.toFixed(1)}"/>`;
+    if (major) {
+      // Place number labels INSIDE the arc but well above the centered score
+      const lp = polar(200, 180, 116, tDeg);
+      gaugeHtml += `<text class="gauge-tick-num" x="${lp.x.toFixed(1)}" y="${(lp.y+4).toFixed(1)}">${i}</text>`;
+    }
+  }
+
+  // Zone labels — placed OUTSIDE the arc so they sit above the colored band
+  for (const z of zones) {
+    const mid = (z.from + z.to) / 2;
+    const lp = polar(200, 180, 170, mid);
+    const active = (z.key === tier.key);
+    gaugeHtml += `<text x="${lp.x.toFixed(1)}" y="${(lp.y+4).toFixed(1)}" class="gauge-zone-label${active?' active':''}">${z.label}</text>`;
+  }
+
+  // Needle ghost (blurred backing for depth) + needle
+  gaugeHtml += `<line class="gauge-needle-ghost" x1="200" y1="180" x2="200" y2="42" style="transform: rotate(${needleRotation}deg)"/>`;
+  gaugeHtml += `<line class="gauge-needle" x1="200" y1="180" x2="200" y2="42" style="transform: rotate(${needleRotation}deg)"/>`;
+
+  // Hub — 3 layers for depth
+  gaugeHtml += `<circle class="gauge-hub-outer" cx="200" cy="180" r="18"/>`;
+  gaugeHtml += `<circle class="gauge-hub-mid"   cx="200" cy="180" r="12"/>`;
+  gaugeHtml += `<circle class="gauge-hub-core"  cx="200" cy="180" r="5"/>`;
+  gaugeHtml += '</svg>';
+
+  // Tier banner with gauge + big score readout
+  html += `
+    <div class="tier-banner ${tier.key}">
+      <div class="eyebrow">PUMP.FUN CONDITIONS · TODAY</div>
+      <div class="gauge-wrap">
+        ${gaugeHtml}
+        <div class="gauge-readout">
+          <div class="score-row">
+            <span class="score">${score}</span><span class="score-max">/${scoreMax}</span>
+          </div>
+          <div class="score-label">danger</div>
+        </div>
+      </div>
+      <div class="tier-label">${tier.label}</div>
+      <div class="tier-desc">${tier.description}</div>
+      <div class="as-of">7-day window · ${t.n_signals.toLocaleString()} resolved signals · composite quartile ${tier.composite_quartile}/4 · updated ${new Date(d.computed_at_unix*1000).toUTCString()}</div>
+    </div>
+  `;
+
+  // Metric grid
+  /**
+   * label:    short uppercase title
+   * value:    big formatted value (already a string with units)
+   * plain:    one-line plain-English description
+   * quartile: 1-4
+   * rangeMin / rangeMax: numeric 35-day min and max (raw)
+   * todayRaw: today's numeric value
+   * minLabel / maxLabel: formatted strings for the range endpoints
+   * lowerIsBetter: bool — controls how we name BEST/WORST endpoints
+   */
+  function card(label, value, plain, quartile, rangeMin, rangeMax, todayRaw, minLabel, maxLabel, lowerIsBetter) {
+    // Today's position within the 35-day range, clamped [0, 100]
+    const range = rangeMax - rangeMin;
+    const pct = range > 0
+      ? Math.max(0, Math.min(100, ((todayRaw - rangeMin) / range) * 100))
+      : 50;
+    const statusLabel = statusWord(quartile, lowerIsBetter);
+    const leftLbl  = lowerIsBetter ? 'best week' : 'worst week';
+    const rightLbl = lowerIsBetter ? 'worst week' : 'best week';
+    return `
+      <div class="metric-card ${qClass(quartile)}">
+        <div class="card-head">
+          <div class="label">${label}</div>
+          <div class="status-pill ${qClass(quartile)}">${statusLabel}</div>
+        </div>
+        <div class="value">${value}</div>
+        ${plain ? `<div class="plain">${plain}</div>` : ''}
+        <div class="range">
+          <div class="range-track">
+            <div class="range-marker" style="left:${pct.toFixed(1)}%"></div>
+          </div>
+          <div class="range-labels">
+            <span><b>${minLabel}</b> · ${leftLbl}</span>
+            <span><b>${maxLabel}</b> · ${rightLbl}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Friendly status word per quartile
+  function statusWord(q, lower_is_better) {
+    if (!q) return '';
+    if (lower_is_better) {
+      return ['', 'BEST WEEK', 'BETTER THAN USUAL', 'WORSE THAN USUAL', 'WORST WEEK'][q];
+    }
+    return ['', 'BEST WEEK', 'BETTER THAN USUAL', 'WORSE THAN USUAL', 'WORST WEEK'][q];
+  }
+  // "1 in X" formatter for percentages
+  function fmtOneIn(pct) {
+    if (pct == null || pct <= 0) return '—';
+    const n = Math.round(1 / pct);
+    return `about 1 in ${n}`;
+  }
+
+  html += `<div class="sec">▸ What the week looks like <span class="sub">(${t.n_signals.toLocaleString()} signals over last 7 days)</span></div>`;
+  html += '<div class="metric-grid">';
+
+  const rng = d.distribution_35d;
+
+  // CARD 1 — Coins rugging  (lower is better, so left=best, right=worst)
+  html += card(
+    'Coins rugging',
+    fmtPct(t.rug_rate),
+    `${fmtOneIn(t.rug_rate)} coins we tracked went to zero this week`,
+    t.rug_quartile,
+    rng.rug_rate.min, rng.rug_rate.max, t.rug_rate,
+    fmtPct(rng.rug_rate.min), fmtPct(rng.rug_rate.max),
+    true
+  );
+
+  // CARD 2 — Coins reaching Raydium  (higher is better, so left=worst, right=best)
+  html += card(
+    'Coins reaching Raydium',
+    fmtPct(t.grad_rate),
+    `${fmtOneIn(t.grad_rate)} coins we tracked graduated this week`,
+    t.grad_quartile,
+    rng.grad_rate.min, rng.grad_rate.max, t.grad_rate,
+    fmtPct(rng.grad_rate.min), fmtPct(rng.grad_rate.max),
+    false
+  );
+
+  // CARD 3 — Average pump after we call
+  html += card(
+    'Average pump after we call',
+    fmtX(t.avg_peak),
+    `Typical signal peaked ${Math.round((t.avg_peak - 1) * 100)}% above where we called it`,
+    t.peak_quartile,
+    rng.avg_peak.min, rng.avg_peak.max, t.avg_peak,
+    fmtX(rng.avg_peak.min), fmtX(rng.avg_peak.max),
+    false
+  );
+
+  // CARD 4 — How fast we catch them  (lower is better)
+  html += card(
+    'How fast we catch them',
+    t.med_age + 's',
+    `Median signal fires ${t.med_age} seconds after a coin launches`,
+    t.age_quartile,
+    rng.med_age.min, rng.med_age.max, t.med_age,
+    rng.med_age.min + 's', rng.med_age.max + 's',
+    true
+  );
+
+  // CARD 5 — High-confidence signals  (higher is better)
+  html += card(
+    'High-confidence signals',
+    fmtN(t.high_conf_count),
+    `${t.high_conf_count} we're confident about · ${t.very_high_conf_count} we're VERY confident about`,
+    t.conf_quartile,
+    rng.high_conf_count.min, rng.high_conf_count.max, t.high_conf_count,
+    fmtN(rng.high_conf_count.min), fmtN(rng.high_conf_count.max),
+    false
+  );
+
+  html += '</div>';
+
+  // Migration MC — curve-math constant in SOL, USD scales with SOL price
+  if (m && m.usd) {
+    html += '<div class="sec">▸ Migration MC <span class="sub">deterministic from pump.fun curve math</span></div>';
+    html += `
+      <div class="migration">
+        <div class="row" style="padding-bottom: 14px;">
+          <span class="label">Today's SOL price</span>
+          <span class="v">$${m.current_sol_usd ? m.current_sol_usd.toFixed(2) : '—'}</span>
+        </div>
+        <div class="row" style="border-top: 1px dashed rgba(200,162,255,0.15); padding-top: 14px; flex-direction: column; align-items: stretch;">
+          <span style="color: rgba(244,240,255,0.65); font-size: 12px; margin-bottom: 6px;">Every mint migrates at the same SOL-denominated MC:</span>
+          <span style="color: #c8a2ff; font-family: 'Orbitron', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: 0.02em;">${fmtUsd(m.usd)}</span>
+          <span style="color: rgba(244,240,255,0.55); font-size: 11px; margin-top: 4px;">= ${m.sol_constant} SOL × $${m.current_sol_usd.toFixed(2)}</span>
+        </div>
+        <div class="note">
+          ${m.note}
+        </div>
+      </div>
+    `;
+  }
+
+  // History strip — last 21 days
+  const hist = d.history.slice(-21);
+  if (hist.length) {
+    html += '<div class="sec">▸ 21-day history <span class="sub">7-day rolling values</span></div>';
+    html += '<div class="history">';
+    const rugMax  = Math.max(...hist.map(h => h.rug_rate));
+    const gradMax = Math.max(...hist.map(h => h.grad_rate));
+    const peakMax = Math.max(...hist.map(h => h.avg_peak));
+    for (const h of hist) {
+      const monthDay = h.date.slice(5);
+      html += `
+        <div class="h-day" title="${h.date} · rug ${fmtPct(h.rug_rate)} · grad ${fmtPct(h.grad_rate)} · peak ${fmtX(h.avg_peak)}">
+          <div class="h-date">${monthDay}</div>
+          <div class="h-bars">
+            <div class="h-bar rug"><div class="h-bar-fill" style="width:${rugMax ? (h.rug_rate/rugMax*100).toFixed(0) : 0}%"></div></div>
+            <div class="h-bar grad"><div class="h-bar-fill" style="width:${gradMax ? (h.grad_rate/gradMax*100).toFixed(0) : 0}%"></div></div>
+            <div class="h-bar peak"><div class="h-bar-fill" style="width:${peakMax ? (h.avg_peak/peakMax*100).toFixed(0) : 0}%"></div></div>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+    html += `<div style="font-size:10px; color:rgba(244,240,255,0.45); margin-top:8px; text-align:center;">
+      <span style="color:#ff8a8a;">▍</span> rug rate &nbsp;
+      <span style="color:#9fffb5;">▍</span> graduation rate &nbsp;
+      <span style="color:#c8a2ff;">▍</span> avg peak from cross
+    </div>`;
+  }
+
+  // Methodology
+  html += `
+    <div class="method-callout">
+      <b>How we computed this.</b> Every number is derived from our own observations — composite_predictions, post_grad_outcomes, predictions (age_bucket=60). The migration MC constant is empirically derived from ${m && m.ratio_n_samples ? m.ratio_n_samples.toLocaleString() : '?'} graduated mints over the last 60 days. Tier placement is self-relative: today's quartile vs our 35-day distribution. We don't claim absolute thresholds — we claim "today's reading vs days we've measured."
+      <br><br>
+      Full methodology + every formula: <a href="/conditions/methodology">/conditions/methodology</a><br>
+      Raw API for builders: <a href="/api/v1/conditions">/api/v1/conditions</a>
+    </div>
+    <div class="receipt"><b>Reading hash:</b> ${d.reading_hash}</div>
+  `;
+
+  document.getElementById('container').innerHTML = html;
+}
+
+load();
+// Refresh every 5 min (matches backend cache)
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>

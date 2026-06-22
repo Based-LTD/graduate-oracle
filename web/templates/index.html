@@ -52,15 +52,20 @@
     <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
   </div>
   <nav class="head-nav">
-    <a class="head-link active" href="/">DASHBOARD</a>
-    <a class="head-link" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">TG BOT</a>
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
     <a class="head-link" href="/api">API</a>
     <a class="head-link" href="/cli">CLI</a>
     <a class="head-link" href="/docs">DOCS</a>
-    <a class="head-link" href="/accuracy">ACCURACY</a>
   </nav>
   <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
     <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" aria-label="$GO on DEX Screener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
   </a>
   <div class="meta">
     <span id="status">
@@ -90,32 +95,42 @@
      tradeable headline (ACT ≥5× rate from the pre-registered forward
      validation), with the calibration receipt as supporting evidence.
      Both numbers are receipts; the verdict number is the moat. -->
+<div style="background:linear-gradient(90deg,#ff7a00,#ff3366);color:#fff;text-align:center;padding:10px 12px;font-weight:700;letter-spacing:0.02em;font-size:14px;line-height:1.4;">
+  🚀 LAUNCH WEEK — FREE API + MCP THROUGH JUNE 22 · 23:59 UTC. <strong>No signup, no card.</strong>
+  Install <code style="background:rgba(0,0,0,0.25);padding:2px 6px;border-radius:4px;font-weight:700;">npx -y goracle-mcp</code>
+  and your LLM has it instantly.
+</div>
 <section class="hero-pitch hero-pitch-compact">
   <div class="hero-pitch-left">
     <div class="hero-pitch-stat-wrap">
-      <span class="hero-pitch-stat-tag">MEDIAN RUNWAY · ≥70% CALLS · LIVE</span>
-      <span class="hero-pitch-stat-num" data-mode="ok" id="hero-runway">—s</span>
+      <span class="hero-pitch-stat-tag">OF OUR 5× PICKS · ACTUALLY HIT 5×</span>
+      <span class="hero-pitch-stat-num" data-mode="ok" id="hero-runner-rate">—%</span>
     </div>
     <div class="hero-pitch-text">
       <div class="hero-pitch-tagline">
-        between our call and the bonding curve <strong>completing</strong>
-        <span id="hero-runway-n" class="muted" style="font-weight:400; opacity:0.7;"></span>
+        Random graduates: just <strong><span id="hero-runner-base">—%</span></strong>.
+        That's a <strong><span id="hero-runner-lift">—×</span> edge</strong>
+        <span id="hero-runner-n" class="muted" style="font-weight:400; opacity:0.7;"></span>
       </div>
       <div class="hero-pitch-detail">
-        Catch pump.fun graduations <strong>before</strong> the curve
-        completes — fast traders + bots get a head start.
-        <strong id="hero-last30-rate">—%</strong> of ≥70% calls graduate
-        within 24h <span id="hero-last30-n" class="muted" style="opacity:0.7;"></span>.
-        <strong>950,000+ mints indexed.</strong>
+        Every pump.fun mint scored continuously — calibrated grad probability
+        + post-grad runner odds + creator track record + smart-money + flags.
+        Pre-grad precision: <strong id="hero-last30-rate">—%</strong>
+        on ≥0.70 calls<span id="hero-last30-n" class="muted" style="font-weight:400; opacity:0.7;"></span>.
+        Three TG tiers: <strong id="hero-tier-act">ACT</strong> ·
+        <strong id="hero-tier-watch">WATCH</strong> ·
+        <strong id="hero-tier-scout">SCOUT</strong>.
         Every prediction publicly hashed <strong>before</strong> the
-        outcome was known. Live receipts on
-        <a href="/accuracy">/accuracy</a>.
+        outcome. <a href="/accuracy">Live receipts</a>.
       </div>
     </div>
   </div>
   <div class="hero-pitch-cta-row">
-    <a class="hero-pitch-cta hero-pitch-cta-primary" href="https://t.me/graduate_oracle_bot" target="_blank" rel="noopener">
-      Subscribe via Telegram →
+    <a class="hero-pitch-cta hero-pitch-cta-primary" href="https://www.npmjs.com/package/goracle-mcp" target="_blank" rel="noopener">
+      Plug into your LLM →
+    </a>
+    <a class="hero-pitch-cta hero-pitch-cta-secondary" href="/bot">
+      TG Bot
     </a>
     <a class="hero-pitch-cta hero-pitch-cta-secondary" href="/accuracy">
       Receipts

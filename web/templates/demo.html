@@ -1,0 +1,1187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle — live demo · watch the bot work</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Live, real-time view of every pump.fun mint being scored — smart-money flags, runner odds, graduation probabilities. Watch the product work. Free, no install.">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="graduate-oracle — watch the bot work LIVE">
+<meta property="og:description" content="Real-time scoring of every pump.fun mint. Smart-money flags. Runner odds. Hypnotic.">
+<meta property="og:url" content="https://graduateoracle.fun/demo">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="graduate-oracle — watch the bot work LIVE">
+<meta name="twitter:description" content="Real-time scoring of every pump.fun mint. Smart-money flags. Runner odds.">
+<meta name="twitter:image" content="https://graduateoracle.fun/brand/og-image.png">
+
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+/* DEMO PAGE — purpose-built. Inherits site fonts + dark bg from style.css.
+   Layout: header → hero counters → live cards grid → footer note.
+   All animations are CSS — no animation libs. */
+
+/* Compact receipts banner above the live area. Single line on desktop,
+   wraps on mobile. Keeps the value prop visible at all times without
+   stealing focus from the live grid below. */
+.receipts-strip {
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,122,0,0.10), rgba(0,0,0,0.4));
+  padding: 10px 16px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #ccc;
+  letter-spacing: 0.02em;
+}
+.receipts-strip strong { color: #fff; font-weight: 700; }
+.receipts-strip .num   { color: #ff9933; font-weight: 700; }
+.receipts-strip .sep   { color: var(--muted); padding: 0 8px; }
+@media (max-width: 760px) {
+  .receipts-strip { font-size: 11px; padding: 8px 10px; }
+}
+
+.demo-hero {
+  text-align: center;
+  padding: 28px 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,140,0,0.05), transparent);
+}
+.demo-hero .live-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 12px; border-radius: 20px;
+  border: 1px solid #ff7a00;
+  background: rgba(255,122,0,0.12);
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #ff9933;
+  margin-bottom: 14px;
+}
+.demo-hero .live-pill::before {
+  content: ''; width: 8px; height: 8px;
+  border-radius: 50%; background: #ff7a00;
+  animation: demo-pulse 1.4s infinite;
+}
+@keyframes demo-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(1.3); }
+}
+.demo-hero h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(28px, 5vw, 56px);
+  font-weight: 900;
+  margin: 4px 0 6px;
+  letter-spacing: 0.02em;
+}
+.demo-hero .sub {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+.demo-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  max-width: 1200px;
+  margin: 18px auto 0;
+  padding: 0 16px;
+}
+.demo-stat {
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.4);
+  border-radius: 4px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.demo-stat .label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+.demo-stat .value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 4px;
+  transition: color 0.3s;
+}
+.demo-stat .value.flash {
+  color: #ff7a00;
+}
+
+/* Filter bar — sits between the live stats and the cards grid. Compact
+   horizontal layout, wraps on mobile. Each control is small but tappable. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 18px;
+  align-items: center;
+  justify-content: center;
+  max-width: 1400px;
+  margin: 14px auto 4px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(0,0,0,0.55);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.filter-group {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--muted);
+}
+.filter-group .label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.filter-group input[type="range"] {
+  width: 84px;
+  accent-color: #ff7a00;
+}
+.filter-group .val {
+  color: #ff9933; font-weight: 700;
+  min-width: 32px; text-align: right;
+  font-size: 12px;
+}
+.filter-group label.chk {
+  display: inline-flex; align-items: center; gap: 5px;
+  cursor: pointer; color: var(--muted);
+}
+.filter-group label.chk input { accent-color: #ff7a00; }
+.filter-group label.chk:hover { color: #fff; }
+.filter-clear {
+  font-size: 10px;
+  color: var(--muted);
+  background: none; border: 1px solid var(--border);
+  padding: 4px 8px; border-radius: 2px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+}
+.filter-clear:hover { color: #fff; border-color: #fff; }
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  max-width: 1400px;
+  margin: 14px auto;
+  padding: 0 16px 60px;
+}
+
+.demo-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.5);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  animation: demo-card-in 0.5s ease;
+  transition: border-color 0.3s, box-shadow 0.3s, opacity 0.4s, transform 0.4s;
+  cursor: pointer;
+}
+.demo-card:hover {
+  border-color: rgba(255,153,51,0.5);
+}
+/* Expand affordance — tiny chevron, rotates when expanded */
+.demo-card .expand-chev {
+  position: absolute;
+  top: 8px; right: 10px;
+  width: 14px; height: 14px;
+  opacity: 0.45;
+  transition: transform 0.25s, opacity 0.2s;
+  pointer-events: none;
+}
+.demo-card:hover .expand-chev { opacity: 1; }
+/* Glass popup — same DNA as the old dashboard's mint-detail overlay, but
+   re-themed to match the demo's orange/dark palette. Inherits base shape
+   from style.css (.detail-popup, .detail-popup-backdrop). */
+.detail-popup.demo-themed {
+  border-color: rgba(255,153,51,0.35) !important;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6),
+              0 0 60px rgba(255,153,51,0.10) !important;
+}
+.detail-popup.demo-themed .detail-popup-head {
+  border-bottom-color: rgba(255,153,51,0.18);
+}
+.detail-popup.demo-themed .detail-popup-mint {
+  color: #ff9933;
+  font-weight: 700;
+}
+.detail-popup.demo-themed .detail-popup-close:hover {
+  border-color: rgba(255,153,51,0.6);
+  color: #ff9933;
+  background: rgba(255,153,51,0.08);
+}
+.detail-popup-body .rowx {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+  margin: 3px 0;
+  font-size: 12px;
+}
+.detail-popup-body .row {
+  display: flex; justify-content: space-between;
+  margin: 3px 0;
+  font-size: 12px;
+}
+.detail-popup-body .k { color: var(--muted); }
+.detail-popup-body .v { color: #fff; font-weight: 600; }
+.detail-popup-body .tiers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.detail-popup-body .tiers .t {
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  background: rgba(255,255,255,0.04);
+  border-radius: 3px;
+}
+.detail-popup-body .tiers .t .k { color: var(--muted); font-size: 10px; }
+.detail-popup-body .tiers .t .v { color: #fff; font-weight: 700; font-size: 14px; }
+.detail-popup-body .flags { margin-top: 12px; }
+
+/* Popup action bar — trade-platform links + the clickable copy-mint
+   address. Inherits .btn / .btn-pump / .btn-axiom from style.css. */
+.popup-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 22px;
+  border-bottom: 1px solid rgba(255,153,51,0.18);
+  background: rgba(0,0,0,0.35);
+  font-family: 'JetBrains Mono', monospace;
+}
+.popup-actions .btn { padding: 5px 12px; font-size: 11px; }
+.detail-popup-mint {
+  cursor: pointer;
+  user-select: all;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  transition: color 0.15s;
+}
+.detail-popup-mint:hover { color: #ffcc66 !important; }
+.detail-popup-mint::after {
+  content: ' ⎘';
+  opacity: 0.45;
+  margin-left: 4px;
+  font-size: 0.85em;
+}
+.detail-popup-mint:hover::after { opacity: 1; }
+
+#toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(20,11,42,0.94);
+  border: 1px solid rgba(255,153,51,0.55);
+  color: #ff9933;
+  padding: 9px 16px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5), 0 0 24px rgba(255,153,51,0.18);
+}
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+@keyframes demo-card-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.demo-card.exiting {
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  pointer-events: none;
+}
+
+.demo-card.smart-glow {
+  border-color: #ff9933;
+  box-shadow: 0 0 14px rgba(255,153,51,0.35), inset 0 0 8px rgba(255,153,51,0.08);
+}
+.demo-card.runner-flash {
+  animation: demo-runner-flash 1.4s ease;
+}
+@keyframes demo-runner-flash {
+  0%   { box-shadow: 0 0 0 rgba(255,215,0,0); }
+  20%  { box-shadow: 0 0 24px rgba(255,215,0,0.7); border-color: #ffd700; }
+  100% { box-shadow: 0 0 0 rgba(255,215,0,0); }
+}
+
+.demo-card .mint {
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 600;
+  font-size: 11px;
+  margin-bottom: 6px;
+  color: #ccc;
+}
+.demo-card .mint a {
+  color: #ff9933;
+  text-decoration: none;
+}
+.demo-card .age {
+  font-size: 10px;
+  color: var(--muted);
+}
+.demo-card .row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 3px 0;
+  font-size: 11px;
+}
+.demo-card .row .k { color: var(--muted); }
+.demo-card .row .v { font-weight: 600; color: #fff; }
+.demo-card .rowx {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin: 3px 0;
+  font-size: 11px;
+}
+.demo-card .rowx .col {
+  display: flex; justify-content: space-between;
+}
+.demo-card .rowx .k { color: var(--muted); }
+.demo-card .rowx .v { font-weight: 600; color: #fff; }
+
+/* Section header inside a card — small caps, separator-style. */
+.demo-card .sec, .detail-popup-body .sec {
+  margin: 10px 0 5px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255,255,255,0.08);
+  font-size: 10px;
+  color: rgba(255,153,51,0.85);
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.detail-popup-body .sec:first-child {
+  margin-top: 0; padding-top: 0; border-top: none;
+}
+/* 4-up tier row for runners — packs 2×/3×/5×/10× tightly. */
+.demo-card .tiers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  font-size: 10px;
+}
+.demo-card .tiers .t {
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding: 3px 0;
+  background: rgba(255,255,255,0.03);
+  border-radius: 2px;
+}
+.demo-card .tiers .t .k { color: var(--muted); font-size: 9px; letter-spacing: 0.05em; }
+.demo-card .tiers .t .v { color: #fff; font-weight: 700; font-size: 11px; }
+.demo-card .bar {
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 6px 0 8px;
+}
+.demo-card .bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #ff7a00, #ffd700);
+  transition: width 0.4s;
+}
+
+.demo-card .flags {
+  display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px;
+}
+.demo-card .flag {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.flag.smart    { background: rgba(255,153,51,0.18); color: #ffb066; }
+.flag.bundled  { background: rgba(255,80,80,0.18);  color: #ff8888; }
+.flag.mfg      { background: rgba(255,80,80,0.18);  color: #ff8888; }
+.flag.dexpaid  { background: rgba(80,255,150,0.14); color: #88e0aa; }
+.flag.delegated { background: rgba(80,180,255,0.14); color: #88c0ff; }
+
+.demo-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--muted);
+  padding: 60px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+}
+.demo-status-pill {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.demo-status-pill.ok { color: #88e0aa; border-color: rgba(80,255,150,0.35); }
+.demo-status-pill.warn { color: #ffb066; border-color: rgba(255,153,51,0.35); }
+.demo-status-pill.err { color: #ff8888; border-color: rgba(255,80,80,0.35); }
+
+.demo-foot {
+  text-align: center;
+  padding: 24px 16px 60px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  max-width: 900px;
+  margin: 0 auto;
+}
+.demo-foot code {
+  background: rgba(255,255,255,0.06);
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+  color: #ff9933;
+}
+.demo-foot a { color: #ff9933; text-decoration: none; }
+.demo-foot a:hover { text-decoration: underline; }
+</style>
+</head>
+
+<body>
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<!-- Boot sequence overlay — ports the old dashboard's terminal-style
+     loading screen. Tiny inline JS keeps demo.html self-contained
+     (no app.js dependency). Styled via #boot in style.css. -->
+<div id="boot">
+  <pre id="boot-text"></pre>
+</div>
+<script>
+(function(){
+  const BOOT_LINES = [
+    '> initializing $GRADUATE oracle',
+    '> connecting to pump.fun firehose',
+    '> loading 1,046,451 historical curves... ok',
+    '> websocket subscribe: /api/v1/ws',
+    '> graduation k-NN ready',
+    '> wallet intelligence: standby',
+    '> calibrated runner-prob model: live',
+    '> ready.',
+  ];
+  const el = document.getElementById('boot-text');
+  if(!el) return;
+  let i = 0;
+  function next(){
+    if(i >= BOOT_LINES.length){
+      setTimeout(() => {
+        const b = document.getElementById('boot');
+        if(b) b.classList.add('done');
+        setTimeout(() => b && b.remove(), 500);
+      }, 240);
+      return;
+    }
+    el.textContent = BOOT_LINES.slice(0, i + 1).join('\n');
+    i++;
+    setTimeout(next, 110 + Math.random() * 90);
+  }
+  next();
+})();
+</script>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link active" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" aria-label="$GO on DEX Screener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
+  </a>
+</header>
+
+<div class="receipts-strip">
+  <span class="num">54.7%</span> of our 5× picks actually hit 5× <span class="sep">·</span>
+  baseline <span class="num">4.1%</span> <span class="sep">·</span>
+  <strong>13× edge</strong> on <span class="num">91,858</span> graduations <span class="sep">·</span>
+  <span class="num" id="rcp-indexed">1,046,451</span> mints indexed lifetime
+</div>
+
+<section class="demo-hero">
+  <div class="live-pill">LIVE · WEBSOCKET FEED</div>
+  <h1>Watch the bot work.</h1>
+  <div class="sub">Every pump.fun mint, scored in real time. Smart-money lights up. Runner odds flash. This is what your LLM sees.</div>
+  <div class="demo-stats">
+    <div class="demo-stat">
+      <div class="label">Mints indexed (lifetime)</div>
+      <div class="value" id="stat-indexed">—</div>
+    </div>
+    <div class="demo-stat">
+      <div class="label">Currently tracked</div>
+      <div class="value" id="stat-tracked">—</div>
+    </div>
+    <div class="demo-stat">
+      <div class="label">Smart-money active</div>
+      <div class="value" id="stat-smart">—</div>
+    </div>
+    <div class="demo-stat">
+      <div class="label">≥0.70 grad-prob</div>
+      <div class="value" id="stat-hot">—</div>
+    </div>
+    <div class="demo-stat">
+      <div class="label">Push freshness</div>
+      <div class="value" id="stat-fresh">—</div>
+    </div>
+    <div class="demo-stat">
+      <div class="label">Pushes received</div>
+      <div class="value" id="stat-pushes">—</div>
+    </div>
+  </div>
+  <span class="demo-status-pill" id="conn-status">connecting…</span>
+</section>
+
+<div class="filter-bar" id="filter-bar">
+  <div class="filter-group">
+    <span class="label">grad ≥</span>
+    <input type="range" id="f-grad" min="0" max="100" value="0" step="5">
+    <span class="val" id="f-grad-v">0%</span>
+  </div>
+  <div class="filter-group">
+    <span class="label">runner 5× ≥</span>
+    <input type="range" id="f-r5" min="0" max="100" value="0" step="5">
+    <span class="val" id="f-r5-v">0%</span>
+  </div>
+  <div class="filter-group">
+    <span class="label">🐋 smart ≥</span>
+    <input type="range" id="f-sm" min="0" max="10" value="0" step="1">
+    <span class="val" id="f-sm-v">0</span>
+  </div>
+  <div class="filter-group">
+    <span class="label">age ≤</span>
+    <input type="range" id="f-age" min="10" max="300" value="300" step="10">
+    <span class="val" id="f-age-v">∞</span>
+  </div>
+  <div class="filter-group">
+    <label class="chk"><input type="checkbox" id="f-no-bundled"> hide bundled</label>
+    <label class="chk"><input type="checkbox" id="f-no-mfg"> hide manufactured</label>
+    <label class="chk"><input type="checkbox" id="f-dex-paid"> dex paid only</label>
+  </div>
+  <button class="filter-clear" id="f-clear">RESET</button>
+</div>
+
+<main class="demo-grid" id="demo-grid">
+  <div class="demo-empty" id="demo-empty">Waiting for the first push from the WebSocket…</div>
+</main>
+
+<!-- Glass popup overlay — opens on card click, live-refreshes from each
+     WebSocket push so the user can watch their target mint update. Backdrop
+     dim + blur. Close by clicking backdrop, the ✕, or ESC. -->
+<div id="detail-popup-backdrop" class="detail-popup-backdrop" hidden></div>
+<div id="detail-popup" class="detail-popup demo-themed" role="dialog" aria-modal="false" hidden>
+  <div class="detail-popup-head">
+    <code class="detail-popup-mint" id="detail-popup-mint" title="click to copy mint address"></code>
+    <button type="button" class="detail-popup-close" aria-label="close">✕</button>
+  </div>
+  <div class="popup-actions" id="popup-actions"></div>
+  <div class="detail-popup-body" id="detail-popup-body"></div>
+</div>
+
+<div id="toast" role="status" aria-live="polite">contract copied</div>
+
+<footer class="demo-foot">
+  This is the same WebSocket feed your bot or LLM gets when you connect to
+  <code>wss://graduateoracle.fun/api/v1/ws</code>.
+  Free during launch week (through June 22) — no key, no signup.<br>
+  Plug it into your trading agent: <code>npx -y goracle-mcp</code> · <a href="/">Dashboard</a> · <a href="/accuracy">Receipts</a>
+</footer>
+
+<script>
+// ─── Live demo wiring ─────────────────────────────────────────────────────
+// Same WebSocket the SDK uses. We render the top mints as cards, glow the
+// smart-money ones, flash the runner-prob spikes, tick aggregate counters.
+
+const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/v1/ws';
+const TOP_N    = 30;  // cap visible cards — feels lively, not overwhelming
+const grid     = document.getElementById('demo-grid');
+const empty    = document.getElementById('demo-empty');
+const statIx   = document.getElementById('stat-indexed');
+const statTr   = document.getElementById('stat-tracked');
+const statSm   = document.getElementById('stat-smart');
+const statHot  = document.getElementById('stat-hot');
+const statFr   = document.getElementById('stat-fresh');
+const statPu   = document.getElementById('stat-pushes');
+const status   = document.getElementById('conn-status');
+
+let pushCount = 0;
+let lastRunnerProbs = new Map();  // mint -> last runner_prob_5x_from_now
+let lastMints = [];               // most recent full push, for re-render on filter change
+let lastSnapshotEpochMs = null;   // server snapshot time of the most recent push
+const cardMap = new Map();        // mint -> DOM element (for smooth in/out)
+
+// ─── filter state ───────────────────────────────────────────────────────
+const filters = {
+  grad: 0, r5: 0, sm: 0, age: 300,
+  noBundled: false, noMfg: false, dexPaid: false,
+};
+
+function applyFilters(mints){
+  return mints.filter(m => {
+    if(((m.grad_prob || 0)*100) < filters.grad) return false;
+    if(((m.runner_prob_5x_from_now || 0)*100) < filters.r5) return false;
+    if((m.smart_money_in || 0) < filters.sm) return false;
+    if(filters.age < 300 && (m.age_s || 0) > filters.age) return false;
+    if(filters.noBundled && m.bundle_detected) return false;
+    if(filters.noMfg && m.manufactured_pump) return false;
+    if(filters.dexPaid && !m.dex_paid) return false;
+    return true;
+  });
+}
+
+function bindFilters(){
+  const wire = (id, vid, key, format) => {
+    const el = document.getElementById(id);
+    const val = document.getElementById(vid);
+    el.addEventListener('input', () => {
+      filters[key] = +el.value;
+      val.textContent = format(el.value);
+      render(lastMints);
+    });
+  };
+  wire('f-grad', 'f-grad-v', 'grad', v => v + '%');
+  wire('f-r5',   'f-r5-v',   'r5',   v => v + '%');
+  wire('f-sm',   'f-sm-v',   'sm',   v => v);
+  wire('f-age',  'f-age-v',  'age',  v => (+v >= 300 ? '∞' : v + 's'));
+
+  const wireChk = (id, key) => {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => {
+      filters[key] = el.checked;
+      render(lastMints);
+    });
+  };
+  wireChk('f-no-bundled', 'noBundled');
+  wireChk('f-no-mfg',     'noMfg');
+  wireChk('f-dex-paid',   'dexPaid');
+
+  document.getElementById('f-clear').addEventListener('click', () => {
+    filters.grad = 0; filters.r5 = 0; filters.sm = 0; filters.age = 300;
+    filters.noBundled = false; filters.noMfg = false; filters.dexPaid = false;
+    document.getElementById('f-grad').value = 0;
+    document.getElementById('f-grad-v').textContent = '0%';
+    document.getElementById('f-r5').value = 0;
+    document.getElementById('f-r5-v').textContent = '0%';
+    document.getElementById('f-sm').value = 0;
+    document.getElementById('f-sm-v').textContent = '0';
+    document.getElementById('f-age').value = 300;
+    document.getElementById('f-age-v').textContent = '∞';
+    document.getElementById('f-no-bundled').checked = false;
+    document.getElementById('f-no-mfg').checked = false;
+    document.getElementById('f-dex-paid').checked = false;
+    render(lastMints);
+  });
+}
+bindFilters();
+
+// ─── Glass popup wiring ────────────────────────────────────────────────
+const popup       = document.getElementById('detail-popup');
+const popupBack   = document.getElementById('detail-popup-backdrop');
+const popupMint   = document.getElementById('detail-popup-mint');
+const popupBody   = document.getElementById('detail-popup-body');
+const popupActs   = document.getElementById('popup-actions');
+const toastEl     = document.getElementById('toast');
+let openMint = null;  // when set, render() refreshes the popup body live
+
+// Trade-platform link buttons — Pump.fun / Axiom / Photon / DexScreener /
+// Solscan. Reuses the existing .btn / .btn-pump / .btn-axiom / .btn-photon
+// styles from style.css so the look matches the legacy dashboard.
+function actionsHTML(mint){
+  return `
+    <a class="btn btn-pump"   href="https://pump.fun/coin/${mint}"            target="_blank" rel="noreferrer">PUMP</a>
+    <a class="btn btn-axiom"  href="https://axiom.trade/t/${mint}"            target="_blank" rel="noreferrer">AXM</a>
+    <a class="btn btn-photon" href="https://photon-sol.tinyastro.io/en/lp/${mint}" target="_blank" rel="noreferrer">PHO</a>
+    <a class="btn"            href="https://dexscreener.com/solana/${mint}"   target="_blank" rel="noreferrer">DEX</a>
+    <a class="btn"            href="https://solscan.io/token/${mint}"         target="_blank" rel="noreferrer">SOL</a>
+  `;
+}
+
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._timer);
+  toastEl._timer = setTimeout(() => toastEl.classList.remove('show'), 1400);
+}
+async function copyToClipboard(text){
+  try { await navigator.clipboard.writeText(text); showToast('contract copied'); }
+  catch { showToast('copy failed'); }
+}
+
+function openPopup(m){
+  openMint = m.mint || null;
+  popupMint.textContent = m.mint || '';
+  popupActs.innerHTML = actionsHTML(m.mint || '');
+  popupBody.innerHTML = popupBodyHTML(m);
+  popupBack.hidden = false;
+  popup.hidden = false;
+}
+function closePopup(){
+  openMint = null;
+  popupBack.hidden = true;
+  popup.hidden = true;
+}
+
+// Click the mint address in the popup head → copy to clipboard.
+popupMint.addEventListener('click', () => {
+  const t = popupMint.textContent.trim();
+  if(t) copyToClipboard(t);
+});
+
+// Click anywhere on a card → open the glass popup. Skip clicks on links
+// (mint a-tag) so the pump.fun link still works.
+grid.addEventListener('click', (e) => {
+  if(e.target.closest('a')) return;
+  const card = e.target.closest('.demo-card');
+  if(!card) return;
+  const mint = card.getAttribute('data-mint');
+  // Look up current mint data from lastMints (most recent push) for opening.
+  const m = lastMints.find(x => x.mint === mint) || { mint };
+  openPopup(m);
+});
+
+popupBack.addEventListener('click', closePopup);
+document.querySelector('.detail-popup-close').addEventListener('click', closePopup);
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closePopup(); });
+
+// Called by render() on every WS push — keeps the popup body live.
+function refreshOpenPopup(mints){
+  if(!openMint) return;
+  const m = mints.find(x => x.mint === openMint);
+  if(m) popupBody.innerHTML = popupBodyHTML(m);
+}
+
+function shortMint(m){ return m ? m.slice(0,4) + '…' + m.slice(-4) : '—'; }
+
+function ageStr(s){
+  if(s == null) return '—';
+  const n = Math.round(s);
+  if(n < 60) return n + 's';
+  if(n < 3600) return Math.round(n/60) + 'm';
+  return Math.round(n/3600) + 'h';
+}
+
+function colorForProb(p){
+  if(p == null) return '#666';
+  if(p >= 0.9) return '#88e0aa';
+  if(p >= 0.7) return '#88c0ff';
+  if(p >= 0.5) return '#ffd700';
+  if(p >= 0.3) return '#ff9933';
+  return '#888';
+}
+
+function pctOrDash(p){ return p != null ? (p*100).toFixed(0) + '%' : '—'; }
+function multStr(x){ return x != null ? Number(x).toFixed(2) + '×' : '—'; }
+function numStr(n){ return n != null ? Number(n).toLocaleString() : '—'; }
+
+// Nested-field shorthands — the WS payload nests rich signals inside
+// objects (bundle.*, cluster.*, dex_paid.*, wallet_balance.*, creator_history.*).
+// Naive truthy checks on these always succeeded (objects are truthy in JS),
+// which is the bug that made every card show "DEX PAID" — fix is to read
+// the actual booleans inside.
+function ch(m){ return m.creator_history || {}; }
+function wb(m){ return m.wallet_balance   || {}; }
+function bun(m){ return m.bundle          || {}; }
+function cl(m){ return m.cluster          || {}; }
+function dx(m){ return m.dex_paid         || {}; }
+
+// Port of the old dashboard's signal-driven badges. Each badge is a real
+// signal (smart-money present, whale-heavy, accelerating, runner dev,
+// hot launch, bundlers %, DEX paid) — not just flag toggles. Colors match
+// the legacy palette so screenshots are familiar to existing audience.
+function badgesHTML(m){
+  const out = [];
+  if((m.smart_money_in || 0) >= 1){
+    out.push(`<span class="sig-badge sig-smart-in" title="${m.smart_money_in} smart-money leaderboard wallet(s) currently in top buyers">▲ smart money in (${m.smart_money_in})</span>`);
+  }
+  const c = cl(m);
+  if((c.n_clustered_pairs || 0) >= 1){
+    out.push(`<span class="sig-badge sig-cluster" title="${c.n_clustered_pairs} clustered pair(s) in top buyers · max co-buys: ${c.max_pair_count}">◇ cluster pile-in (${c.n_clustered_pairs})</span>`);
+  }
+  const w = wb(m);
+  if((w.n_whale_wallets || 0) >= 5){
+    out.push(`<span class="sig-badge sig-whale" title="${w.n_whale_wallets} top buyers hold ≥1 SOL · avg ${w.avg_buyer_sol} SOL · max ${w.max_buyer_sol} SOL">$ whale-heavy (${w.n_whale_wallets})</span>`);
+  }
+  if((m.vsol_acceleration || 0) >= 5){
+    out.push(`<span class="sig-badge sig-accel" title="vSOL acceleration: +${Number(m.vsol_acceleration).toFixed(1)} SOL · last 30s outpaced prior 30s">⚡ accelerating</span>`);
+  }
+  const cr = ch(m);
+  if(cr.runner_creator){
+    out.push(`<span class="sig-badge sig-runner" title="creator has launched ${cr.n_launches} mints — historical 5× rate ${((cr.rate_5x||0)*100).toFixed(0)}%">▲ runner dev</span>`);
+  } else if(cr.good_creator){
+    out.push(`<span class="sig-badge sig-good" title="creator has launched ${cr.n_launches} mints — historical graduation rate ${((cr.grad_rate||0)*100).toFixed(0)}%">✓ verified dev</span>`);
+  } else if((cr.n_launches||0) >= 10 && (cr.rate_5x||0) < 0.05 && (cr.grad_rate||0) < 0.10){
+    out.push(`<span class="sig-badge sig-spam" title="${cr.n_launches} prior launches · ${((cr.grad_rate||0)*100).toFixed(1)}% graduated · ${((cr.rate_5x||0)*100).toFixed(1)}% ran 5×">⚠ ${cr.n_launches}× spam dev</span>`);
+  }
+  if(m.manufactured_pump){
+    const sol = m.sol_spent_first_2s != null ? `${Number(m.sol_spent_first_2s).toFixed(1)} SOL` : '';
+    out.push(`<span class="sig-badge sig-runner" title="${sol} bought in first 2 seconds — concentrated early entry">🔥 hot launch</span>`);
+  }
+  const b = bun(m);
+  if(b.detected){
+    const pct = (b.pct != null ? Number(b.pct).toFixed(0) : '?');
+    const cls = (b.pct||0) >= 30 ? 'sig-spam' : (b.pct||0) >= 10 ? 'sig-pump' : 'sig-good';
+    out.push(`<span class="sig-badge ${cls}" title="${b.size||'?'} wallets bundled at t=${b.at_t_s != null ? Number(b.at_t_s).toFixed(2) : '?'}s · currently hold ${pct}% of circulating supply">⚠ bundlers ${pct}%</span>`);
+  }
+  const d = dx(m);
+  if(d.is_paid){
+    out.push(`<span class="sig-badge sig-dex" title="creator paid for DexScreener Enhanced Token Info · ${d.n_websites||0} site(s) · ${d.n_socials||0} social(s)">DEX</span>`);
+  }
+  return out.join(' ');
+}
+
+function cardInnerHTML(m){
+  const mint = m.mint || '';
+  const gp   = m.grad_prob;
+  const rp2  = m.runner_prob_2x_from_now;
+  const rp5  = m.runner_prob_5x_from_now;
+  const rp10 = m.runner_prob_10x_from_now;
+  const vsol = m.current_vsol_sol != null ? Number(m.current_vsol_sol)
+              : (m.virtual_sol_reserves ? Number(m.virtual_sol_reserves)/1e9 : null);
+  const cm   = m.current_mult;
+  const ub   = m.unique_buyers;
+  const v30  = m.vsol_velocity_30s;
+  const cr5  = ch(m).rate_5x;
+  const rpWidth = rp5 != null ? Math.max(2, rp5*100) : 2;
+  return `
+    <svg class="expand-chev" viewBox="0 0 24 24" fill="none" stroke="#ff9933" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+    <div class="mint">
+      <a href="https://pump.fun/coin/${mint}" target="_blank" rel="noopener">${shortMint(mint)}</a>
+      <span class="age">${ageStr(m.age_s)}</span>
+    </div>
+    <div class="row"><span class="k">grad_prob</span><span class="v" style="color:${colorForProb(gp)}">${pctOrDash(gp)}</span></div>
+    <div class="row"><span class="k">runner 5×</span><span class="v">${pctOrDash(rp5)}</span></div>
+    <div class="bar"><div style="width:${rpWidth}%"></div></div>
+    <div class="rowx">
+      <div class="col"><span class="k">2×</span><span class="v">${pctOrDash(rp2)}</span></div>
+      <div class="col"><span class="k">10×</span><span class="v">${pctOrDash(rp10)}</span></div>
+    </div>
+    <div class="rowx">
+      <div class="col"><span class="k">vSOL</span><span class="v">${vsol != null ? vsol.toFixed(1) : '—'}</span></div>
+      <div class="col"><span class="k">mult</span><span class="v">${multStr(cm)}</span></div>
+    </div>
+    <div class="rowx">
+      <div class="col"><span class="k">buyers</span><span class="v">${numStr(ub)}</span></div>
+      <div class="col"><span class="k">vel/s</span><span class="v">${v30 != null ? Number(v30).toFixed(2) : '—'}</span></div>
+    </div>
+    <div class="row"><span class="k">creator 5× rate</span><span class="v">${pctOrDash(cr5)}</span></div>
+    <div class="flags">${badgesHTML(m)}</div>
+  `;
+}
+
+// Full sections rendered inside the glass popup. Same data live-refreshes
+// as long as the popup stays open and the mint stays in the top push.
+function popupBodyHTML(m){
+  const sm   = m.smart_money_in || 0;
+  const vsol = m.current_vsol_sol != null ? Number(m.current_vsol_sol)
+              : (m.virtual_sol_reserves ? Number(m.virtual_sol_reserves)/1e9 : null);
+  const v30  = m.vsol_velocity_30s;
+  const v60  = m.vsol_velocity_60s;
+  const vac  = m.vsol_acceleration;
+  const cr   = ch(m);
+  const w    = wb(m);
+  const c    = cl(m);
+  return `
+    <div class="sec">HEADLINE</div>
+    <div class="rowx">
+      <div class="col"><span class="k">grad_prob</span><span class="v" style="color:${colorForProb(m.grad_prob)}">${pctOrDash(m.grad_prob)}</span></div>
+      <div class="col"><span class="k">age</span><span class="v" data-age="1">${ageStr(m.age_s)}</span></div>
+    </div>
+
+    <div class="sec">RUNNERS · from current price</div>
+    <div class="tiers">
+      <div class="t"><span class="k">2×</span><span class="v">${pctOrDash(m.runner_prob_2x_from_now)}</span></div>
+      <div class="t"><span class="k">3×</span><span class="v">${pctOrDash(m.runner_prob_3x_from_now)}</span></div>
+      <div class="t"><span class="k">5×</span><span class="v">${pctOrDash(m.runner_prob_5x_from_now)}</span></div>
+      <div class="t"><span class="k">10×</span><span class="v">${pctOrDash(m.runner_prob_10x_from_now)}</span></div>
+    </div>
+    <div class="row" style="margin-top:6px"><span class="k">20× from now</span><span class="v">${pctOrDash(m.runner_prob_20x_from_now)}</span></div>
+
+    <div class="sec">PEAK FORECAST</div>
+    <div class="rowx">
+      <div class="col"><span class="k">expected peak</span><span class="v">${multStr(m.expected_peak_mult)}</span></div>
+      <div class="col"><span class="k">median peak</span><span class="v">${multStr(m.median_peak_mult)}</span></div>
+    </div>
+    <div class="rowx">
+      <div class="col"><span class="k">current mult</span><span class="v">${multStr(m.current_mult)}</span></div>
+      <div class="col"><span class="k">entry mult</span><span class="v">${multStr(m.entry_mult)}</span></div>
+    </div>
+
+    <div class="sec">MARKET</div>
+    <div class="rowx">
+      <div class="col"><span class="k">vSOL</span><span class="v">${vsol != null ? vsol.toFixed(2) : '—'}</span></div>
+      <div class="col"><span class="k">total trades</span><span class="v">${numStr(m.n_trades)}</span></div>
+    </div>
+    <div class="row"><span class="k">unique buyers</span><span class="v">${numStr(m.unique_buyers)}</span></div>
+
+    <div class="sec">MOMENTUM</div>
+    <div class="rowx">
+      <div class="col"><span class="k">vel 30s</span><span class="v">${v30 != null ? Number(v30).toFixed(3) : '—'}</span></div>
+      <div class="col"><span class="k">vel 60s</span><span class="v">${v60 != null ? Number(v60).toFixed(3) : '—'}</span></div>
+    </div>
+    <div class="row"><span class="k">acceleration</span><span class="v">${vac != null ? Number(vac).toFixed(4) : '—'}</span></div>
+
+    <div class="sec">WHALES</div>
+    <div class="rowx">
+      <div class="col"><span class="k">smart-money in</span><span class="v">${sm}</span></div>
+      <div class="col"><span class="k">whale wallets</span><span class="v">${numStr(w.n_whale_wallets)}</span></div>
+    </div>
+    <div class="rowx">
+      <div class="col"><span class="k">avg buyer SOL</span><span class="v">${w.avg_buyer_sol != null ? Number(w.avg_buyer_sol).toFixed(1) : '—'}</span></div>
+      <div class="col"><span class="k">max buyer SOL</span><span class="v">${w.max_buyer_sol != null ? Number(w.max_buyer_sol).toFixed(1) : '—'}</span></div>
+    </div>
+    <div class="rowx">
+      <div class="col"><span class="k">clustered pairs</span><span class="v">${numStr(c.n_clustered_pairs)}</span></div>
+      <div class="col"><span class="k">max co-buys</span><span class="v">${numStr(c.max_pair_count)}</span></div>
+    </div>
+
+    <div class="sec">CREATOR</div>
+    <div class="rowx">
+      <div class="col"><span class="k">5× rate</span><span class="v">${pctOrDash(cr.rate_5x)}</span></div>
+      <div class="col"><span class="k">launches</span><span class="v">${numStr(cr.n_launches)}</span></div>
+    </div>
+    <div class="rowx">
+      <div class="col"><span class="k">grad rate</span><span class="v">${pctOrDash(cr.grad_rate)}</span></div>
+      <div class="col"><span class="k">runner dev</span><span class="v">${cr.runner_creator == null ? '—' : (cr.runner_creator ? 'YES' : 'no')}</span></div>
+    </div>
+
+    <div class="sec">POST-GRAD</div>
+    <div class="row"><span class="k">survival prob</span><span class="v">${(() => { const p = m.post_grad_survival_prob; if(p == null) return '—'; if(typeof p === 'object') return pctOrDash(p.prob); return pctOrDash(p); })()}</span></div>
+
+    <div class="flags">${badgesHTML(m)}</div>
+  `;
+}
+
+function applyCardState(el, m){
+  const mint = m.mint || '';
+  const sm = m.smart_money_in || 0;
+  const rp5 = m.runner_prob_5x_from_now;
+  // smart-money glow toggles cleanly
+  el.classList.toggle('smart-glow', sm > 0);
+  // runner flash is one-shot — only when prob jumps ≥10pp since last seen
+  const prev = lastRunnerProbs.get(mint);
+  if(prev != null && rp5 != null && rp5 - prev >= 0.10){
+    el.classList.add('runner-flash');
+    setTimeout(() => el.classList.remove('runner-flash'), 1500);
+  }
+  lastRunnerProbs.set(mint, rp5);
+}
+
+function render(mints){
+  lastMints = mints || [];
+  // Apply user filters, then sort by smart_money desc, then grad_prob desc.
+  // Cap at TOP_N so the page feels lively, not overwhelming.
+  const filtered = applyFilters(lastMints);
+  const sorted = [...filtered].sort((a, b) => {
+    const aSm = a.smart_money_in || 0, bSm = b.smart_money_in || 0;
+    if(bSm !== aSm) return bSm - aSm;
+    return (b.grad_prob || 0) - (a.grad_prob || 0);
+  }).slice(0, TOP_N);
+
+  const newSet = new Set(sorted.map(m => m.mint));
+
+  // Aggregates from the FULL push (not just visible top N) — counters
+  // reflect the firehose, not the screen.
+  let nSmart = 0, nHot = 0;
+  for(const m of lastMints){
+    if((m.smart_money_in || 0) > 0)        nSmart++;
+    if((m.grad_prob || 0) >= 0.7)          nHot++;
+  }
+
+  // 1. Mints that fell off the top N — animate out, remove after transition.
+  for(const [mint, el] of [...cardMap]){
+    if(!newSet.has(mint)){
+      el.classList.add('exiting');
+      cardMap.delete(mint);
+      setTimeout(() => el.remove(), 450);
+    }
+  }
+
+  // 2. Render in sorted order. Update existing cards in place; create new
+  //    ones with entry animation. Move DOM order to match sort order.
+  let prevEl = null;
+  for(const m of sorted){
+    const mint = m.mint || '';
+    let el = cardMap.get(mint);
+    if(!el){
+      el = document.createElement('div');
+      el.className = 'demo-card';
+      el.setAttribute('data-mint', mint);
+      cardMap.set(mint, el);
+    }
+    el.innerHTML = cardInnerHTML(m);
+    applyCardState(el, m);
+    // Keep DOM in sort order
+    if(prevEl){
+      if(el.previousElementSibling !== prevEl) prevEl.after(el);
+    } else {
+      if(grid.firstElementChild !== el) grid.prepend(el);
+    }
+    prevEl = el;
+  }
+
+  if(sorted.length === 0){
+    empty.style.display = 'block';
+    if(lastMints.length === 0){
+      empty.textContent = 'No mints in the current scoring window. Hold tight — the next snapshot tick will populate this.';
+    } else {
+      empty.textContent = `No mints match your filters (${lastMints.length} in window). Try loosening, or RESET.`;
+    }
+  } else {
+    empty.style.display = 'none';
+  }
+
+  statTr.textContent  = (mints || []).length.toLocaleString();
+  statSm.textContent  = nSmart;
+  statHot.textContent = nHot;
+  flashStat(statTr); flashStat(statSm); flashStat(statHot);
+
+  // If the popup is open, refresh its body with this push's data for that mint.
+  if(openMint) refreshOpenPopup(lastMints);
+}
+
+function setIndexed(n){
+  if(typeof n === 'number' && n > 0){
+    statIx.textContent = n.toLocaleString();
+    const rcp = document.getElementById('rcp-indexed');
+    if(rcp) rcp.textContent = n.toLocaleString();
+  }
+}
+
+function flashStat(el){
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 400);
+}
+
+function connect(){
+  status.textContent = 'connecting…';
+  status.className = 'demo-status-pill warn';
+  const ws = new WebSocket(WS_URL);
+  let helloSeen = false;
+
+  ws.onopen = () => {
+    status.textContent = 'connected · awaiting first push';
+    status.className = 'demo-status-pill warn';
+  };
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if(msg.kind === 'hello'){
+      helloSeen = true;
+      status.textContent = `connected · tier=${msg.tier} · push every ${msg.push_cadence_s || '~5-10'}s`;
+      status.className = 'demo-status-pill ok';
+      return;
+    }
+    if(msg.kind === 'live_update'){
+      pushCount++;
+      statPu.textContent = pushCount;
+      flashStat(statPu);
+      if(msg.snapshot_epoch_ms){
+        lastSnapshotEpochMs = msg.snapshot_epoch_ms;
+        const s = Math.max(0, Math.round((Date.now() - msg.snapshot_epoch_ms)/1000));
+        statFr.textContent = s + 's';
+      }
+      setIndexed(msg.n_indexed_curves);
+      render(msg.mints || []);
+    }
+  };
+  ws.onclose = () => {
+    status.textContent = 'reconnecting in 3s…';
+    status.className = 'demo-status-pill err';
+    setTimeout(connect, 3000);
+  };
+  ws.onerror = () => {
+    // onclose follows automatically; nothing to do here.
+  };
+}
+
+// Bootstrap initial state from REST so we don't sit blank waiting for the
+// first WebSocket tick. /api/live (no auth required) carries n_indexed_curves
+// which seeds the lifetime counter.
+fetch('/api/live').then(r => r.json()).then(d => {
+  if(d){
+    setIndexed(d.n_indexed_curves);
+    if(Array.isArray(d.mints) && d.mints.length) render(d.mints);
+  }
+  connect();
+}).catch(() => connect());
+
+// Keep freshness counter ticking even between pushes
+setInterval(() => {
+  const t = statFr.textContent;
+  if(/^\d+s$/.test(t)){
+    statFr.textContent = (parseInt(t,10)+1) + 's';
+  }
+}, 1000);
+
+// Live age ticker — between WebSocket pushes the server-stamped age would
+// otherwise look frozen. Add the elapsed wall-clock since the snapshot to
+// each mint's age so the number ticks forward 1Hz. Updates DOM in place;
+// does NOT re-render whole cards (would erase smart-money glow + scroll).
+setInterval(() => {
+  if(!lastSnapshotEpochMs) return;
+  const deltaS = (Date.now() - lastSnapshotEpochMs) / 1000;
+  for(const [mint, el] of cardMap){
+    const m = lastMints.find(x => x.mint === mint);
+    if(!m) continue;
+    const ageEl = el.querySelector('.age');
+    if(ageEl) ageEl.textContent = ageStr((m.age_s || 0) + deltaS);
+  }
+  // Also tick the popup's HEADLINE age, if open and the mint is still in view.
+  if(openMint){
+    const m = lastMints.find(x => x.mint === openMint);
+    if(m){
+      const ageVal = popupBody.querySelector('.col .v[data-age]');
+      if(ageVal) ageVal.textContent = ageStr((m.age_s || 0) + deltaS);
+    }
+  }
+}, 1000);
+</script>
+
+</body>
+</html>

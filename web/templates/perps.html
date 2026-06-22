@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · Solana perp wallet intel that survives venue transitions</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="The wallet intel layer for Solana perps. We don't bet on any single venue — we index the traders. 9k+ Solana perp wallets ranked. Percolator day-1 ready.">
+
+<meta property="og:title" content="graduate-oracle · Solana perp wallet intel">
+<meta property="og:description" content="Drift in recovery. Percolator pre-launch. Jupiter operating. Hyperliquid cross-chain. We index the TRADERS — not the venues. 9k+ wallets ranked.">
+<meta property="og:url" content="https://graduateoracle.fun/perps">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="graduate-oracle · Solana perp wallet intel">
+<meta name="twitter:description" content="We don't bet on any single venue — we index the traders. Drift in recovery, Percolator day-1 ready, Jupiter operating. 9k+ wallets ranked.">
+
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+/* Re-use the demo's hero/stat patterns but recolor for the perps story.
+   Distinct palette = "different product surface" — cyan/violet instead
+   of the orange of the pump.fun page. */
+
+.perps-strip {
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(80,180,255,0.12), rgba(0,0,0,0.4));
+  padding: 10px 16px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #ccc;
+}
+.perps-strip strong { color: #fff; }
+.perps-strip .num   { color: #80c0ff; font-weight: 700; }
+.perps-strip .sep   { color: var(--muted); padding: 0 8px; }
+
+.perps-hero {
+  text-align: center;
+  padding: 28px 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(80,180,255,0.06), transparent);
+}
+.perps-hero .live-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 12px; border-radius: 20px;
+  border: 1px solid #80c0ff;
+  background: rgba(80,180,255,0.12);
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #b0d8ff;
+  margin-bottom: 14px;
+}
+.perps-hero .live-pill::before {
+  content: ''; width: 8px; height: 8px;
+  border-radius: 50%; background: #80c0ff;
+  animation: perps-pulse 1.4s infinite;
+}
+@keyframes perps-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(1.3); }
+}
+.perps-hero h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(28px, 5vw, 52px);
+  font-weight: 900;
+  margin: 4px 0 6px;
+  letter-spacing: 0.02em;
+}
+.perps-hero .sub {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  max-width: 680px; margin: 0 auto;
+  line-height: 1.55;
+}
+.perps-hero .sub b { color: #b0d8ff; }
+
+.perps-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  max-width: 1200px;
+  margin: 18px auto 0;
+  padding: 0 16px;
+}
+.perps-stat {
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.4);
+  border-radius: 4px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.perps-stat .label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+.perps-stat .value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 4px;
+  transition: color 0.3s;
+}
+.perps-stat .value.flash { color: #80c0ff; }
+
+/* Source cards row — Hyperliquid (live), Drift (pending), Jupiter (pending) */
+.sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  max-width: 1200px;
+  margin: 22px auto;
+  padding: 0 16px;
+}
+.source-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 18px;
+  background: rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+}
+.source-card.live   { border-color: rgba(120,200,140,0.55); box-shadow: 0 0 18px rgba(120,200,140,0.15); }
+.source-card.pending { border-color: rgba(255,180,80,0.45); }
+.source-card.pre_launch {
+  border-color: rgba(184,130,255,0.55);
+  background: linear-gradient(180deg, rgba(184,130,255,0.06), rgba(0,0,0,0.5));
+  box-shadow: 0 0 18px rgba(184,130,255,0.12);
+}
+.source-card.recovering {
+  border-color: rgba(255,180,80,0.55);
+  background: linear-gradient(180deg, rgba(255,180,80,0.05), rgba(0,0,0,0.5));
+}
+.source-card.recovering .src-badge {
+  color: #ffb066; border: 1px solid rgba(255,180,80,0.6);
+  background: rgba(255,180,80,0.12);
+}
+.source-card.crosschain {
+  border-color: rgba(120,180,255,0.45);
+  background: linear-gradient(180deg, rgba(120,180,255,0.04), rgba(0,0,0,0.5));
+}
+.source-card .chain-tag {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-left: 6px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  vertical-align: middle;
+}
+.source-card .chain-tag.solana    { color: #c8a2ff; border-color: rgba(184,130,255,0.45); background: rgba(184,130,255,0.08); }
+.source-card .chain-tag.crosschain{ color: #80c0ff; border-color: rgba(120,180,255,0.45); background: rgba(120,180,255,0.08); }
+.source-card .src-name {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 18px; font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.source-card .src-badge {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 2px 7px;
+  border-radius: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.source-card.live .src-badge {
+  color: #88e0aa; border: 1px solid rgba(120,200,140,0.6);
+  background: rgba(120,200,140,0.10);
+}
+.source-card.pending .src-badge {
+  color: #ffb066; border: 1px solid rgba(255,180,80,0.55);
+  background: rgba(255,180,80,0.10);
+}
+.source-card.pre_launch .src-badge {
+  color: #c8a2ff; border: 1px solid rgba(184,130,255,0.55);
+  background: rgba(184,130,255,0.12);
+}
+.source-card.crosschain .src-badge {
+  color: #80c0ff; border: 1px solid rgba(120,180,255,0.55);
+  background: rgba(120,180,255,0.08);
+}
+.source-card .row {
+  display: flex; justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  margin: 5px 0;
+}
+.source-card .row .k { color: var(--muted); }
+.source-card .row .v { color: #fff; font-weight: 600; }
+.source-card .src-note {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+/* Two tables, side by side on desktop: top funding + top volume */
+.tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 14px;
+  max-width: 1200px;
+  margin: 12px auto;
+  padding: 0 16px 40px;
+}
+.tbl-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+.tbl-card h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #80c0ff;
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(80,180,255,0.06);
+}
+.tbl-card table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.tbl-card th, .tbl-card td {
+  padding: 8px 14px;
+  text-align: right;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.tbl-card th:first-child, .tbl-card td:first-child {
+  text-align: left;
+}
+.tbl-card thead th {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-weight: 600;
+  background: rgba(255,255,255,0.02);
+}
+.tbl-card tbody tr:last-child td { border-bottom: none; }
+.tbl-card td.name  { color: #fff; font-weight: 600; }
+.tbl-card td.pos   { color: #88e0aa; }
+.tbl-card td.neg   { color: #ff8888; }
+
+/* Smart-money entries feed — the killer "watch them work" section. */
+.entries-section {
+  max-width: 1200px;
+  margin: 24px auto 0;
+  padding: 0 16px;
+}
+.entries-section h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #80c0ff;
+  margin: 0 0 10px;
+}
+.entries-section .sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.entries-feed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+  margin-bottom: 40px;
+}
+.entry-card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.5);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  animation: entry-in 0.6s ease;
+  position: relative;
+}
+@keyframes entry-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.entry-card.long  { border-left: 3px solid #88e0aa; }
+.entry-card.short { border-left: 3px solid #ff8888; }
+.entry-card .head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.entry-card .market {
+  font-size: 14px;
+  color: #fff;
+}
+.entry-card .side {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+.entry-card .side.long  { background: rgba(120,200,140,0.18); color: #88e0aa; }
+.entry-card .side.short { background: rgba(255,140,140,0.18); color: #ff9090; }
+.entry-card .when {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.entry-card .row {
+  display: flex; justify-content: space-between;
+  font-size: 11px;
+  margin: 2px 0;
+}
+.entry-card .row .k { color: var(--muted); }
+.entry-card .row .v { color: #fff; font-weight: 600; }
+.entry-card .wallet {
+  font-size: 11px;
+  color: #b0d8ff;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255,255,255,0.08);
+}
+.entry-card .wallet a {
+  color: #80c0ff;
+  text-decoration: none;
+}
+.entry-card .wallet a:hover { text-decoration: underline; }
+.entry-card .roi.pos { color: #88e0aa; font-weight: 700; }
+.entry-card .roi.neg { color: #ff9090; font-weight: 700; }
+.entries-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--muted);
+  padding: 50px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+/* Receipts section — forward-validation hit rates per horizon */
+.receipts-section {
+  max-width: 1200px;
+  margin: 24px auto 0;
+  padding: 0 16px;
+}
+.receipts-section h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #80c0ff;
+  margin: 0 0 10px;
+}
+.receipts-section .sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  line-height: 1.55;
+}
+.receipts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.receipt-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  background: rgba(0,0,0,0.5);
+  text-align: center;
+}
+.receipt-card .horizon {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #80c0ff;
+  margin-bottom: 6px;
+}
+.receipt-card .big {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.0;
+  margin: 6px 0 4px;
+}
+.receipt-card .big.warming { color: var(--muted); font-size: 18px; }
+.receipt-card .sub-stat {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.receipt-card .ls {
+  display: flex; justify-content: space-around;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255,255,255,0.08);
+}
+.receipt-card .ls span.pos { color: #88e0aa; font-weight: 700; }
+.receipt-card .ls span.neg { color: #ff9090; font-weight: 700; }
+
+.perps-foot {
+  text-align: center;
+  padding: 18px 16px 60px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  max-width: 900px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
+.perps-foot code {
+  background: rgba(255,255,255,0.06);
+  padding: 2px 6px;
+  border-radius: 2px;
+  color: #80c0ff;
+  font-weight: 600;
+}
+.perps-foot a { color: #80c0ff; text-decoration: none; }
+.perps-foot a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link active" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" aria-label="$GO on DEX Screener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
+  </a>
+</header>
+
+<div class="perps-strip">
+  <strong>Wallet intel layer for Solana perps.</strong> <span class="sep">·</span>
+  <span class="num" id="strip-markets">—</span> markets <span class="sep">·</span>
+  <span class="num" id="strip-smart">—</span> smart wallets <span class="sep">·</span>
+  <span class="num" id="strip-snapshots">—</span> snapshots <span class="sep">·</span>
+  <strong>survives venue transitions · @percolatortrade day-1 ready</strong>
+</div>
+
+<section class="perps-hero">
+  <div class="live-pill">SOLANA PERP INTEL · COLLECTING</div>
+  <h1>The wallet intel that survives.</h1>
+  <div class="sub">
+    Solana's perp market is in flux — Drift in recovery after the April $285M exploit, <b>@percolatortrade</b> (by Anatoly Yakovenko) in pre-launch, Jupiter Perps still operating, Hyperliquid pulling cross-chain volume.
+    <b>We don't bet on any single venue — we index the TRADERS.</b>
+    9,000+ Solana perp wallets ranked historically; smart-money signal live on Hyperliquid; same playbook ready to plug into Percolator the day it opens.
+  </div>
+
+  <div class="perps-stats">
+    <div class="perps-stat">
+      <div class="label">Markets observed</div>
+      <div class="value" id="stat-markets">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Wallets tracked</div>
+      <div class="value" id="stat-wallets">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">🧠 Smart wallets</div>
+      <div class="value" id="stat-smart">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">🐋 Whales</div>
+      <div class="value" id="stat-whales">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Position records</div>
+      <div class="value" id="stat-positions">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">⚡ Entries logged</div>
+      <div class="value" id="stat-entries">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">🧾 Outcomes resolved</div>
+      <div class="value" id="stat-resolved">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Price ticks indexed</div>
+      <div class="value" id="stat-pxticks">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">🔒 Merkle commits</div>
+      <div class="value" id="stat-commits">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">💥 Liquidations · 24h</div>
+      <div class="value" id="stat-liq-24h">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">💥 Liq notional · 24h</div>
+      <div class="value" id="stat-liq-notional">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Total open interest</div>
+      <div class="value" id="stat-oi">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">24h volume tracked</div>
+      <div class="value" id="stat-vol">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Snapshots taken</div>
+      <div class="value" id="stat-snapshots">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Uptime</div>
+      <div class="value" id="stat-uptime">—</div>
+    </div>
+    <div class="perps-stat">
+      <div class="label">Last snapshot</div>
+      <div class="value" id="stat-fresh">—</div>
+    </div>
+  </div>
+</section>
+
+<section class="sources" id="sources-row">
+  <!-- Populated by JS -->
+</section>
+
+<section class="tables">
+  <div class="tbl-card">
+    <h3>Top funding · all venues</h3>
+    <table>
+      <thead><tr><th>Market</th><th>Funding /hr</th><th>🧠 smart</th><th>OI (USD)</th></tr></thead>
+      <tbody id="tbl-funding"></tbody>
+    </table>
+  </div>
+  <div class="tbl-card">
+    <h3>Top 24h volume · all venues</h3>
+    <table>
+      <thead><tr><th>Market</th><th>24h vol (USD)</th><th>🧠 smart</th><th>OI (USD)</th></tr></thead>
+      <tbody id="tbl-volume"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="receipts-section">
+  <h2>🧾 Forward-validation receipts</h2>
+  <div class="sub" id="receipts-criteria">
+    Of every smart-money entry we logged, did the market move in the wallet's direction
+    at +5m, +1h, +24h? Sample grows on every cycle. First stable numbers expected
+    ~24-48h after deploy.
+  </div>
+  <div class="receipts-grid" id="receipts-grid"></div>
+</section>
+
+<section class="entries-section">
+  <h2>💥 Recent liquidations · tracked wallets</h2>
+  <div class="sub" id="liq-sub">
+    Liquidation events surfaced from per-wallet fill polling on our liquidation watchlist
+    (top leaderboard + recent high-leverage entry wallets + currently open high-leverage positions).
+    Polled every 15 min in rotating 50-wallet batches.
+  </div>
+  <div class="tbl-card" style="margin-bottom: 28px;">
+    <table>
+      <thead><tr><th>When</th><th>Coin</th><th>Wallet</th><th>Role</th><th>Direction</th><th>Size (USD)</th><th>Closed PnL</th></tr></thead>
+      <tbody id="tbl-liquidations"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="entries-section">
+  <h2>🟣 Drift · markets indexed (pre-exploit history)</h2>
+  <div class="sub">
+    Each card is a Drift perp market we've pulled from the public S3 trade-record
+    bucket. File count + trade rows are from the full ingest window;
+    indexed volume is tracked from 2026-06-17 onward as files re-flow. Click
+    a market to see its file timeline and top-ranked traders.
+  </div>
+  <div class="drift-markets-strip" id="drift-markets-strip" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px"></div>
+</section>
+
+<section class="entries-section">
+  <h2>🟣 Drift · pre-exploit Solana wallet rankings</h2>
+  <div class="sub" id="drift-sub">
+    Ranked from public Drift trade-record history (Nov 2022 → Jan 2025).
+    Drift suffered a <b style="color:#ffb066">$285M exploit on 2026-04-01</b>
+    and has been in a USDT-based recovery phase since.
+    This leaderboard captures who traded Drift before the incident — most of these wallets are still active on Solana (Hyperliquid / Jupiter / waiting for @percolatortrade).
+    Same traders, different venue.
+  </div>
+  <div class="tbl-card" style="margin-bottom: 28px;">
+    <table>
+      <thead><tr><th>Address</th><th>Total volume</th><th>Trades</th><th>Long / Short</th><th>Active</th></tr></thead>
+      <tbody id="tbl-drift-wallets"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="entries-section">
+  <h2>🧠 Live · Smart-money entries (last 24h)</h2>
+  <div class="sub">
+    Every time a tracked smart wallet opens a position they didn't hold last poll,
+    we stamp it here with timestamp, market, side, size, leverage, and the wallet's
+    30d performance. This is the substrate for the receipts chain — every entry
+    forward-validates at +5m / +1h / +24h once we accumulate enough price history.
+  </div>
+  <div class="entries-feed" id="entries-feed">
+    <div class="entries-empty">— first cycle takes ~5 min after deploy. Hold tight. —</div>
+  </div>
+</section>
+
+<section class="tables">
+  <div class="tbl-card">
+    <h3>🧠 Top smart wallets · by 30d ROI</h3>
+    <table>
+      <thead><tr><th>Address</th><th>30d ROI</th><th>30d PnL</th><th>Acct value</th></tr></thead>
+      <tbody id="tbl-smart-wallets"></tbody>
+    </table>
+  </div>
+  <div class="tbl-card">
+    <h3>🧠 Smart-money active per market</h3>
+    <table>
+      <thead><tr><th>Market</th><th>Long</th><th>Short</th><th>Net bias</th></tr></thead>
+      <tbody id="tbl-smart-market"></tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="perps-foot">
+  <strong>Building in public · Solana-native first.</strong> Same discipline as our pump.fun signal:
+  <code>collect → classify → forward-validate → publish receipts</code>.
+  <br><br>
+  <strong>State of Solana perps (2026-06):</strong> <a href="https://www.indexbox.io/blog/drift-protocol-exploit-over-250m-stolen-in-solana-dex-attack/" target="_blank" rel="noopener" style="color:#ffb066">Drift in recovery</a> after the April $285M exploit (USDT-based relaunch underway).
+  <a href="https://percolator.trade" target="_blank" rel="noopener" style="color:#c8a2ff">@percolatortrade</a> — Anatoly Yakovenko's sharded perp DEX — in pre-launch (mainnet in lab mode pending audit).
+  Jupiter Perps still operating. Hyperliquid (own L1) absorbed cross-chain whale volume.
+  <br><br>
+  <strong>Our position:</strong> we don't compete with the venues — we provide the wallet intel layer they all need. graduate-oracle will be the day-1 smart-money signal for Percolator when it opens, and we already track the wallets that survived Drift's incident.
+  <br><br>
+  <strong>Smart-wallet v0 classifier (deliberately conservative):</strong>
+  account &ge; <code>$50k</code>,  30d ROI &ge; <code>+5%</code>,  30d volume &ge; <code>$1M</code>,
+  30d PnL positive. <em>Refines into a Sharpe-adjusted ranking once we have 30+ days of our
+  own snapshot history.</em>
+  <br><br>
+  When the perps MCP ships, your LLM gets the same tool surface as pump.fun: <code>npx -y goracle-mcp</code>.
+  <br><br>
+  Public endpoints: <code>/api/perps/observatory</code> · <code>/api/perps/ledger/commits</code>
+  (hourly merkle roots over every detected entry — pre-outcome receipts chain) ·
+  <a href="/">Live pump.fun feed</a> · <a href="/accuracy">Receipts</a>
+</footer>
+
+<script>
+// ─── Live wiring ──────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+
+function fmtUsd(n){
+  if(n == null || isNaN(n)) return '—';
+  if(n >= 1e9)  return '$' + (n/1e9).toFixed(2) + 'B';
+  if(n >= 1e6)  return '$' + (n/1e6).toFixed(2) + 'M';
+  if(n >= 1e3)  return '$' + (n/1e3).toFixed(1) + 'K';
+  return '$' + Number(n).toFixed(0);
+}
+function fmtPct(n){ return n == null ? '—' : (n*100).toFixed(4) + '%'; }
+function fmtUptime(s){
+  if(!s || s < 0) return '—';
+  if(s < 60) return s + 's';
+  if(s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+  if(s < 86400) return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+  return Math.floor(s/86400) + 'd ' + Math.floor((s%86400)/3600) + 'h';
+}
+function ageStr(s){
+  if(s == null) return '—';
+  if(s < 60) return s + 's';
+  return Math.floor(s/60) + 'm';
+}
+function flashStat(el){
+  if(!el) return;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 400);
+}
+
+function renderSources(sources){
+  const wrap = $('sources-row');
+  // Solana-native venues first, then cross-chain.
+  const order = ['drift', 'jupiter_perps', 'percolator', 'hyperliquid'];
+  const labels = {
+    drift:         'Drift',
+    jupiter_perps: 'Jupiter Perps',
+    percolator:    'Percolator',
+    hyperliquid:   'Hyperliquid',
+  };
+  const badgeText = {
+    live:       'LIVE',
+    pending:    'PENDING · COMING SOON',
+    pre_launch: 'PRE-LAUNCH ✨',
+    starting:   'STARTING…',
+    recovering: 'IN RECOVERY ⚠',
+  };
+  const parts = [];
+  for(const k of order){
+    const s = sources[k] || { status: 'pending' };
+    const status = s.status || 'pending';
+    const chain = (s.chain || '').toLowerCase();
+    let cls = status;
+    if(k === 'hyperliquid') cls = 'crosschain';
+    const badge = badgeText[status] || status.toUpperCase();
+    const chainTag = chain.includes('solana')
+      ? `<span class="chain-tag solana">SOLANA</span>`
+      : (chain.includes('cross') ? `<span class="chain-tag crosschain">CROSS-CHAIN</span>` : `<span class="chain-tag">${chain || '—'}</span>`);
+    const rows = [];
+    if(status === 'live' || status === 'starting' || status === 'recovering'){
+      if(s.tvl_usd) rows.push(`<div class="row"><span class="k">TVL</span><span class="v">${fmtUsd(s.tvl_usd)}</span></div>`);
+      if(s.n_markets != null) rows.push(`<div class="row"><span class="k">markets</span><span class="v">${s.n_markets}</span></div>`);
+      if(s.total_oi_usd != null) rows.push(`<div class="row"><span class="k">total OI</span><span class="v">${fmtUsd(s.total_oi_usd)}</span></div>`);
+      if(s.total_24h_volume_usd != null) rows.push(`<div class="row"><span class="k">24h volume</span><span class="v">${fmtUsd(s.total_24h_volume_usd)}</span></div>`);
+      if(s.last_update_unix) rows.push(`<div class="row"><span class="k">last update</span><span class="v">${ageStr(Math.max(0, Math.floor(Date.now()/1000 - s.last_update_unix)))} ago</span></div>`);
+    }
+    const note = (status !== 'live') ? `<div class="src-note">${s.note || 'Coming soon — same collection discipline, dropping into the same observatory feed.'}</div>` : '';
+    const urlLink = s.url ? `<div class="src-note" style="margin-top:4px"><a href="${s.url}" target="_blank" rel="noopener" style="color:#c8a2ff;text-decoration:none">${s.url} ↗</a></div>` : '';
+    parts.push(`
+      <div class="source-card ${cls}">
+        <div class="src-name">${labels[k] || k}<span class="src-badge">${badge}</span>${chainTag}</div>
+        ${rows.join('')}
+        ${note}
+        ${urlLink}
+      </div>
+    `);
+  }
+  wrap.innerHTML = parts.join('');
+}
+
+function renderTable(elId, rows, valueKey, valueFmt, smartByMarket){
+  const tb = $(elId);
+  if(!rows || !rows.length){
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:14px 0">— warming up —</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(r => {
+    let v = r[valueKey];
+    let vCell;
+    if(valueKey === 'funding_hourly'){
+      const isPos = v >= 0;
+      vCell = `<td class="${isPos ? 'pos' : 'neg'}">${(v*100).toFixed(4)}%</td>`;
+    } else {
+      vCell = `<td>${valueFmt(v)}</td>`;
+    }
+    const sm = (smartByMarket || {})[r.name] || {};
+    const smCount = sm.total || 0;
+    const smCell = smCount > 0
+      ? `<td style="color:#80c0ff;font-weight:700">${sm.long || 0}L · ${sm.short || 0}S</td>`
+      : `<td style="color:var(--muted)">—</td>`;
+    return `<tr><td class="name"><a href="/perps/market/${encodeURIComponent(r.name)}" style="color:#fff;text-decoration:none">${r.name}</a></td>${vCell}${smCell}<td>${fmtUsd(r.open_interest_usd)}</td></tr>`;
+  }).join('');
+}
+
+function shortAddr(a){ return a ? a.slice(0,6) + '…' + a.slice(-4) : '—'; }
+function fmtRoi(r){
+  if(r == null) return '—';
+  const pct = r * 100;
+  const cls = pct >= 0 ? 'pos' : 'neg';
+  return `<span class="${cls}" style="font-weight:700">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`;
+}
+
+function renderLiquidations(rows, liq){
+  const tb = document.getElementById('tbl-liquidations');
+  const sub = document.getElementById('liq-sub');
+  if(sub && liq && liq.watchlist_size){
+    sub.innerHTML = `Watchlist: <b style="color:#fff">${liq.watchlist_size.toLocaleString()}</b> wallets (leaderboard + high-leverage entries + open high-lev positions). Polled every 15 min in rotating 50-wallet batches.`;
+  }
+  if(!rows || !rows.length){
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px 0">— polling rotating batches · first events appear as we cycle through the watchlist —</td></tr>';
+    return;
+  }
+  const now = Math.floor(Date.now()/1000);
+  tb.innerHTML = rows.slice(0, 20).map(r => {
+    const age = Math.max(0, now - (r.occurred_at_unix || 0));
+    const pnl = r.closed_pnl_usd || 0;
+    const pnlCls = pnl >= 0 ? 'pos' : 'neg';
+    const roleStyle = r.role === 'liquidated' ? 'color:#ff9090;font-weight:700' : 'color:#88e0aa;font-weight:700';
+    return `<tr>
+      <td>${fmtAgo(age)} ago</td>
+      <td class="name">${r.coin}</td>
+      <td class="name"><a href="/perps/wallet/${r.address}" style="color:#80c0ff;text-decoration:none">${shortAddr(r.address)}</a></td>
+      <td><span style="${roleStyle}">${(r.role || '').toUpperCase()}</span></td>
+      <td style="font-size:11px">${r.dir}</td>
+      <td>${fmtUsd(r.notional_usd)}</td>
+      <td class="${pnlCls}">${pnl >= 0 ? '+' : ''}${fmtUsd(pnl)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderDriftMarkets(markets){
+  const wrap = document.getElementById('drift-markets-strip');
+  if(!wrap) return;
+  if(!markets || !markets.length){
+    wrap.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:6px 0">— ingest backfill in progress, first markets appear within a minute —</div>';
+    return;
+  }
+  wrap.innerHTML = markets.map(m => {
+    const files = (m.files_ingested || 0).toLocaleString();
+    const rows  = (m.trade_rows || 0).toLocaleString();
+    const vol   = (m.total_volume_usd || 0) > 0 ? ` · ${fmtUsd(m.total_volume_usd)}` : '';
+    const last  = m.last_date ? ` · ${m.last_date}` : '';
+    return `
+      <a href="/perps/drift/market/${encodeURIComponent(m.market)}"
+         style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid rgba(200,162,255,0.30);background:rgba(200,162,255,0.04);border-radius:4px;text-decoration:none;color:#c8a2ff;font-size:12px;letter-spacing:0.04em">
+        <b style="color:#fff;letter-spacing:0.08em">${m.market}</b>
+        <span style="color:var(--muted);font-size:11px">${files} files · ${rows} rows${vol}${last}</span>
+      </a>`;
+  }).join('');
+}
+
+function renderDriftWallets(rows, intel){
+  const tb = document.getElementById('tbl-drift-wallets');
+  if(!rows || !rows.length){
+    const filesIngested = intel && intel.drift_files_ingested || 0;
+    const msg = filesIngested === 0
+      ? '— ingest just started, first files processing in the next minute or two —'
+      : `— ${filesIngested} file(s) ingested · still aggregating —`;
+    tb.innerHTML = `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:14px 0">${msg}</td></tr>`;
+    return;
+  }
+  const sub = document.getElementById('drift-sub');
+  if(sub && intel){
+    const w  = (intel.drift_wallets_indexed || 0).toLocaleString();
+    const hv = (intel.drift_high_volume || 0).toLocaleString();
+    const wh = (intel.drift_whales || 0).toLocaleString();
+    const fi = (intel.drift_files_ingested || 0).toLocaleString();
+    sub.innerHTML = `<b style="color:#fff">${w}</b> wallets indexed · <b style="color:#c8a2ff">${hv}</b> high-volume · <b style="color:#80c0ff">${wh}</b> whales 🐋 · ${fi} S3 trade files parsed. Source: Drift public on-chain trade history.`;
+  }
+  tb.innerHTML = rows.slice(0, 15).map(r => {
+    const tot = r.total_volume_usd || 0;
+    const longPct = tot > 0 ? Math.round((r.long_volume_usd || 0) / tot * 100) : 50;
+    const lastDate = r.last_trade_ts ? new Date(r.last_trade_ts * 1000).toISOString().slice(0,10) : '—';
+    const whaleTag = r.is_whale ? ' 🐋' : '';
+    return `
+      <tr>
+        <td class="name"><a href="/perps/drift/wallet/${encodeURIComponent(r.address)}" style="color:#c8a2ff;text-decoration:none">${shortAddr(r.address)}</a>${whaleTag}</td>
+        <td>${fmtUsd(tot)}</td>
+        <td>${(r.total_trades || 0).toLocaleString()}</td>
+        <td style="font-size:11px"><span class="pos">${longPct}%L</span> · <span class="neg">${100-longPct}%S</span></td>
+        <td style="font-size:11px;color:var(--muted)">${lastDate}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderSmartWallets(rows){
+  const tb = $('tbl-smart-wallets');
+  if(!rows || !rows.length){
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:14px 0">— ingesting leaderboard, first snapshot may take a few minutes —</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.slice(0, 15).map(r => `
+    <tr>
+      <td class="name"><a href="/perps/wallet/${r.address}" style="color:#80c0ff;text-decoration:none">${shortAddr(r.address)}</a></td>
+      <td>${fmtRoi(r.month_roi)}</td>
+      <td class="${(r.month_pnl||0)>=0?'pos':'neg'}">${fmtUsd(r.month_pnl)}</td>
+      <td>${fmtUsd(r.account_value)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderReceipts(rcp){
+  const grid = document.getElementById('receipts-grid');
+  const horizons = ['5m', '1h', '24h'];
+  const data = (rcp && rcp.horizons) || {};
+  if(rcp && rcp.criteria_note){
+    document.getElementById('receipts-criteria').textContent = rcp.criteria_note;
+  }
+  grid.innerHTML = horizons.map(h => {
+    const d = data[h] || { status: 'warming', n: 0 };
+    if(d.status !== 'ok'){
+      return `<div class="receipt-card">
+        <div class="horizon">+${h}</div>
+        <div class="big warming">warming…</div>
+        <div class="sub-stat">no resolved entries yet</div>
+      </div>`;
+    }
+    const hr = (d.hit_rate * 100).toFixed(1);
+    const mean = (d.mean_move_pct || 0).toFixed(2);
+    const meanCls = (d.mean_move_pct || 0) >= 0 ? 'pos' : 'neg';
+    const longHr  = d.long_hit_rate  != null ? (d.long_hit_rate  * 100).toFixed(0) + '%' : '—';
+    const shortHr = d.short_hit_rate != null ? (d.short_hit_rate * 100).toFixed(0) + '%' : '—';
+    return `<div class="receipt-card">
+      <div class="horizon">+${h}</div>
+      <div class="big">${hr}%</div>
+      <div class="sub-stat">hit rate · n=${d.n.toLocaleString()}</div>
+      <div class="sub-stat">mean move <span class="${meanCls}">${mean >= 0 ? '+' : ''}${mean}%</span></div>
+      <div class="ls">
+        <span>L <span class="pos">${longHr}</span> · n=${d.long_n}</span>
+        <span>S <span class="neg">${shortHr}</span> · n=${d.short_n}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function fmtAgo(s){
+  if(s == null) return '—';
+  if(s < 60) return s + 's ago';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  if(s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+function renderEntries(entries){
+  const wrap = document.getElementById('entries-feed');
+  if(!entries || !entries.length){
+    wrap.innerHTML = '<div class="entries-empty">— first cycle takes ~5 min after deploy. Hold tight. —</div>';
+    return;
+  }
+  const now = Math.floor(Date.now()/1000);
+  wrap.innerHTML = entries.map(e => {
+    const age = Math.max(0, now - (e.detected_at_unix || 0));
+    const sizeUsd = e.position_value_usd ? fmtUsd(e.position_value_usd) : '—';
+    const lev = e.leverage ? Math.round(e.leverage) + '×' : '—';
+    const entryPx = e.entry_px ? '$' + Number(e.entry_px).toLocaleString(undefined,{maximumFractionDigits:4}) : '—';
+    const roi = e.wallet_month_roi;
+    const roiPct = roi != null ? (roi*100).toFixed(0) + '%' : '—';
+    const roiCls = roi != null && roi >= 0 ? 'pos' : 'neg';
+    const whaleTag = e.wallet_is_whale ? ' 🐋' : '';
+    return `
+      <div class="entry-card ${e.side}">
+        <div class="head">
+          <span class="market"><a href="/perps/market/${encodeURIComponent(e.market)}" style="color:#fff;text-decoration:none">${e.market}</a></span>
+          <span class="side ${e.side}">${e.side.toUpperCase()}</span>
+        </div>
+        <div class="row"><span class="k">entry</span><span class="v">${entryPx}</span></div>
+        <div class="row"><span class="k">size</span><span class="v">${sizeUsd}</span></div>
+        <div class="row"><span class="k">leverage</span><span class="v">${lev}</span></div>
+        <div class="row"><span class="k">when</span><span class="v">${fmtAgo(age)}</span></div>
+        <div class="wallet">
+          <a href="/perps/wallet/${e.address}">${shortAddr(e.address)}</a>${whaleTag}
+          <span style="float:right">30d ROI <span class="roi ${roiCls}">${roi != null && roi >= 0 ? '+' : ''}${roiPct}</span></span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderSmartPerMarket(byMarket){
+  const tb = $('tbl-smart-market');
+  const entries = Object.entries(byMarket || {});
+  if(!entries.length){
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:14px 0">— waiting for first position snapshot —</td></tr>';
+    return;
+  }
+  entries.sort((a,b) => (b[1].total||0) - (a[1].total||0));
+  tb.innerHTML = entries.slice(0, 15).map(([mkt, v]) => {
+    const L = v.long || 0, S = v.short || 0;
+    const net = L - S;
+    const netCls = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
+    const netLabel = net > 0 ? `▲ +${net} long` : net < 0 ? `▼ ${net} short` : '— flat';
+    return `<tr>
+      <td class="name"><a href="/perps/market/${encodeURIComponent(mkt)}" style="color:#80c0ff;text-decoration:none">${mkt}</a></td>
+      <td class="pos">${L}</td>
+      <td class="neg">${S}</td>
+      <td class="${netCls}" style="font-weight:700">${netLabel}</td>
+    </tr>`;
+  }).join('');
+}
+
+let lastSnapshots = 0;
+
+async function tick(){
+  try {
+    const r = await fetch('/api/perps/observatory');
+    const d = await r.json();
+
+    // Stats
+    const intel = d.intel || {};
+    $('stat-markets').textContent  = (d.total_markets_observed || 0).toLocaleString();
+    $('stat-wallets').textContent  = (intel.wallets_tracked || 0).toLocaleString();
+    $('stat-smart').textContent    = (intel.smart_wallets_identified || 0).toLocaleString();
+    $('stat-whales').textContent   = (intel.whale_wallets_identified || 0).toLocaleString();
+    $('stat-positions').textContent = (intel.position_records || 0).toLocaleString();
+    $('stat-entries').textContent  = (intel.smart_money_entries_total || 0).toLocaleString();
+    $('stat-resolved').textContent = (intel.entries_with_outcome || 0).toLocaleString();
+    $('stat-pxticks').textContent  = (intel.mark_price_ticks || 0).toLocaleString();
+    $('stat-commits').textContent  = (intel.receipts_commits || 0).toLocaleString();
+    const liq = d.liquidations || {};
+    $('stat-liq-24h').textContent      = (liq.liquidations_last_24h || 0).toLocaleString();
+    $('stat-liq-notional').textContent = fmtUsd(liq.liquidations_notional_24h);
+    $('stat-oi').textContent       = fmtUsd(d.total_oi_usd);
+    $('stat-vol').textContent      = fmtUsd(d.total_24h_volume_usd);
+    $('stat-snapshots').textContent = (d.snapshots_taken_total || 0).toLocaleString();
+    $('stat-uptime').textContent   = fmtUptime(d.uptime_seconds || 0);
+    $('stat-fresh').textContent    = d.last_snapshot_age_s == null ? '—' : ageStr(d.last_snapshot_age_s) + ' ago';
+    if(d.snapshots_taken_total > lastSnapshots){
+      flashStat($('stat-snapshots'));
+      flashStat($('stat-markets'));
+      flashStat($('stat-oi'));
+      flashStat($('stat-vol'));
+      flashStat($('stat-wallets'));
+      flashStat($('stat-smart'));
+      lastSnapshots = d.snapshots_taken_total;
+    }
+
+    // Strip
+    $('strip-markets').textContent   = (d.total_markets_observed || 0).toLocaleString();
+    $('strip-smart').textContent     = (intel.smart_wallets_identified || 0).toLocaleString();
+    $('strip-snapshots').textContent = (d.snapshots_taken_total || 0).toLocaleString();
+
+    // Source cards
+    renderSources(d.sources || {});
+
+    // Tables — top funding/volume now include a smart-money column
+    const smartByMarket = d.smart_money_per_market || {};
+    renderTable('tbl-funding', d.top_funding || [], 'funding_hourly', null, smartByMarket);
+    renderTable('tbl-volume',  d.top_volume  || [], 'day_volume_usd', fmtUsd, smartByMarket);
+
+    // Wallet intel tables + live entries feed + receipts + Drift
+    renderSmartWallets(d.top_smart_wallets || []);
+    renderSmartPerMarket(smartByMarket);
+    renderEntries(d.recent_smart_money_entries || []);
+    renderReceipts(d.receipts || {});
+    renderDriftMarkets(d.drift_markets || []);
+    renderDriftWallets(d.drift_top_wallets || [], d.drift_intel || {});
+    renderLiquidations(d.recent_liquidations || [], d.liquidations || {});
+  } catch(e){
+    // silent — daemon retries
+  }
+}
+
+tick();
+setInterval(tick, 5000);  // poll the observatory snapshot every 5s
+// Uptime ticks 1Hz between fetches
+setInterval(() => {
+  const txt = $('stat-uptime').textContent;
+  // Skip — server reports authoritative uptime every 5s, no need to fudge.
+}, 1000);
+</script>
+
+</body>
+</html>

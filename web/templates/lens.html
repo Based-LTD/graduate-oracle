@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GO Lens · graduate-oracle overlay for every Solana terminal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Install GO Lens once — get graduate-oracle data on hover on Axiom, GMGN, Photon, BullX, Pump.fun, and Dexscreener.">
+<meta property="og:title" content="GO Lens — graduate-oracle on every Solana terminal you use">
+<meta property="og:description" content="Hover any coin on Axiom · GMGN · Photon · BullX · Pump.fun · Dexscreener — see graduation odds, runner probability, smart-money flow inline.">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-card.png">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.lens-main { max-width: 940px; margin: 32px auto 80px; padding: 0 18px; font-family: 'JetBrains Mono', monospace; }
+.lens-hero { padding: 12px 0 36px; }
+.lens-eyebrow {
+  font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 0.22em;
+  color: #c8a2ff; text-transform: uppercase; margin-bottom: 12px;
+}
+.lens-eyebrow .dot {
+  display:inline-block; width:8px; height:8px; border-radius:50%; background:#c8a2ff;
+  box-shadow: 0 0 12px rgba(200,162,255,0.9); margin-right: 10px; vertical-align: middle;
+  animation: lp 1.8s ease-in-out infinite;
+}
+@keyframes lp { 0%,100%{opacity:0.85;transform:scale(1)} 50%{opacity:0.45;transform:scale(0.8)} }
+.lens-hero h1 {
+  font-family: 'Orbitron', sans-serif; font-size: clamp(34px, 6vw, 64px); font-weight: 900;
+  letter-spacing: 0.02em; line-height: 1.05; margin: 0 0 16px; color: #fff;
+}
+.lens-hero h1 .accent { color: #c8a2ff; }
+.lens-hero p.lead {
+  font-size: 16px; line-height: 1.6; color: rgba(244,240,255,0.78); max-width: 720px; margin: 0;
+}
+.terminals {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 4px;
+}
+.terminals .pill {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+  padding: 6px 12px; border-radius: 4px; color: #c8a2ff;
+  border: 1px solid rgba(200,162,255,0.45); background: rgba(200,162,255,0.06);
+}
+
+.install-card {
+  margin: 36px 0 24px; padding: 24px;
+  background: rgba(8,4,16,0.55); border: 1px solid rgba(200,162,255,0.30); border-radius: 10px;
+}
+.install-card .head {
+  font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: #c8a2ff; margin-bottom: 16px;
+}
+.step {
+  display: flex; gap: 16px; padding: 14px 0;
+  border-bottom: 1px solid rgba(200,162,255,0.10);
+}
+.step:last-child { border-bottom: none; }
+.step .num {
+  flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(200,162,255,0.10); border: 1px solid rgba(200,162,255,0.45);
+  color: #c8a2ff; font-weight: 800; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Orbitron', sans-serif;
+}
+.step .body { flex: 1; }
+.step .body .t { color:#fff; font-weight:700; font-size: 14px; margin-bottom: 4px; }
+.step .body .d { color: rgba(244,240,255,0.65); font-size: 13px; line-height: 1.5; }
+.step .body a {
+  display: inline-block; margin-top: 8px; padding: 8px 14px;
+  background: rgba(200,162,255,0.10); border: 1px solid rgba(200,162,255,0.55); border-radius: 4px;
+  color: #c8a2ff; text-decoration: none; font-weight: 700; font-size: 12px; letter-spacing: 0.08em;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.step .body a:hover { background: rgba(200,162,255,0.20); transform: translateY(-1px); }
+.step .body a.primary {
+  background: #c8a2ff; color: #0a0414;
+  box-shadow: 0 4px 16px rgba(200,162,255,0.35);
+}
+.step .body a.primary:hover { background: #d8b8ff; }
+
+.preview {
+  margin: 48px 0; display: grid; grid-template-columns: 1fr 1.1fr; gap: 32px;
+  align-items: center;
+}
+@media (max-width: 720px) { .preview { grid-template-columns: 1fr; } }
+.preview .copy h2 {
+  font-family: 'Orbitron', sans-serif; font-size: 22px; font-weight: 800; color: #fff;
+  letter-spacing: 0.04em; margin: 0 0 12px;
+}
+.preview .copy p { color: rgba(244,240,255,0.70); line-height: 1.6; font-size: 14px; }
+
+.tooltip-demo {
+  width: 100%; max-width: 360px;
+  background: rgba(8,4,16,0.94); border: 1px solid rgba(200,162,255,0.40); border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 16px 50px rgba(0,0,0,0.55), 0 0 0 1px rgba(200,162,255,0.05) inset;
+  font-size: 12px; line-height: 1.45; color: #f4f0ff;
+  margin-left: auto;
+}
+.tooltip-demo .h {
+  display:flex; align-items:center; justify-content:space-between;
+  padding-bottom: 9px; margin-bottom: 9px;
+  border-bottom: 1px solid rgba(200,162,255,0.18);
+}
+.tooltip-demo .brand-tag {
+  font-family: 'Orbitron', sans-serif; font-weight: 800; letter-spacing: 0.18em;
+  font-size: 10px; color: #c8a2ff; text-transform: uppercase;
+}
+.tooltip-demo .brand-tag .d {
+  display:inline-block; width:6px; height:6px; border-radius:50%; background:#c8a2ff;
+  box-shadow: 0 0 8px rgba(200,162,255,0.85); margin-right: 6px; vertical-align: middle;
+  animation: lp 1.8s ease-in-out infinite;
+}
+.tooltip-demo .fresh { font-size: 9px; letter-spacing: 0.08em; color: rgba(244,240,255,0.45); text-transform: uppercase; }
+.tooltip-demo .r { display:flex; justify-content:space-between; padding: 4px 0; }
+.tooltip-demo .l { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: rgba(244,240,255,0.55); }
+.tooltip-demo .v { font-weight: 700; font-size: 14px; color: #fff; }
+.tooltip-demo .v.green { color: #9fffb5; }
+.tooltip-demo .v.purple { color: #c8a2ff; }
+.tooltip-demo .lift { font-size: 10px; color: rgba(200,162,255,0.65); margin-left: 6px; }
+.tooltip-demo .fr { display:flex; flex-wrap:wrap; gap:4px; margin-top: 8px; }
+.tooltip-demo .fl {
+  font-size: 9px; letter-spacing: 0.10em; text-transform: uppercase; font-weight: 700;
+  padding: 2px 6px; border-radius: 3px; border: 1px solid;
+}
+.tooltip-demo .fl.smart { color: #c8a2ff; border-color: rgba(200,162,255,0.55); background: rgba(200,162,255,0.08); }
+.tooltip-demo .fl.whale { color: #80c0ff; border-color: rgba(120,180,255,0.55); background: rgba(120,180,255,0.08); }
+.tooltip-demo .ft {
+  margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(200,162,255,0.18);
+  display:flex; justify-content:space-between; align-items:center; font-size: 10px;
+}
+.tooltip-demo .ft a { color: #c8a2ff; text-decoration: none; }
+.tooltip-demo .mintf { font-size: 9px; color: rgba(244,240,255,0.40); }
+
+.faq { margin-top: 48px; }
+.faq h2 {
+  font-family: 'Orbitron', sans-serif; font-size: 18px; font-weight: 800; color: #c8a2ff;
+  letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 14px;
+}
+.faq .q { color: #fff; font-weight: 700; font-size: 13px; margin: 16px 0 4px; }
+.faq .a { color: rgba(244,240,255,0.70); font-size: 13px; line-height: 1.55; }
+.faq .a code {
+  background: rgba(200,162,255,0.10); padding: 1px 6px; border-radius: 3px;
+  color: #c8a2ff; font-size: 12px;
+}
+
+.foot-note {
+  margin-top: 60px; padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 11px; color: rgba(244,240,255,0.50); text-align: center; letter-spacing: 0.06em;
+}
+.foot-note a { color: #c8a2ff; text-decoration: none; }
+
+.warn-callout {
+  margin: 24px 0 0; padding: 14px 16px;
+  background: rgba(255,180,80,0.06);
+  border: 1px solid rgba(255,180,80,0.50);
+  border-radius: 6px;
+}
+.warn-title {
+  font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 0.12em;
+  color: #ffb066; font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+}
+.warn-body { color: rgba(244,240,255,0.80); font-size: 13px; line-height: 1.55; }
+.warn-body b { color: #fff; }
+.warn-body code {
+  background: rgba(255,180,80,0.10); padding: 1px 6px; border-radius: 3px;
+  color: #ffb066; font-size: 12px;
+}
+.step-sub {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+  color: rgba(244,240,255,0.50); letter-spacing: 0.04em; margin-left: 6px;
+}
+</style>
+</head>
+<body>
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link active" href="/lens">LENS</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
+  </a>
+</header>
+
+<main class="lens-main">
+  <section class="lens-hero">
+    <div class="lens-eyebrow"><span class="dot"></span>GRADUATE ORACLE · OVERLAY</div>
+    <h1>Every Solana coin you hover,<br><span class="accent">decoded inline.</span></h1>
+    <p class="lead">
+      GO Lens reads the mint under your cursor and shows graduate-oracle's full intelligence stack —
+      graduation probability, runner odds, smart-money flow, manufactured-pump flags — directly over
+      the terminal you're already using. Install once. Hover anywhere.
+    </p>
+    <div class="terminals">
+      <span class="pill">Axiom</span>
+      <span class="pill">GMGN</span>
+      <span class="pill">Photon</span>
+      <span class="pill">BullX</span>
+      <span class="pill">Pump.fun</span>
+      <span class="pill">Dexscreener</span>
+    </div>
+  </section>
+
+  <div class="warn-callout" id="warn-callout" style="display:none">
+    <div class="warn-title">⚠ Did Chrome block the install?</div>
+    <div class="warn-body">
+      That's the expected behavior <b>before</b> Tampermonkey is installed — Chrome doesn't know what a <code>.user.js</code> file is yet.
+      <b>Install Tampermonkey first (step 1)</b>, then come back and click <b>Add GO Lens</b> in step 2.
+    </div>
+  </div>
+
+  <section class="install-card">
+    <div class="head">▸ Install in 30 seconds</div>
+
+    <div class="step">
+      <div class="num">1</div>
+      <div class="body">
+        <div class="t">Install Tampermonkey <span class="step-sub" id="browser-label"></span></div>
+        <div class="d">Tampermonkey is the engine that runs GO Lens. Lightweight, trusted, 10M+ installs. <b>This step is required</b> — Chrome can't run userscripts on its own.</div>
+        <a id="tm-link"
+           href="https://www.tampermonkey.net/"
+           target="_blank" rel="noopener">Get Tampermonkey ↗</a>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">2</div>
+      <div class="body">
+        <div class="t">Add GO Lens <span class="step-sub">(after step 1 is done)</span></div>
+        <div class="d">With Tampermonkey installed, clicking below opens an install prompt inside Tampermonkey — confirm it. Without Tampermonkey, this link just shows the source code (and Chrome may warn — that's normal).</div>
+        <a class="primary" href="/lens/goracle-lens.user.js">Add GO Lens →</a>
+        <a href="/lens/goracle-lens.user.js" target="_blank" rel="noopener" style="margin-left:8px">view source</a>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">3</div>
+      <div class="body">
+        <div class="t">Open any Solana terminal &amp; hover a coin</div>
+        <div class="d">First time you hover a mint on Axiom (or GMGN, Photon, BullX, Pump.fun, Dexscreener), the tooltip fades in with live data. No signup, no key — it just works.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="preview">
+    <div class="copy">
+      <h2>What you see on hover</h2>
+      <p>
+        Pinned to your cursor in 250&nbsp;ms. Anchored in a shadow DOM so the host site's
+        styles can't touch it. Re-uses live observer data — same numbers we publish at
+        <a href="/accuracy" style="color:#c8a2ff;text-decoration:none">graduateoracle.fun/accuracy</a>.
+      </p>
+      <p style="margin-top:14px">
+        Click the footer link inside the tooltip to open the full mint report on graduate-oracle —
+        smart-money wallets, neighbor cohort, calibration receipts, the works.
+      </p>
+    </div>
+    <div class="tooltip-demo">
+      <div class="h">
+        <span class="brand-tag"><span class="d"></span>GRADUATE ORACLE</span>
+        <span class="fresh">live · 4s old</span>
+      </div>
+      <div class="r"><span class="l">Coin</span><span class="v">PUMPGOD</span></div>
+      <div class="r"><span class="l">Grad prob</span><span><span class="v green">78%</span><span class="lift">8.2× lift</span></span></div>
+      <div class="r"><span class="l">5× from now</span><span><span class="v purple">34%</span><span class="lift">12.4× lift</span></span></div>
+      <div class="r"><span class="l">10× from now</span><span class="v">14%</span></div>
+      <div class="r"><span class="l">Market cap</span><span class="v">$42K</span></div>
+      <div class="fr">
+        <span class="fl smart">🧠 7 smart in</span>
+        <span class="fl whale">🐋 whale</span>
+      </div>
+      <div class="ft">
+        <a href="#">open full report ↗</a>
+        <span class="mintf">C7Rw…pump</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq">
+    <h2>Faq</h2>
+
+    <div class="q">Does GO Lens cost anything?</div>
+    <div class="a">No. The graduate-oracle API is free during the launch promo, and GO Lens uses the public probe endpoint. After the promo ends, the API gets a paywall — but GO Lens itself will stay free; it'll just use the free-tier endpoints by default.</div>
+
+    <div class="q">Does it slow down Axiom / GMGN / etc?</div>
+    <div class="a">No. The script attaches one <code>mousemove</code> listener and only fires an API call when you hover a recognizable mint address. Results are cached per-mint for 30s, so repeated hovers don't hit the wire.</div>
+
+    <div class="q">Can the host site see my graduate-oracle queries?</div>
+    <div class="a">No. The fetch goes directly from your browser to <code>graduateoracle.fun</code> via Tampermonkey's <code>GM_xmlhttpRequest</code>, which bypasses the host page's request scope. Axiom/GMGN/etc. can't see what mints you're probing.</div>
+
+    <div class="q">Will it work on a new terminal that I don't see listed?</div>
+    <div class="a">Probably — the script auto-detects any base58 Solana mint address (32–44 chars) in the DOM. If a site renders mints as plain text, hover works. If you want first-class support for a specific terminal, ping <a href="https://x.com/GraduateOracle" target="_blank" rel="noopener" style="color:#c8a2ff;">@GraduateOracle</a> on X.</div>
+
+    <div class="q">Is the source code open?</div>
+    <div class="a">The userscript IS the source — <a href="/lens/goracle-lens.user.js" style="color:#c8a2ff;">view it here</a>. Single file, no build step, no minification. Read it before you install.</div>
+
+    <div class="q">Chrome Web Store version coming?</div>
+    <div class="a">Yes — same code, packaged as a Manifest V3 extension. Tampermonkey ships today; the Chrome Store version submits in week 2.</div>
+  </section>
+
+  <div class="foot-note">
+    GO Lens · v0.1 · part of <a href="/">graduate-oracle</a> ·
+    <a href="https://x.com/GraduateOracle" target="_blank" rel="noopener">@GraduateOracle</a>
+  </div>
+</main>
+
+<script>
+(function () {
+  // Browser detection + Tampermonkey deep-link routing. We point each
+  // browser at its OWN store listing rather than the generic
+  // tampermonkey.net page, because that's where the "Add to Chrome" /
+  // "Add to Firefox" buttons actually live. The user clicks once and is
+  // in the install flow immediately — no extra hop.
+  const ua = navigator.userAgent;
+  let label, url;
+  if (/Edg\//.test(ua)) {
+    label = "(for Microsoft Edge)";
+    url = "https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd";
+  } else if (/OPR\//.test(ua) || /Opera/.test(ua)) {
+    label = "(for Opera)";
+    url = "https://addons.opera.com/en/extensions/details/tampermonkey-beta/";
+  } else if (/Firefox\//.test(ua)) {
+    label = "(for Firefox)";
+    url = "https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/";
+  } else if (/Brave\//.test(ua) || /Chrome\//.test(ua)) {
+    // Brave uses the Chrome Web Store too.
+    label = /Brave\//.test(ua) ? "(for Brave)" : "(for Chrome)";
+    url = "https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo";
+  } else if (/Safari\//.test(ua)) {
+    label = "(for Safari)";
+    url = "https://apps.apple.com/app/tampermonkey/id1482490089";
+  } else {
+    label = "";
+    url = "https://www.tampermonkey.net/";
+  }
+  const link = document.getElementById("tm-link");
+  if (link) link.href = url;
+  const lbl = document.getElementById("browser-label");
+  if (lbl && label) lbl.textContent = label;
+
+  // Show the "Chrome blocked you?" callout to anyone landing here on a
+  // Chromium browser (where the most common confusion happens) — it
+  // costs nothing and prevents the user-reported stumble.
+  if (/Chrome\//.test(ua) || /Edg\//.test(ua) || /Brave\//.test(ua)) {
+    const c = document.getElementById("warn-callout");
+    if (c) c.style.display = "block";
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · verify a Solana wallet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Verify any Solana wallet's pump.fun track record — every number computed from on-chain observed activity, never self-reported. Graduation rate, runner rate, rug exposure, fast-snipe rate.">
+<meta property="og:title" content="Verify any Solana wallet — graduate-oracle">
+<meta property="og:description" content="Every track record on Solana is a screenshot. Every screenshot is a lie. Verify any wallet against our on-chain receipts engine.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .vf-main { max-width: 820px; margin: 50px auto 80px; padding: 0 24px; }
+
+  .vf-hero { text-align: center; margin-bottom: 32px; }
+  .vf-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .vf-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.4rem; font-weight: 700; letter-spacing: -1px;
+    margin: 0 0 14px; line-height: 1.15;
+  }
+  .vf-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 620px; margin: 0 auto;
+    font-size: 0.95rem; line-height: 1.6;
+  }
+  .vf-hero-sub b { color: var(--text); }
+
+  .vf-search {
+    display: flex; gap: 10px; margin: 32px auto 8px;
+    max-width: 640px;
+  }
+  .vf-search input {
+    flex: 1; font-family: 'JetBrains Mono', monospace;
+    padding: 14px 16px; font-size: 0.95rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border, rgba(255,255,255,0.12));
+    border-radius: 6px; color: var(--text);
+    outline: none;
+  }
+  .vf-search input:focus { border-color: var(--cyan); }
+  .vf-search button {
+    font-family: 'Orbitron', sans-serif; font-size: 0.85rem;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 14px 24px; border-radius: 6px;
+    color: #000; background: var(--cyan); border: none; cursor: pointer;
+  }
+  .vf-search button:hover { box-shadow: 0 0 24px rgba(0,240,255,0.4); }
+  .vf-search-hint {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+    color: var(--muted); margin: 4px 0 0; text-align: center;
+  }
+
+  .vf-state {
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center; color: var(--muted);
+    margin: 40px 0; font-size: 0.92rem;
+  }
+
+  .vf-wallet-header {
+    text-align: center; margin: 24px 0 32px;
+  }
+  .vf-wallet-addr {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.92rem;
+    color: var(--cyan); word-break: break-all;
+    background: rgba(0,240,255,0.06); padding: 8px 14px;
+    border-radius: 4px; display: inline-block;
+  }
+  .vf-verified-tag {
+    font-family: 'Orbitron', sans-serif; font-size: 0.72rem;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: #7ef0a3; margin-top: 12px; display: block;
+  }
+
+  .vf-stats {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px; margin: 0 0 24px;
+  }
+  @media (max-width: 600px) { .vf-stats { grid-template-columns: 1fr; } }
+  .vf-stat {
+    padding: 18px 18px;
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+  }
+  .vf-stat .label {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.74rem;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 6px;
+  }
+  .vf-stat .value {
+    font-family: 'Orbitron', sans-serif; font-size: 1.85rem;
+    font-weight: 700; color: var(--text); line-height: 1.1;
+  }
+  .vf-stat.good .value  { color: #7ef0a3; }
+  .vf-stat.bad  .value  { color: #ff6b9d; }
+  .vf-stat.meta .value  { font-size: 1.2rem; color: var(--muted); }
+  .vf-stat .sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
+    color: var(--muted); margin-top: 4px;
+  }
+
+  .vf-counts {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 6px; padding: 14px 18px;
+    font-size: 0.86rem; line-height: 1.7;
+  }
+  .vf-counts .count-label { color: var(--cyan); display: inline-block; min-width: 110px; }
+  .vf-counts .count-value { color: var(--text); font-weight: 600; }
+
+  .vf-footer {
+    margin-top: 32px; padding: 16px 18px;
+    border-left: 2px solid var(--cyan);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.84rem;
+    color: var(--muted); line-height: 1.6;
+  }
+  .vf-footer b { color: var(--text); }
+
+  .vf-back {
+    display: inline-block; margin-top: 24px;
+    font-family: 'Orbitron', sans-serif; font-size: 0.82rem;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--cyan); text-decoration: none;
+  }
+  .vf-back:hover { text-decoration: underline; }
+
+  @media (max-width: 600px) {
+    .vf-hero h1 { font-size: 1.7rem; }
+    .vf-hero-sub { font-size: 0.87rem; }
+    .vf-main { margin: 30px auto 60px; padding: 0 18px; }
+    .vf-search { flex-direction: column; }
+    .vf-search button { width: 100%; }
+    .vf-stat .value { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="vf-main">
+
+  <section class="vf-hero">
+    <div class="vf-hero-tag">Verify · early access</div>
+    <h1>Verify any Solana wallet.</h1>
+    <p class="vf-hero-sub">
+      Every track record on Solana is a screenshot. Every screenshot is a
+      lie. Paste any wallet — get <b>graduation rate, runner rate, rug
+      exposure, and fast-snipe rate</b> computed from on-chain observed
+      activity. Never self-reported, can't be cherry-picked.
+    </p>
+  </section>
+
+  <form class="vf-search" id="vf-search-form">
+    <input type="text" id="vf-search-input" placeholder="Solana wallet address" autocomplete="off">
+    <button type="submit">Verify</button>
+  </form>
+  <p class="vf-search-hint">Read-only public lookup · no claim flow yet (Phase 3) · no enumeration</p>
+
+  <section id="vf-result"></section>
+
+  <a class="vf-back" href="/">← back to graduate-oracle</a>
+
+</main>
+
+<script>
+(function () {
+  const form  = document.getElementById('vf-search-form');
+  const input = document.getElementById('vf-search-input');
+  const out   = document.getElementById('vf-result');
+
+  // Read wallet from URL path: /verify/<wallet>
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const initialWallet = (pathParts[0] === 'verify' && pathParts[1]) ? pathParts[1] : null;
+  if (initialWallet) input.value = initialWallet;
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const w = input.value.trim();
+    if (!w) return;
+    history.pushState(null, '', `/verify/${w}`);
+    render(w);
+  });
+
+  function fmtPct(x)  { return (x * 100).toFixed(1) + '%'; }
+  function fmtSol(x)  { return x.toFixed(2) + ' SOL'; }
+  function shortAddr(a) {
+    if (!a) return '—';
+    return a.length > 16 ? `${a.slice(0,4)}…${a.slice(-4)}` : a;
+  }
+
+  async function render(wallet) {
+    out.innerHTML = `<div class="vf-state">looking up…</div>`;
+    try {
+      const r = await fetch(`/api/verify/${wallet}`);
+      const d = await r.json();
+      if (!r.ok || d.found === false) {
+        out.innerHTML = `
+          <div class="vf-state">
+            <b>no observed activity</b> for <code>${wallet}</code> in our dataset.<br>
+            we only verify wallets that have buy activity on pump.fun mints
+            we've ingested — fresh wallets won't appear.
+          </div>`;
+        return;
+      }
+      const s = d.stats;
+      const c = d.raw_counts;
+      out.innerHTML = `
+        <div class="vf-wallet-header">
+          <div class="vf-wallet-addr">${d.wallet}</div>
+          <span class="vf-verified-tag">✓ Verified · on-chain observed activity</span>
+        </div>
+
+        <div class="vf-stats">
+          <div class="vf-stat good">
+            <div class="label">Graduation rate</div>
+            <div class="value">${fmtPct(s.graduation_rate)}</div>
+            <div class="sub">${c.graduated} of ${c.total} mints graduated</div>
+          </div>
+          <div class="vf-stat good">
+            <div class="label">Runner rate (≥3× post-grad)</div>
+            <div class="value">${fmtPct(s.runner_rate)}</div>
+            <div class="sub">${c.runner} of ${c.total} hit runner</div>
+          </div>
+          <div class="vf-stat bad">
+            <div class="label">Rug exposure</div>
+            <div class="value">${fmtPct(s.rug_rate)}</div>
+            <div class="sub">${c.rug} of ${c.total} mints rugged</div>
+          </div>
+          <div class="vf-stat meta">
+            <div class="label">Fast-snipe rate (≤2s)</div>
+            <div class="value">${fmtPct(s.fast_snipe_rate)}</div>
+            <div class="sub">${c.fast_snipes} snipes within 2s of mint</div>
+          </div>
+          <div class="vf-stat meta">
+            <div class="label">Total invested</div>
+            <div class="value">${fmtSol(s.total_invested_sol)}</div>
+            <div class="sub">avg ${fmtSol(s.avg_buy_sol)} per mint</div>
+          </div>
+          <div class="vf-stat meta">
+            <div class="label">Mints touched</div>
+            <div class="value">${c.total}</div>
+            <div class="sub">unique pump.fun mints with buy activity</div>
+          </div>
+        </div>
+
+        <div class="vf-counts">
+          <div><span class="count-label">Graduated:</span> <span class="count-value">${c.graduated}</span></div>
+          <div><span class="count-label">Runner (3×+):</span> <span class="count-value">${c.runner}</span></div>
+          <div><span class="count-label">Mid:</span> <span class="count-value">${c.mid}</span></div>
+          <div><span class="count-label">Rug:</span> <span class="count-value">${c.rug}</span></div>
+          <div><span class="count-label">Total mints:</span> <span class="count-value">${c.total}</span></div>
+        </div>
+
+        <div class="vf-footer">
+          <b>How this works.</b> Every number is computed from observed on-chain
+          activity, not self-reported. We ingest pump.fun mints from the
+          launchpad firehose and resolve outcomes against on-chain state.
+          A wallet's record reflects the mints we observed it buying — fresh
+          wallets and those active only in mints we haven't ingested won't
+          appear. The full pre-registration → verdict story is on
+          <a href="/verdict" style="color:var(--cyan)">/verdict</a>.<br><br>
+          <b>What we don't show on purpose.</b> Rank, percentile, comparison
+          to other wallets, smart-money score — those would expose our
+          discovery moat. We verify what people <em>claim</em>; we don't leak
+          who we've <em>found</em>. <a href="/for-terminals" style="color:var(--cyan)">/for-terminals</a>
+          for the paid B2B reputation API.
+        </div>
+      `;
+    } catch (e) {
+      out.innerHTML = `<div class="vf-state">lookup failed — try again.</div>`;
+    }
+  }
+
+  if (initialWallet) render(initialWallet);
+})();
+</script>
+
+</body>
+</html>

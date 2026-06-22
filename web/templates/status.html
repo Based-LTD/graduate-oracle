@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GRADUATE · Status</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Live system status, uptime, latency, and daemon heartbeats for the Graduate Oracle API.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .status-main { max-width: 800px; margin: 60px auto; padding: 0 24px; }
+  .status-hero {
+    text-align: center;
+    padding: 36px 0;
+  }
+  .status-hero h1 {
+    font-family: 'Orbitron', system-ui, sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin: 0 0 14px 0;
+    letter-spacing: -0.5px;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .status-pill.ok        { color: var(--green); border: 1px solid rgba(0,255,157,0.55); background: rgba(0,255,157,0.10); }
+  .status-pill.degraded  { color: var(--yellow, #ffd166); border: 1px solid rgba(255,209,102,0.55); background: rgba(255,209,102,0.10); }
+  .status-pill.down      { color: var(--pink); border: 1px solid rgba(255,45,146,0.55); background: rgba(255,45,146,0.10); }
+  .status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% {opacity: 1} 50% {opacity: 0.4} }
+
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin: 24px 0;
+  }
+  .status-card {
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+  }
+  .status-card-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.66rem;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .status-card-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-top: 6px;
+  }
+
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 18px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem;
+  }
+  .status-table th, .status-table td {
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-table thead th {
+    color: var(--cyan);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    background: rgba(0,212,255,0.06);
+  }
+  .status-table tbody tr:last-child td { border-bottom: none; }
+  .status-state-ok    { color: var(--green); }
+  .status-state-warn  { color: var(--yellow, #ffd166); }
+  .status-state-down  { color: var(--pink); }
+
+  .status-foot {
+    text-align: center;
+    margin-top: 36px;
+    color: var(--muted);
+    font-size: 0.84rem;
+  }
+  .status-foot a { color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" aria-label="$GO on DEX Screener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
+  </a>
+</header>
+
+<main class="status-main">
+
+  <section class="status-hero">
+    <h1>Live system status</h1>
+    <div id="status-pill-wrap"><span class="status-pill ok"><span class="dot"></span> CHECKING…</span></div>
+  </section>
+
+  <section class="status-grid">
+    <div class="status-card">
+      <div class="status-card-label">Uptime</div>
+      <div class="status-card-value" id="status-uptime">—</div>
+    </div>
+    <div class="status-card">
+      <div class="status-card-label">avg /api/live</div>
+      <div class="status-card-value" id="status-avg-ms">—</div>
+    </div>
+    <div class="status-card">
+      <div class="status-card-label">p95 /api/live</div>
+      <div class="status-card-value" id="status-p95-ms">—</div>
+    </div>
+    <div class="status-card">
+      <div class="status-card-label">version</div>
+      <div class="status-card-value" id="status-version">—</div>
+    </div>
+  </section>
+
+  <h2 style="margin-top:32px; font-family: 'Orbitron', sans-serif; font-size: 1.05rem; letter-spacing: 0.05em;">ACTIVE ACCEPTANCE GATES</h2>
+  <div id="acceptance-gates-list" style="margin: 16px 0 32px;">
+    <div style="color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">none — system in steady state</div>
+  </div>
+
+  <h2 style="margin-top:32px; font-family: 'Orbitron', sans-serif; font-size: 1.05rem; letter-spacing: 0.05em;">DAEMON HEARTBEATS</h2>
+  <table class="status-table">
+    <thead><tr><th>Daemon</th><th>Last success</th><th>State</th></tr></thead>
+    <tbody id="status-daemons"><tr><td colspan="3" style="color:var(--muted)">loading…</td></tr></tbody>
+  </table>
+
+  <p class="status-foot">
+    JSON: <a href="/api/status">/api/status</a> · refresh every 10s
+  </p>
+
+</main>
+
+<script>
+function fmtAge(s) {
+  if (s == null) return '—';
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  return Math.floor(s/3600) + 'h ago';
+}
+async function refresh() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    // overall pill
+    const pill = document.getElementById('status-pill-wrap');
+    const cls = d.status === 'ok' ? 'ok' : d.status === 'degraded' ? 'degraded' : 'down';
+    const label = d.status === 'ok' ? 'ALL SYSTEMS OPERATIONAL'
+                : d.status === 'degraded' ? 'DEGRADED PERFORMANCE'
+                : 'OUTAGE';
+    pill.innerHTML = `<span class="status-pill ${cls}"><span class="dot"></span> ${label}</span>`;
+    document.getElementById('status-uptime').textContent = d.uptime_human || '—';
+    document.getElementById('status-avg-ms').textContent = d.latency.avg_ms != null ? d.latency.avg_ms + ' ms' : '—';
+    document.getElementById('status-p95-ms').textContent = d.latency.p95_ms != null ? d.latency.p95_ms + ' ms' : '—';
+    document.getElementById('status-version').textContent = d.version;
+    // Active acceptance gates panel (Finding 7/8 chain).
+    const gates = d.acceptance_gates || [];
+    const gatesEl = document.getElementById('acceptance-gates-list');
+    if (gates.length === 0) {
+      gatesEl.innerHTML = `<div style="color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">none — system in steady state</div>`;
+    } else {
+      gatesEl.innerHTML = gates.map(g => {
+        const closeTs = g.interim_close || g.full_close || g.deadline;
+        const closeStr = closeTs ? new Date(closeTs * 1000).toISOString().slice(0, 16).replace('T', ' ') + 'Z' : '';
+        return `
+          <div style="border: 1px solid rgba(255,200,100,0.25); border-radius: 6px; padding: 14px 18px; margin-bottom: 12px; background: rgba(255,200,100,0.04); font-family: 'JetBrains Mono', monospace;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+              <div style="font-weight: 600; color: rgba(255,220,170,0.95); font-size: 0.95rem;">${g.name}</div>
+              <div style="font-size: 0.8rem; color: var(--muted);">${closeStr ? 'closes ' + closeStr : ''}</div>
+            </div>
+            <div style="margin-top: 6px; font-size: 0.85rem; color: rgba(220,220,235,0.85); line-height: 1.5;">${g.summary}</div>
+            ${g.doc_url ? `<div style="margin-top: 8px; font-size: 0.8rem;"><a href="${g.doc_url}" style="color: rgba(0,240,255,0.95);" target="_blank">full pre-registration + diagnostic →</a></div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+    const tbody = document.getElementById('status-daemons');
+    tbody.innerHTML = (d.daemons || []).map(x =>
+      `<tr><td>${x.name}</td><td>${fmtAge(x.last_success_ago_s)}</td>` +
+      `<td class="status-state-${x.state}">${x.state.toUpperCase()}</td></tr>`
+    ).join('') || `<tr><td colspan="3" style="color:var(--muted)">no daemons reporting yet</td></tr>`;
+  } catch (e) {
+    document.getElementById('status-pill-wrap').innerHTML =
+      '<span class="status-pill down"><span class="dot"></span> CONNECTION FAILED</span>';
+  }
+}
+refresh();
+setInterval(refresh, 10000);
+</script>
+
+</body>
+</html>

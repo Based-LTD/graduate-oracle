@@ -392,12 +392,65 @@ async def _gbm_shadow_warmup():
 
 
 @app.on_event("startup")
+async def _perps_observatory_start():
+    """Background poller for the Perps Observatory (Hyperliquid + stubs for
+    Drift / Jupiter Perps). Tells the "we're expanding to perps" story with
+    real, growing numbers — counters survive deploy via /data persistence."""
+    import perps_observatory
+    perps_observatory.start()
+
+
+@app.on_event("startup")
+async def _perps_intel_start():
+    """Background poller for the wallet-intel layer — Hyperliquid leaderboard
+    ingest + per-wallet position snapshots. Same playbook as our pump.fun
+    smart_money_leaderboard. Building in public — data accumulates from
+    boot, receipts chain follows once we ship signals."""
+    import perps_intel
+    perps_intel.start()
+
+
+@app.on_event("startup")
 async def _bucket_cutoffs_start():
     """Start the bucket-cutoffs rebuild daemon. 24h cadence (Lane 13
     anti-overshoot lesson). Initial rebuild may produce insufficient_samples
     on a fresh deploy; the daemon retries and bucket_for() returns "LOW"
     defensively until cutoffs are populated."""
     bucket_cutoffs.start()
+
+
+@app.on_event("startup")
+async def _trader_wallets_start():
+    """Initialize the custody DB schema for the TG trading bot. Idempotent.
+    The schema is in its OWN sqlite file (/data/trader.sqlite) so custody
+    data stays physically isolated from the giant observer DB. The actual
+    wallet generation happens lazily on first user interaction in the bot."""
+    if not os.environ.get("TRADER_MASTER_KEY", "").strip():
+        # Dormant: log once, don't init schema. Generating wallets without
+        # the master key would be silently broken — fail loud at use time
+        # by leaving the schema uninitialized.
+        print("[trader_wallets] DORMANT — TRADER_MASTER_KEY not set; "
+              "trading bot custody disabled until set", flush=True)
+        return
+    try:
+        import trader_wallets
+        trader_wallets.init_schema()
+        print("[trader_wallets] schema initialized — custody layer live", flush=True)
+    except Exception as e:
+        print(f"[trader_wallets] init failed: {e}", flush=True)
+
+
+@app.on_event("startup")
+async def _trader_deposits_start():
+    """Start the deposit-watcher daemon + trading-state schema. The
+    daemon polls every active user wallet for incoming SOL on the
+    POLL_INTERVAL_S tick. Writes deposit events + maintains the
+    last-seen balance ledger. Dormant if TRADER_MASTER_KEY is unset."""
+    try:
+        import trader_deposits
+        trader_deposits.start()
+    except Exception as e:
+        print(f"[trader_deposits] start failed: {e}", flush=True)
 
 
 _snapshot_cache: dict = {"mtime": None, "data": None}
@@ -1063,9 +1116,18 @@ def _enrich_mint(m: dict, rug_features_prefetched: Optional[dict] = None) -> tup
     # Early-stage graduation predictor — k-NN over at-launch features
     # ONLY. Useful as alpha when the main grad_prob (curve-shape-driven)
     # hasn't moved yet. Returns "warming" until ≥30 resolved outcomes.
-    _t = time.time()
-    m_out["early_grad_prob"] = early_grad_tracker.predict(m_out)
-    status_module.record_stage_timing("early_grad", time.time() - _t)
+    #
+    # 2026-06-19 LATENCY FIX: see rug_predictor note above. early_grad
+    # was eating ~681s cumulative per tick (~43s wall-clock across 16
+    # workers). Like rug_prob, it's informational only — not used by
+    # any TG tier decision or composite cross. Disabled in fast-path
+    # mode; re-enable by setting EARLY_GRAD_FAST_PATH=0 in env.
+    if os.environ.get("EARLY_GRAD_FAST_PATH", "1") != "1":
+        _t = time.time()
+        m_out["early_grad_prob"] = early_grad_tracker.predict(m_out)
+        status_module.record_stage_timing("early_grad", time.time() - _t)
+    else:
+        m_out["early_grad_prob"] = None
 
     # ── lane6_features namespace ─────────────────────────────────────────
     # Convenience dict packaging the 17 features Lane 9 validated (closes
@@ -1111,11 +1173,22 @@ def _enrich_mint(m: dict, rug_features_prefetched: Optional[dict] = None) -> tup
     # ~1700 training rows — non-trivial cost. The result is lane-stripped
     # past 90s anyway, so skip the work outside the lane window. Same
     # behaviour, less CPU.
-    if in_prediction_window_for_score:
+    # 2026-06-19 LATENCY FIX: rug_predictor was eating ~70s of every
+    # 127s precompute tick (cumulative ~1093s across 16 workers, ~18s
+    # CPU time per call — anomalously slow for a numpy k-NN). That delay
+    # was cascading into model-scoring lag (mints scored at age 145s
+    # instead of 60s) which then drove TG push latency to ~3 min.
+    #
+    # rug_prob is informational, not used in any TG tier decision or
+    # composite cross detection — so skipping it here drops tick wall-
+    # clock from 127s → ~5s without affecting any user-facing signal.
+    # The field surfaces on API responses as None during the live
+    # observer window; a slower background enrichment fills it in
+    # once mints age out, before they're consumed by accuracy/audit.
+    # Re-enable by setting RUG_PREDICTOR_FAST_PATH=0 in env.
+    if (in_prediction_window_for_score
+            and os.environ.get("RUG_PREDICTOR_FAST_PATH", "1") != "1"):
         _t = time.time()
-        # Fix B (2026-05-09): pass batch-prefetched feature dict so the
-        # predictor skips its per-mint sqlite open. Falls back gracefully
-        # to per-mint sqlite if prefetch wasn't done (kwarg is optional).
         m_out["rug_prob"] = rug_predictor.predict_for_mint(
             m_out.get("mint"), prefetched_features=rug_features_prefetched
         )
@@ -1347,8 +1420,14 @@ def _score_mints(snapshot: dict) -> list[dict]:
     # TG push evaluator — separate from cross detection. Sweeps recent
     # crosses awaiting grad_prob_60, classifies into ACT/WATCH/below/expired,
     # pushes qualifying ones to TG. Idempotent via tg_pushed_at column.
+    #
+    # 2026-06-19 LATENCY FIX: pass the just-scored mints into evaluator so it
+    # can read grad_prob from this tick's live cache instead of waiting for
+    # the predictions table's async drain to commit (which was adding 60-120s
+    # of pure dispatcher lag, observed in the wild as ~3 min total push delay).
     try:
-        composite_predictions.evaluate_tg_pushes()
+        live_mints_by_mint = {m["mint"]: m for m in out if m.get("mint")}
+        composite_predictions.evaluate_tg_pushes(live_mints_by_mint)
     except Exception as e:
         print(f"[composite] tg-push eval error: {e}", flush=True)
     # Composite ranker: top-of-list is the higher of grad_prob lift and
@@ -1446,13 +1525,20 @@ def _start_precompute_thread():
                             status_module.record_daemon_success("score_precompute")
                             # Fan out to active websocket clients (Pro tier).
                             # Slim payload — only the top 60 by grad_prob —
-                            # to keep frame size sane over the wire.
+                            # to keep frame size sane over the wire. Stamp
+                            # n_indexed_curves + n_tracked so demo / clients
+                            # can render lifetime + active totals without a
+                            # second REST hit.
                             try:
                                 top = result[:60] if isinstance(result, list) else []
                                 wsfanout.broadcast(wsfanout.make_frame(
                                     kind="live_update",
                                     mints=top,
                                     snapshot_epoch_ms=epoch_ms,
+                                    extra={
+                                        "n_indexed_curves": INDEX.n_curves_indexed,
+                                        "n_tracked":        snap.get("n_tracked", 0),
+                                    },
                                 ))
                             except Exception as e:
                                 print(f"[ws] broadcast skipped: {e}", flush=True)
@@ -1593,10 +1679,15 @@ def _compute_headline() -> dict:
     _now = int(_t.time())
     try:
         with _cl.closing(sqlite3.connect(db.DB_PATH, timeout=5)) as c, c:
+            # was_calibrated=1 = the post-cutover, self-correcting calibration era.
+            # Pre-cutover, score 0.70 had a different meaning (raw uncalibrated
+            # model output ~55% grad rate). Including those rows in trajectory or
+            # hit-rate mixes regimes — same threshold, different model behind it.
+            # Apples-to-apples requires this filter, mirroring the timing query.
             def _hr(time_clause, args):
                 row = c.execute(
                     "SELECT COUNT(*) AS total, SUM(CASE WHEN actual_graduated=1 THEN 1 ELSE 0 END) AS hit "
-                    "FROM predictions WHERE predicted_prob >= 0.70 AND age_bucket IN (30, 60) "
+                    "FROM predictions WHERE was_calibrated = 1 AND predicted_prob >= 0.70 AND age_bucket IN (30, 60) "
                     f"AND actual_graduated IS NOT NULL {time_clause}",
                     args,
                 ).fetchone()
@@ -1606,18 +1697,36 @@ def _compute_headline() -> dict:
                         "hit_rate": hit / total}
             last_30d  = _hr("AND predicted_at >= ?", (_now - 30 * 86400,))
             lifetime_strict = _hr("", ())
+            # Weekly trajectory (not monthly) over a 90-day window. Weekly bucketing
+            # surfaces within-month regime changes — alert criteria tightened in
+            # mid-May 2026, dropping volume ~10× while hit rate stepped up from
+            # ~55% to ~90%+. Monthly bucketing hid that as a single 58% row.
+            # Weekly buckets render the curve honestly.
             trajectory = []
             for r in c.execute(
-                "SELECT strftime('%Y-%m', datetime(predicted_at, 'unixepoch')) AS mo, "
+                "SELECT strftime('%Y-W%W', datetime(predicted_at, 'unixepoch')) AS wk, "
+                "       MIN(predicted_at) AS wk_start, "
                 "       COUNT(*) AS total, SUM(CASE WHEN actual_graduated=1 THEN 1 ELSE 0 END) AS hit "
-                "FROM predictions WHERE predicted_prob >= 0.70 AND age_bucket IN (30, 60) "
+                "FROM predictions WHERE was_calibrated = 1 AND predicted_prob >= 0.70 AND age_bucket IN (30, 60) "
                 "AND actual_graduated IS NOT NULL AND predicted_at > ? "
-                "GROUP BY mo ORDER BY mo",
-                (_now - 180 * 86400,),
+                "GROUP BY wk ORDER BY wk",
+                (_now - 90 * 86400,),
             ).fetchall():
-                total = int(r[1] or 0); hit = int(r[2] or 0)
+                total = int(r[2] or 0); hit = int(r[3] or 0)
                 if not total: continue
-                trajectory.append({"month": r[0], "n": total, "hit_rate": hit / total})
+                trajectory.append({
+                    "week":          r[0],
+                    "week_start_unix": int(r[1]),
+                    "n":             total,
+                    "n_graduated":   hit,
+                    "hit_rate":      hit / total,
+                })
+            # When did the calibrated model go live? Useful context for LLMs and
+            # auditors trying to understand why earlier months don't appear.
+            row = c.execute(
+                "SELECT MIN(predicted_at) FROM predictions WHERE was_calibrated = 1"
+            ).fetchone()
+            model_deployed_at = int(row[0]) if row and row[0] else None
 
             # TIMING — the real edge. For ≥0.70 calls that DID graduate, how
             # many seconds between our call and the bonding-curve completing?
@@ -1651,12 +1760,131 @@ def _compute_headline() -> dict:
                     "under_30s_pct": under_30s / len(lag_secs),
                     "under_60s_pct": under_60s / len(lag_secs),
                 }
+
+            # TIER RUNWAYS — by TG composite tier (ACT/WATCH/SCOUT). Different
+            # tier = different urgency window = different customer type. The
+            # site copy hydrates these into the hero detail.
+            tier_runways = {}
+            for tier in ("ACT", "WATCH", "SCOUT"):
+                tier_lags = c.execute("""
+                    SELECT (o.graduated_at - cp.predicted_at) AS lag_s
+                      FROM composite_predictions cp
+                      JOIN post_grad_outcomes o ON o.mint = cp.mint
+                     WHERE cp.tg_tier = ?
+                       AND cp.did_graduate = 1
+                       AND o.graduated_at IS NOT NULL
+                       AND cp.predicted_at >= ?
+                """, (tier, _now - 90 * 86400)).fetchall()
+                ls = sorted([r[0] for r in tier_lags if r[0] is not None and r[0] >= 0])
+                if len(ls) >= 20:
+                    tier_runways[tier] = {
+                        "status":   "ok",
+                        "n":        len(ls),
+                        "p50_s":    ls[len(ls) // 2],
+                    }
+                else:
+                    tier_runways[tier] = {"status": "warming", "n": len(ls)}
+
+            # RECALL — of mints that graduated AND that our scorer saw at age
+            # 30/60 in the calibrated regime, what fraction did we call at
+            # ≥0.70? Denominator restricted to "observed at 30/60s by the
+            # calibrated model" so it's apples-to-apples with precision. The
+            # naive denominator ("all graduations on Solana") undercounts our
+            # coverage because most mints graduate instantly or are out of our
+            # scoring window. This is the meaningful recall for a trader
+            # choosing whether to wire our signal into their agent.
+            since_30d = _now - 30 * 86400
+            recall_row = c.execute("""
+                SELECT COUNT(DISTINCT o.mint) AS observed_grads,
+                       COUNT(DISTINCT CASE WHEN p.predicted_prob >= 0.70 THEN o.mint END) AS called
+                  FROM post_grad_outcomes o
+                  JOIN predictions p ON p.mint = o.mint
+                 WHERE o.graduated_at >= ?
+                   AND p.was_calibrated = 1
+                   AND p.age_bucket IN (30, 60)
+            """, (since_30d,)).fetchone()
+            observed = int(recall_row[0] or 0); called = int(recall_row[1] or 0)
+            recall_last_30d = ({
+                "status": "ok",
+                "n_graduations_observed": observed,
+                "n_called_at_70pct": called,
+                "recall_among_observed": called / observed,
+            } if observed > 0 else {"status": "warming"})
+
+            # POST-GRAD RUNNER RECEIPTS — the metric a post-graduation trader
+            # actually cares about: "of mints we tagged runner_prob_Nx ≥ 0.5,
+            # what % actually went Nx?" Pulled from the cached aggregation in
+            # predictions.py. Hit = actual_max_mult / entry_mult ≥ N. Age 30/60
+            # window, calibrated regime.
+            from predictions import _RUNNER_RECEIPT_CACHE, _RUNNER_RECEIPT_LOCK, _refresh_runner_receipt_cache
+            try:
+                _refresh_runner_receipt_cache()
+                with _RUNNER_RECEIPT_LOCK:
+                    runner_cache = dict(_RUNNER_RECEIPT_CACHE.get("data") or {})
+            except Exception:
+                runner_cache = {}
+            runner_rates = {}
+            # BASE RATES — the "single biggest omission" critics flag. For each
+            # tier (2x/5x/10x), compute the UNCONDITIONAL rate at which observed
+            # graduations hit that peak multiplier. The model's hit rate is only
+            # meaningful as LIFT over this base rate. Without it, "65% hit 2x"
+            # could mean the model adds nothing if 65% of all graduates hit 2x
+            # anyway. With it, lift = model_rate / base_rate quantifies edge.
+            base_rates = {}
+            for tier_label, tier_x in (("2x", 2.0), ("5x", 5.0), ("10x", 10.0)):
+                row = c.execute("""
+                    SELECT COUNT(*) AS n,
+                           SUM(CASE WHEN (actual_max_mult / entry_mult) >= ? THEN 1 ELSE 0 END) AS n_hit
+                      FROM predictions
+                     WHERE was_calibrated = 1
+                       AND age_bucket IN (30, 60)
+                       AND actual_max_mult IS NOT NULL
+                       AND entry_mult IS NOT NULL
+                       AND entry_mult > 0
+                """, (tier_x,)).fetchone()
+                n = int(row[0] or 0); h = int(row[1] or 0)
+                if n >= 100:
+                    base_rates[tier_label] = {"n": n, "n_hit": h, "rate": h / n}
+            for tier in ("2x", "5x", "10x"):
+                td = runner_cache.get(tier) or {}
+                n_total = 0; n_hit = 0
+                for ab in (30, 60):
+                    cell = (td.get(ab) or {}).get(0.5)
+                    if cell:
+                        n_total += int(cell.get("n") or 0)
+                        n_hit   += int(cell.get("n_hit") or 0)
+                if n_total >= 20:
+                    model_rate = n_hit / n_total
+                    base = base_rates.get(tier)
+                    lift = (model_rate / base["rate"]) if (base and base["rate"] > 0) else None
+                    runner_rates[tier] = {
+                        "status": "ok",
+                        "threshold_band": ">=50% model confidence",
+                        "n": n_total,
+                        "n_hit": n_hit,
+                        "hit_rate": model_rate,
+                        "base_rate": base["rate"] if base else None,
+                        "base_rate_n": base["n"] if base else None,
+                        "lift_over_base": lift,
+                    }
+                else:
+                    runner_rates[tier] = {"status": "warming", "n": n_total}
+
         return {
-            "criteria":      "predicted_prob >= 0.70 AND age_bucket IN (30, 60) AND actual_graduated IS NOT NULL",
+            "criteria":      "predicted_prob >= 0.70 AND age_bucket IN (30, 60) AND was_calibrated = 1 AND actual_graduated IS NOT NULL",
+            "criteria_note": "All hit-rate and trajectory measures are restricted to the calibrated-model regime (was_calibrated=1). Pre-cutover predictions used the same 0.70 threshold against an uncalibrated score and are excluded — including them would mix two regimes.",
+            "trajectory_note": "Weekly buckets over the last 90 days under the calibrated regime. Hit rate stepped up mid-May 2026 when alert criteria were tightened (volume dropped ~10×, precision climbed from ~55% → ~90%+). The full audit of that change is at /verdict.",
+            "live_endpoint_note": "live_endpoint is /api/accuracy. .headline.last_30d is the public rolling hit rate; .headline.trajectory is the week-by-week curve under the calibrated regime.",
+            "model_deployed_at": model_deployed_at,
             "last_30d":      last_30d,
             "lifetime":      lifetime_strict,
             "trajectory":    trajectory,
             "time_to_grad":  timing,
+            "tier_runways":  tier_runways,
+            "recall_30d":    recall_last_30d,
+            "recall_note":   "Of mints that graduated AND that our scorer saw at age 30 or 60 seconds, the fraction we called at ≥0.70 confidence. Denominator restricted to 'observed by the calibrated scorer' — most pump.fun mints graduate before age 30s or never reach scoring window, so they're out of scope. This is the meaningful recall for a trader deciding whether the high-confidence signal is too narrow.",
+            "post_grad_runner_rates": runner_rates,
+            "post_grad_runner_note":  "Hit = actual_max_mult / entry_mult ≥ Nx (peak, not realized — exit logic is up to you). Labels are observer-derived (caveat: scraper gaps). 'Threshold band' = mints scored ≥50% by the model on runner_prob_Nx_from_now at age 30 or 60. Each tier also reports BASE RATE (unconditional % of observed graduations that hit Nx) and LIFT (model_rate / base_rate). Lift > 1.0 means the model adds edge over picking randomly from graduates; lift = 1.0 means no edge; lift < 1.0 means the screen is anti-signal.",
             "computed_at":   _now,
             "ttl_s":         _HEADLINE_CACHE_TTL_S,
         }
@@ -1675,20 +1903,20 @@ def _get_headline_cached() -> dict:
     return data
 
 
-@app.get("/api/accuracy", tags=["calibration"], summary="Model calibration · proven accuracy")
-def api_accuracy():
-    """Two-tier proof of the oracle's accuracy.
+# Full /api/accuracy response cache. The endpoint runs 14+ DB aggregations
+# per hit — graduation calibration, drift, post-grad stats, flag calibration
+# for every binary heuristic, label-source breakdown, tg_fires stats, act
+# slice, headline timing. That's a lot of work for data that doesn't change
+# meaningfully sub-minute. Cold path is ~25s; a background warmer thread
+# keeps the cache always warm so no user ever waits.
+_ACCURACY_FULL_CACHE_TTL_S = 120
+_ACCURACY_FULL_CACHE_WARM_S = 60   # re-compute every 60s — half the TTL
+_ACCURACY_FULL_CACHE: dict = {"ts": 0, "data": None}
 
-    `lifetime` — leave-one-out k-NN cross-validation on the full historical
-    curve index. Every sampled mint is predicted using all OTHER mints as
-    neighbors (never itself). Recomputed every 6h.
 
-    `forward` — every live prediction we've made since launch, joined against
-    actual graduation outcomes once each mint resolves. Bulletproof: every
-    prediction was recorded BEFORE we knew the outcome.
-
-    For new deployments `forward` will have few resolved samples; lifetime
-    carries the marketing weight until forward catches up (~30 days)."""
+def _compute_accuracy_response() -> dict:
+    """The actual accuracy computation — extracted so the background warmer
+    can call it without going through FastAPI route machinery."""
     lifetime = calibration.get_snapshot()
     forward  = predictions.get_live_calibration()
     forward_calibrated = predictions.get_live_calibration(calibrated_only=True)
@@ -1818,6 +2046,60 @@ def api_accuracy():
         "self_correcting":       any(c.get("n_total_samples", 0) >= 30 for c in curves.values()),
     }
     return out
+
+
+@app.get("/api/accuracy", tags=["calibration"], summary="Model calibration · proven accuracy")
+def api_accuracy():
+    """Live receipts. Cached for performance — the underlying compute is
+    ~25s cold. Background warmer below keeps it always hot.
+
+    On cache miss, returns last-known data immediately (if any) and
+    triggers a background recompute. On cold boot (no cache yet), computes
+    once synchronously."""
+    import time as _t
+    _cached = _ACCURACY_FULL_CACHE
+    _now = int(_t.time())
+
+    # Cache hit — return immediately
+    if _cached["data"] is not None and (_now - _cached["ts"]) < _ACCURACY_FULL_CACHE_TTL_S:
+        return _cached["data"]
+
+    # Cache stale but we have data — serve stale, let the warmer refresh
+    if _cached["data"] is not None:
+        return _cached["data"]
+
+    # Cold boot — first ever request, no cache yet. Compute synchronously.
+    fresh = _compute_accuracy_response()
+    _ACCURACY_FULL_CACHE["ts"]   = _now
+    _ACCURACY_FULL_CACHE["data"] = fresh
+    return fresh
+
+
+# Background warmer — keeps /api/accuracy cache always populated. Computes
+# fresh data into a local variable, THEN atomically swaps into the cache.
+# Users hitting during a recompute always see the previous cached version
+# (stale-while-revalidate). No user ever waits the ~25s cold path.
+def _accuracy_cache_warmer_loop():
+    import time as _t
+    _t.sleep(15)   # let the app boot before first DB hit
+    print(f"[accuracy_cache_warmer] started · interval={_ACCURACY_FULL_CACHE_WARM_S}s",
+          flush=True)
+    while True:
+        try:
+            t0 = _t.time()
+            fresh = _compute_accuracy_response()
+            elapsed = _t.time() - t0
+            _ACCURACY_FULL_CACHE["ts"]   = int(_t.time())
+            _ACCURACY_FULL_CACHE["data"] = fresh
+            print(f"[accuracy_cache_warmer] refreshed in {elapsed:.1f}s", flush=True)
+        except Exception as e:
+            print(f"[accuracy_cache_warmer] failed: {e}", flush=True)
+        _t.sleep(_ACCURACY_FULL_CACHE_WARM_S)
+
+
+import threading as _threading_acc
+_threading_acc.Thread(target=_accuracy_cache_warmer_loop, daemon=True,
+                      name="accuracy-cache-warmer").start()
 
 
 @app.get("/api/scope", tags=["calibration"], summary="Product scope · what we predict and at what age")
@@ -2193,6 +2475,14 @@ def cli_page():
     return _serve_html("cli.html")
 
 
+@app.get("/bot", response_class=HTMLResponse, include_in_schema=False)
+def bot_page():
+    """Telegram bot landing page — explainer, quickstart, tokenomics,
+    disclaimers. The headline nav 'TG BOT' button now points here
+    instead of directly opening Telegram, so users get context first."""
+    return _serve_html("bot.html")
+
+
 @app.get("/status", response_class=HTMLResponse, include_in_schema=False)
 def status_page():
     """Public status / uptime page. JSON version at /api/status."""
@@ -2204,6 +2494,166 @@ def accuracy_page():
     """The receipts page — leads with backtest + live forward hit rates.
     Pulls live numbers from /api/accuracy via JS."""
     return _serve_html("accuracy.html")
+
+
+@app.get("/perps", response_class=HTMLResponse, include_in_schema=False)
+def perps_page():
+    """Perps Observatory — live counters of perp data being collected.
+    v0 source: Hyperliquid (real). Drift + Jupiter Perps stubbed as
+    "pending" to signal expansion. Sets the "coming Q3 in goracle-mcp"
+    narrative with real, growing numbers."""
+    return _serve_html("perps.html")
+
+
+@app.get("/api/perps/observatory", tags=["perps"], summary="Perps Observatory snapshot")
+def perps_observatory_api():
+    """Public, no auth. Returns the current Perps Observatory snapshot —
+    per-DEX status, top funding rates, top 24h volume, lifetime counters.
+    Same numbers the /perps page renders."""
+    import perps_observatory
+    return perps_observatory.snapshot()
+
+
+@app.get("/api/perps/wallet/{address}", tags=["perps"], summary="Per-wallet drill-down")
+def perps_wallet_api(address: str):
+    """Public, no auth. Returns per-wallet lifetime stats, current open
+    positions, per-horizon win rate, recent entries, leaderboard history."""
+    import perps_intel
+    return perps_intel.wallet_detail(address)
+
+
+@app.get("/api/perps/drift/wallet/{address}", tags=["perps"], summary="Drift wallet drill-down")
+def perps_drift_wallet_api(address: str):
+    """Public, no auth. Returns lifetime stats for a Drift trader, drawn
+    from the public S3 trade history (Nov 2022 → Jan 2025, pre-exploit)."""
+    import perps_intel
+    return perps_intel.drift_wallet_detail(address)
+
+
+@app.get("/api/perps/drift/markets", tags=["perps"], summary="Drift market index overview")
+def perps_drift_markets_api():
+    """Public, no auth. Returns per-market rollup across every Drift market
+    we have files for: file count, trade-row count, indexed volume (post
+    2026-06-17 schema bump), date range."""
+    import perps_intel
+    return {"markets": perps_intel.drift_top_markets()}
+
+
+@app.get("/api/perps/drift/market/{market}", tags=["perps"], summary="Drift per-market drill-down")
+def perps_drift_market_api(market: str):
+    """Public, no auth. Returns aggregate stats for a single Drift market
+    plus the most recent files we ingested for it. Data is pre-exploit
+    historical (Drift's public S3 publishing ended 2025-01-08)."""
+    import perps_intel
+    return perps_intel.drift_market_detail(market)
+
+
+@app.get("/api/perps/ledger/commits", tags=["perps"], summary="Perps receipts merkle commits")
+def perps_ledger_api(limit: int = 50):
+    """Public, no auth. Hourly merkle roots over the SHA256 leaves of every
+    smart-money entry detected in that hour. Same discipline as the pump.fun
+    /api/ledger/commits chain — proves entries are committed before their
+    outcomes are observable."""
+    import perps_intel
+    rows = perps_intel.commits_list(limit=max(1, min(500, limit)))
+    return {
+        "leaf_format": (
+            "SHA256 over canonical JSON: "
+            "{v, id, ts, addr, mkt, side, size, entryPx, posUsd, lev, "
+            "px@det, smart, whale, mRoi, mPnl}"
+        ),
+        "merkle_format": "Bitcoin-style pairwise SHA256, last leaf duplicated on odd levels",
+        "n_commits":    len(rows),
+        "commits":      rows,
+    }
+
+
+@app.get("/api/perps/market/{market}", tags=["perps"], summary="Per-market drill-down")
+def perps_market_api(market: str):
+    """Public, no auth. Returns smart-money currently positioned on this
+    market, per-horizon win rate for entries on this market, recent entries,
+    and a price-series buffer for sparkline rendering."""
+    import perps_intel
+    return perps_intel.market_detail(market)
+
+
+@app.get("/perps/wallet/{address}", response_class=HTMLResponse, include_in_schema=False)
+def perps_wallet_page(address: str):
+    return _serve_html("perps_wallet.html")
+
+
+@app.get("/perps/drift/wallet/{address}", response_class=HTMLResponse, include_in_schema=False)
+def perps_drift_wallet_page(address: str):
+    return _serve_html("perps_drift_wallet.html")
+
+
+@app.get("/perps/drift/market/{market}", response_class=HTMLResponse, include_in_schema=False)
+def perps_drift_market_page(market: str):
+    return _serve_html("perps_drift_market.html")
+
+
+# ── /conditions — public pump.fun market temperature ────────────────────
+@app.get("/api/v1/conditions", tags=["public"], summary="Pump.fun conditions index")
+def api_conditions():
+    """Self-relative pump.fun market temperature. Every number is computed
+    from our own observations (composite_predictions + post_grad_outcomes +
+    predictions). No external assumptions baked in. Self-relative tiering
+    against our 35-day historical distribution.
+
+    Methodology + raw SQL: /conditions/methodology
+    """
+    import conditions
+    return conditions.compute()
+
+
+@app.get("/conditions", response_class=HTMLResponse, include_in_schema=False)
+def conditions_page():
+    return _serve_html("conditions.html")
+
+
+@app.get("/conditions/methodology", response_class=HTMLResponse, include_in_schema=False)
+def conditions_methodology_page():
+    return _serve_html("conditions_methodology.html")
+
+
+# ── GO Lens — the userscript overlay for Solana terminals ────────────────
+@app.get("/lens", response_class=HTMLResponse, include_in_schema=False)
+def lens_page():
+    return _serve_html("lens.html")
+
+
+@app.get("/lens/goracle-lens.user.js", include_in_schema=False)
+def lens_userscript():
+    """Serves the GO Lens userscript with the mime type Tampermonkey
+    needs to recognize it as installable. Lives outside /web/ so it can
+    be edited / iterated without touching the web app templates."""
+    path = Path(__file__).parent.parent / "lens" / "goracle-lens.user.js"
+    if not path.exists():
+        raise HTTPException(404, detail={"error": "userscript_missing"})
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers={
+            # Tampermonkey checks for updates via the @updateURL header; a
+            # short cache lets us push fixes fast while still being polite
+            # to the CDN.
+            "Cache-Control": "public, max-age=300",
+        },
+    )
+
+
+@app.get("/perps/market/{market}", response_class=HTMLResponse, include_in_schema=False)
+def perps_market_page(market: str):
+    return _serve_html("perps_market.html")
+
+
+@app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+def demo_page():
+    """Live watch-the-bot-work page. Renders the same WebSocket feed our
+    paying customers + LLM clients see, with smart-money glow + runner-prob
+    flash + aggregate stats. Public, no auth — pulls the open /api/v1/live
+    REST for initial state, then upgrades to the WebSocket firehose."""
+    return _serve_html("demo.html")
 
 
 @app.get("/receipts", response_class=HTMLResponse, include_in_schema=False)
@@ -2563,30 +3013,98 @@ def api_sol_price():
 
 
 # ── WebSocket firehose · /api/v1/ws ─────────────────────────────────────────
-# Pro-tier only. Auth via ?api_key=... (browsers can't easily set headers
-# on the initial WS handshake, so query-string is the practical default).
-# Frame shape: {"kind":"live_update","ts":...,"snapshot_epoch_ms":...,
-#               "count":N,"mints":[...]}  — pushed once per snapshot tick.
+# Pro-tier (or trial during launch week). Auth via ?api_key=... (browsers
+# can't easily set headers on the initial WS handshake, so query-string is
+# the practical default). Frame shape:
+#   {"kind":"live_update","ts":...,"snapshot_epoch_ms":...,"count":N,"mints":[...]}
+# pushed once per observer snapshot tick (~5-10s cadence). On connect, an
+# immediate hello frame {"kind":"hello","tier":<actual>} confirms the link.
+#
+# Connection caps protect the server from anonymous-trial abuse:
+#  - WS_MAX_GLOBAL_CLIENTS: total simultaneous connections (default 200)
+#  - WS_MAX_PER_IP_CLIENTS: per-IP cap (default 5)
+# Both are env-tunable so we can lift them once we've watched real load.
+import os as _ws_os
+import threading as _ws_threading
+WS_MAX_GLOBAL_CLIENTS = int(_ws_os.environ.get("WS_MAX_GLOBAL_CLIENTS", "200"))
+WS_MAX_PER_IP_CLIENTS = int(_ws_os.environ.get("WS_MAX_PER_IP_CLIENTS", "5"))
+_ws_global_count: int = 0
+_ws_per_ip_count: dict = {}
+_ws_count_lock = _ws_threading.Lock()
+
+
+def _ws_admit(ip: str) -> tuple[bool, str]:
+    """Decide whether to admit a new WS connection. Returns (allowed, reason).
+    Increments counters on admit; remember to call _ws_release on disconnect."""
+    global _ws_global_count
+    with _ws_count_lock:
+        if _ws_global_count >= WS_MAX_GLOBAL_CLIENTS:
+            return False, "global_cap"
+        if _ws_per_ip_count.get(ip, 0) >= WS_MAX_PER_IP_CLIENTS:
+            return False, "per_ip_cap"
+        _ws_global_count += 1
+        _ws_per_ip_count[ip] = _ws_per_ip_count.get(ip, 0) + 1
+        return True, "ok"
+
+
+def _ws_release(ip: str) -> None:
+    global _ws_global_count
+    with _ws_count_lock:
+        _ws_global_count = max(0, _ws_global_count - 1)
+        n = _ws_per_ip_count.get(ip, 0) - 1
+        if n <= 0:
+            _ws_per_ip_count.pop(ip, None)
+        else:
+            _ws_per_ip_count[ip] = n
+
+
 @app.websocket("/api/v1/ws")
 async def ws_firehose(websocket: WebSocket):
     import asyncio
+    import json as _json
+    from auth import _free_trial_active, _FREE_TRIAL_SYNTHETIC
     api_key = websocket.query_params.get("api_key") or ""
     record = db.lookup_key(api_key.strip()) if api_key else None
+    # Launch-week free trial: open the WebSocket firehose to anonymous /
+    # invalid-key connections during the FREE_TRIAL_UNTIL window. Pure
+    # signal-side promotion — bot operators who can capitalize get the
+    # fastest path we offer, no paywall, no friction. After 2026-06-22 the
+    # trial expires automatically and pro-tier check snaps back.
     if not record:
-        await websocket.close(code=4401)  # custom: unauthorized
-        return
-    if record["tier"] != "pro":
+        if _free_trial_active():
+            record = _FREE_TRIAL_SYNTHETIC
+        else:
+            await websocket.close(code=4401)  # custom: unauthorized
+            return
+    if record["tier"] not in ("pro", "free_trial"):
         await websocket.close(code=4403)  # custom: payment required
+        return
+
+    # Caller IP (Fly forwards via X-Forwarded-For; fall back to direct host).
+    ip = (
+        websocket.headers.get("fly-client-ip")
+        or websocket.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (websocket.client.host if websocket.client else "unknown")
+    )
+    admitted, reason = _ws_admit(ip)
+    if not admitted:
+        # 1013 = "try again later" — semantically right for capacity issues.
+        await websocket.close(code=1013, reason=reason)
         return
 
     await websocket.accept()
     q: asyncio.Queue = asyncio.Queue(maxsize=wsfanout.QUEUE_MAXSIZE)
     wsfanout.add_client(q)
 
-    # Send a hello frame so the client knows the connection is live before
-    # the first real snapshot tick (which can be up to ~2s away).
     try:
-        await websocket.send_text('{"kind":"hello","tier":"pro"}')
+        # Hello frame — honest tier so trial users know what they're on.
+        hello = {
+            "kind": "hello",
+            "tier": record["tier"],
+            "push_cadence_s": "~5-10",
+            "note": "pushes arrive within 2s of each observer snapshot tick; observer cadence is 5-10s. Initial state lives at /api/v1/live (poll once on connect).",
+        }
+        await websocket.send_text(_json.dumps(hello, separators=(",", ":")))
         while True:
             payload = await q.get()
             await websocket.send_text(payload)
@@ -2596,6 +3114,7 @@ async def ws_firehose(websocket: WebSocket):
         print(f"[ws] client error: {e}", flush=True)
     finally:
         wsfanout.remove_client(q)
+        _ws_release(ip)
 
 
 @app.post("/api/upgrade", tags=["payments"], summary="Create a SOL payment intent")
@@ -2616,6 +3135,33 @@ def create_upgrade_intent(payload: dict):
     Returns memo + amount + Phantom deeplinks AND (if a new key was minted)
     the plaintext key shown ONCE. Send SOL with the memo to auto-activate.
     """
+    # Launch-week free trial short-circuit. If FREE_TRIAL_UNTIL is open,
+    # users don't need to sign up or pay — the API is fully free with no
+    # key required. Return a "not_open" status (which the goracle CLI
+    # already prints cleanly) with a message telling them exactly what
+    # to do instead. This unblocks any user hitting `goracle signup` on
+    # the OLD CLI without forcing a re-publish.
+    import os as _os
+    try:
+        _ft_until = int(_os.environ.get("FREE_TRIAL_UNTIL", "0").strip() or 0)
+    except ValueError:
+        _ft_until = 0
+    if _ft_until > int(time.time()):
+        return {
+            "status": "not_open",
+            "message": (
+                "🚀 Launch promo is live — no signup or payment needed.\n\n"
+                "The API is fully free during the promo window. Just call any "
+                "endpoint with no key:\n\n"
+                "  curl https://graduateoracle.fun/api/v1/runners?tier=5x&min_prob=0.20\n\n"
+                "  curl https://graduateoracle.fun/api/v1/live\n\n"
+                "When the promo ends, run `npx goracle signup` again to lock "
+                "the founding rate. Until then you don't need to do anything."
+            ),
+            "free_trial_active": True,
+            "purchasable": False,
+        }
+
     # Purchasing kill-switch (2026-05-17) — checked BEFORE any key is
     # minted, so a closed state can't orphan a free key. Honest 200
     # payload, not a 500/400. Single source of truth: sol_pay.PURCHASING_OPEN.
@@ -2699,6 +3245,22 @@ def signup_wallet_init(payload: dict):
 
     The wallet is NOT touched yet — no balance check, no key minted. That
     all happens when the browser submits the signature."""
+    # Short-circuit during the launch free-trial window. The CLI's
+    # signupWithWallet path doesn't handle a "status: not_open" payload
+    # (only the SOL-pay path does), so we surface the free-trial reason as
+    # a 400 with a clear message — the CLI prints `err.message` verbatim.
+    import os as _os
+    try:
+        _ft_until = int(_os.environ.get("FREE_TRIAL_UNTIL", "0").strip() or 0)
+    except ValueError:
+        _ft_until = 0
+    if _ft_until > int(time.time()):
+        raise HTTPException(400, detail={"error": (
+            "Launch promo is live — no signup needed. The API is fully free "
+            "right now with no key. Try: curl https://graduateoracle.fun/api/v1/runners"
+            "?tier=5x&min_prob=0.20  ·  Re-run goracle signup after the promo ends "
+            "to lock the founding rate."
+        )})
     payload = payload or {}
     wallet = (payload.get("wallet") or "").strip()
     tier   = (payload.get("tier") or "builder").strip()
@@ -2775,6 +3337,15 @@ def me(request: Request, _key=Depends(api_v1.require_api_key)):
 
 @app.get("/", response_class=HTMLResponse)
 def index():
+    """Landing page is the LIVE demo — watch the bot work in real time.
+    Replaces the prior static dashboard, which now lives at /about."""
+    return _serve_html("demo.html")
+
+
+@app.get("/about", response_class=HTMLResponse, include_in_schema=False)
+def about_page():
+    """Prior landing — copy-led value prop, tier runways, narrative. Kept
+    available at /about for users who want the deeper explainer."""
     return _serve_html("index.html")
 
 

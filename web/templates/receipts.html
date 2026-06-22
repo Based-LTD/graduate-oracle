@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>graduate-oracle · the receipts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Every prediction graduate-oracle makes is hash-locked into an hourly Merkle root before the outcome is known. Public, verifiable, undeniable.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .rec-main { max-width: 920px; margin: 50px auto 80px; padding: 0 24px; }
+
+  .rec-hero { text-align: center; margin-bottom: 36px; }
+  .rec-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .rec-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.2rem; font-weight: 700; letter-spacing: -0.5px;
+    margin: 0 0 16px;
+  }
+  .rec-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 720px; margin: 0 auto;
+    font-size: 0.92rem; line-height: 1.65;
+  }
+  .rec-hero-sub strong { color: #7ef0a3; font-weight: 600; }
+
+  /* Two summary stats — total commits + total predictions covered */
+  .summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 32px 0 36px;
+  }
+  @media (max-width: 600px) { .summary { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 22px 24px;
+    border: 1px solid rgba(80, 200, 120, 0.35);
+    border-radius: 8px;
+    background: linear-gradient(135deg,
+      rgba(80, 200, 120, 0.06) 0%,
+      rgba(0, 240, 255, 0.04) 100%);
+    text-align: center;
+  }
+  .summary-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; letter-spacing: 0.18em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .summary-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.6rem; font-weight: 900;
+    color: #7ef0a3;
+    text-shadow: 0 0 18px rgba(80, 200, 120, 0.3);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .summary-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; color: var(--muted);
+  }
+
+  /* Plain-english explanation */
+  .explain {
+    margin: 32px 0;
+    padding: 22px 26px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: var(--text);
+  }
+  .explain strong { color: #7ef0a3; }
+  .explain ol { padding-left: 20px; margin: 8px 0; }
+  .explain li { margin-bottom: 6px; }
+
+  h2.sec {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; font-weight: 700;
+    letter-spacing: 0.14em;
+    margin: 36px 0 12px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+  .sec-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; color: var(--muted);
+    margin: 0 0 14px;
+    line-height: 1.55;
+  }
+
+  /* Commits table */
+  .commits-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+  }
+  .commits-table th, .commits-table td {
+    padding: 10px 14px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .commits-table thead th {
+    color: var(--cyan); font-size: 0.7rem; letter-spacing: 0.16em;
+    text-transform: uppercase; background: rgba(0,212,255,0.05);
+  }
+  .commits-table tbody tr:last-child td { border-bottom: none; }
+  .commits-table .r { text-align: right; }
+  .commits-table .root-cell {
+    color: #7ef0a3;
+    cursor: pointer;
+    user-select: all;
+  }
+  .commits-table .root-cell:hover { text-decoration: underline; }
+  .commits-table .verify-link {
+    color: var(--cyan);
+    text-decoration: none;
+    font-size: 0.78rem;
+  }
+  .commits-table .verify-link:hover { text-decoration: underline; }
+
+  /* Proof lookup widget */
+  .proof-lookup {
+    margin: 32px 0;
+    padding: 22px 24px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+  }
+  .proof-lookup h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; letter-spacing: 0.18em;
+    color: var(--cyan); text-transform: uppercase;
+    margin: 0 0 12px;
+  }
+  .proof-lookup-form {
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .proof-lookup input {
+    flex: 1; min-width: 220px;
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem;
+    border-radius: 4px;
+  }
+  .proof-lookup input:focus {
+    outline: none;
+    border-color: var(--cyan);
+  }
+  .proof-lookup button {
+    padding: 10px 18px;
+    background: rgba(80, 200, 120, 0.85);
+    color: #0a0a0a;
+    border: 1px solid rgba(80, 200, 120, 1);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .proof-lookup button:hover { background: #7ef0a3; }
+  .proof-result {
+    margin-top: 14px;
+    padding: 14px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    display: none;
+  }
+  .proof-result.show { display: block; }
+  .proof-result.error { border-color: rgba(220,100,100,0.4); color: #f06e6e; }
+
+  .rec-foot {
+    text-align: center; margin-top: 36px; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  }
+  .rec-foot a { color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" aria-label="$GO on DEX Screener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
+  </a>
+</header>
+
+<main class="rec-main">
+
+  <section class="rec-hero">
+    <div class="rec-hero-tag">The receipts</div>
+    <h1>We can't backdate. Here's the proof.</h1>
+    <p class="rec-hero-sub">
+      Every prediction we make is hash-locked into an <strong>hourly Merkle root</strong>
+      before the outcome is known. The roots are public. Anyone can snapshot
+      this page right now — if a past root ever changes, we rewrote history.
+    </p>
+  </section>
+
+  <section class="summary">
+    <div class="summary-card">
+      <div class="summary-label">Hourly commits</div>
+      <div class="summary-value" id="total-commits">…</div>
+      <div class="summary-sub">cryptographic snapshots of all predictions</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Predictions hashed</div>
+      <div class="summary-value" id="total-preds">…</div>
+      <div class="summary-sub">across the entire ledger</div>
+    </div>
+  </section>
+
+  <div class="explain">
+    <strong>How this works:</strong>
+    <ol>
+      <li>Every prediction we log carries the mint, the predicted probability, and a timestamp.</li>
+      <li>Once an hour, we compute a <strong>SHA-256 Merkle tree</strong> over every prediction made in that hour and store the root hash.</li>
+      <li>The root depends on every leaf — change any prediction, the root changes.</li>
+      <li>Future-you (or anyone) can pull a single prediction's <strong>Merkle proof</strong> via the API and verify locally that it was included in its hour's root, exactly as committed.</li>
+    </ol>
+    <strong>Why it's undeniable:</strong> we don't sign the roots ourselves —
+    they're append-only and timestamped by the order they appear here.
+    Once you snapshot this page, any later modification is detectable.
+    Optional: we'll publish the daily root to Solana memo or X for an
+    independent timestamp anchor (coming soon).
+  </div>
+
+  <h2 class="sec">Verify a single prediction</h2>
+  <p class="sec-sub">
+    Paste a <code>prediction_id</code> from <code>/api/predictions/by_mint/{mint}</code> to fetch its Merkle proof.
+  </p>
+  <div class="proof-lookup">
+    <h3>Prediction proof lookup</h3>
+    <div class="proof-lookup-form">
+      <input type="text" id="proof-id-input" placeholder="prediction_id (e.g. 11158258)">
+      <button id="proof-fetch-btn">Fetch proof</button>
+    </div>
+    <pre class="proof-result" id="proof-result"></pre>
+  </div>
+
+  <h2 class="sec">Recent hourly commits</h2>
+  <p class="sec-sub">
+    The last 50 hours of merkle roots. Each row covers one hour of predictions.
+    Snapshot this page now — if any root below ever changes, we lied.
+  </p>
+  <table class="commits-table">
+    <thead>
+      <tr>
+        <th>Hour (UTC)</th>
+        <th>Merkle root</th>
+        <th class="r">Predictions</th>
+        <th class="r">Range</th>
+      </tr>
+    </thead>
+    <tbody id="commits-rows">
+      <tr><td colspan="4" style="color:var(--muted)">loading…</td></tr>
+    </tbody>
+  </table>
+
+  <p class="rec-foot">
+    raw JSON: <a href="/api/ledger/commits" target="_blank" rel="noopener">/api/ledger/commits</a>
+    &nbsp;·&nbsp;
+    <a href="/accuracy">accuracy receipts</a>
+    &nbsp;·&nbsp;
+    NFA · DYOR
+  </p>
+
+</main>
+
+<script>
+function fmtTime(unixSec) {
+  const d = new Date(unixSec * 1000);
+  return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+}
+function shortHash(h) { return h.slice(0, 8) + '…' + h.slice(-8); }
+function fmtN(v) { return v == null ? '—' : v.toLocaleString(); }
+
+async function loadCommits() {
+  try {
+    const r = await fetch('/api/ledger/commits?limit=50');
+    const d = await r.json();
+    const commits = d.commits || [];
+    const totalCommits = commits.length;
+    const totalPreds = commits.reduce((s, c) => s + (c.n_predictions || 0), 0);
+    document.getElementById('total-commits').textContent = fmtN(totalCommits);
+    document.getElementById('total-preds').textContent = fmtN(totalPreds);
+
+    if (commits.length === 0) {
+      document.getElementById('commits-rows').innerHTML =
+        '<tr><td colspan="4" style="color:var(--muted)">no commits yet</td></tr>';
+      return;
+    }
+
+    document.getElementById('commits-rows').innerHTML = commits.map(c => `
+      <tr>
+        <td>${fmtTime(c.period_start)}</td>
+        <td><span class="root-cell" title="${c.merkle_root_hex} (click to copy)" data-root="${c.merkle_root_hex}">${shortHash(c.merkle_root_hex)}</span></td>
+        <td class="r">${c.n_predictions}</td>
+        <td class="r" style="color:var(--muted)">${c.first_pred_id}–${c.last_pred_id}</td>
+      </tr>
+    `).join('');
+
+    // Click-to-copy on root hashes
+    document.querySelectorAll('.root-cell').forEach(el => {
+      el.addEventListener('click', () => {
+        navigator.clipboard?.writeText(el.dataset.root);
+        const orig = el.textContent;
+        el.textContent = 'copied!';
+        setTimeout(() => el.textContent = orig, 900);
+      });
+    });
+  } catch (e) {
+    document.getElementById('commits-rows').innerHTML =
+      '<tr><td colspan="4" style="color:#f06e6e">failed to load commits — try again later</td></tr>';
+  }
+}
+
+async function fetchProof() {
+  const idInput = document.getElementById('proof-id-input');
+  const result = document.getElementById('proof-result');
+  const id = idInput.value.trim();
+  if (!id || !/^\d+$/.test(id)) {
+    result.className = 'proof-result show error';
+    result.textContent = 'enter a numeric prediction_id (you can find one in /api/predictions/by_mint/{mint})';
+    return;
+  }
+  result.className = 'proof-result show';
+  result.textContent = 'fetching…';
+  try {
+    const r = await fetch(`/api/ledger/proof/${id}`);
+    if (!r.ok) {
+      result.className = 'proof-result show error';
+      result.textContent = `error ${r.status} — prediction not found, or not yet committed (commits run hourly)`;
+      return;
+    }
+    const d = await r.json();
+    result.className = 'proof-result show';
+    result.textContent = JSON.stringify(d, null, 2);
+  } catch (e) {
+    result.className = 'proof-result show error';
+    result.textContent = 'fetch failed: ' + (e.message || 'unknown error');
+  }
+}
+
+document.getElementById('proof-fetch-btn').addEventListener('click', fetchProof);
+document.getElementById('proof-id-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') fetchProof();
+});
+
+loadCommits();
+</script>
+
+</body>
+</html>

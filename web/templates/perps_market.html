@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>perps · market drill-down · graduate-oracle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Per-market perps intel: smart-money currently positioned, win rate at +5m/+1h/+24h, recent entries.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.drill-main { max-width: 1100px; margin: 24px auto 60px; padding: 0 16px; font-family: 'JetBrains Mono', monospace; }
+.drill-back { display:inline-block; color:#80c0ff; text-decoration:none; font-size:12px; margin-bottom:16px; letter-spacing:0.06em; }
+.drill-back:hover { text-decoration: underline; }
+.drill-hero { padding: 18px 0 14px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.drill-hero h1 { font-family: 'Orbitron', sans-serif; font-size: clamp(28px, 5vw, 48px); font-weight: 900; margin: 0 0 6px; color: #fff; letter-spacing: 0.04em; }
+.drill-hero .sub { font-size: 12px; color: var(--muted); }
+.spark { width: 100%; height: 60px; margin: 14px 0 6px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.stat-card { border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; background: rgba(0,0,0,0.4); text-align: center; }
+.stat-card .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 4px; }
+.stat-card .value { font-size: 18px; color: #fff; font-weight: 700; }
+.stat-card .value.pos { color: #88e0aa; }
+.stat-card .value.neg { color: #ff9090; }
+.sec { font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #80c0ff; margin: 28px 0 10px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.tbl th, .tbl td { padding: 8px 12px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl thead th { font-size: 10px; color: var(--muted); letter-spacing: 0.10em; text-transform: uppercase; background: rgba(255,255,255,0.02); }
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl td.name { color:#fff; font-weight:600; }
+.tbl td.pos { color: #88e0aa; font-weight: 700; }
+.tbl td.neg { color: #ff9090; font-weight: 700; }
+.tbl a { color: #80c0ff; text-decoration: none; }
+.tbl a:hover { text-decoration: underline; }
+.warmup { color: var(--muted); padding: 24px 0; text-align: center; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link active" href="/perps">PERPS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/cli">CLI</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+  <a class="head-dex-link" href="https://dexscreener.com/solana/dhapj3z14jhsy1lacssvi8bufdt7q7eaniuyeptarqu3" target="_blank" rel="noopener" title="$GO chart on DEX Screener">
+    <img src="/static/brand/dexscreener.png" alt="DEX Screener" width="22" height="22">
+  </a>
+</header>
+
+<main class="drill-main">
+  <a class="drill-back" href="/perps">← back to perps observatory</a>
+  <section class="drill-hero">
+    <h1 id="mkt-title">loading…</h1>
+    <div class="sub">Hyperliquid · perp · smart-money intel</div>
+    <svg class="spark" id="spark" preserveAspectRatio="none" viewBox="0 0 100 30"></svg>
+    <div class="sub" id="spark-meta">price series · last 200 ticks</div>
+  </section>
+
+  <h2 class="sec">🧾 Smart-money entries on this market · per-horizon hit rate</h2>
+  <div class="stat-grid" id="winrates"></div>
+
+  <h2 class="sec">🧠 Smart wallets currently positioned</h2>
+  <div id="active-wrap"></div>
+
+  <h2 class="sec">⚡ Recent entries on this market</h2>
+  <div id="entries-wrap"></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+function fmtUsd(n){ if(n == null) return '—'; const x = Number(n); if(Math.abs(x)>=1e9) return '$'+(x/1e9).toFixed(2)+'B'; if(Math.abs(x)>=1e6) return '$'+(x/1e6).toFixed(2)+'M'; if(Math.abs(x)>=1e3) return '$'+(x/1e3).toFixed(1)+'K'; return '$'+x.toFixed(0); }
+function fmtAgo(s){ if(s<60) return s+'s'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
+function shortAddr(a){ return a ? a.slice(0,6)+'…'+a.slice(-4) : '—'; }
+
+const market = decodeURIComponent(location.pathname.split('/').pop());
+
+function renderSpark(series){
+  if(!series || series.length < 2){
+    $('spark').innerHTML = '<text x="50" y="16" text-anchor="middle" fill="#666" font-size="6" font-family="JetBrains Mono">price series warming…</text>';
+    return;
+  }
+  const prices = series.map(p => p.px);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = (max - min) || 1;
+  const W = 100, H = 30;
+  const stepX = W / (series.length - 1);
+  const pts = series.map((p, i) => {
+    const x = (i * stepX).toFixed(2);
+    const y = (H - ((p.px - min) / range) * (H - 4) - 2).toFixed(2);
+    return `${x},${y}`;
+  }).join(' ');
+  const first = series[0].px, last = series[series.length-1].px;
+  const pctMove = ((last - first) / first) * 100;
+  const color = last >= first ? '#88e0aa' : '#ff9090';
+  $('spark').innerHTML = `<polyline fill="none" stroke="${color}" stroke-width="0.6" points="${pts}"/>`;
+  $('spark-meta').textContent = `min $${min.toFixed(2)} · max $${max.toFixed(2)} · move ${pctMove>=0?'+':''}${pctMove.toFixed(2)}%`;
+}
+
+async function load(){
+  $('mkt-title').textContent = market;
+  const r = await fetch('/api/perps/market/' + encodeURIComponent(market));
+  const d = await r.json();
+
+  renderSpark(d.price_series || []);
+
+  // win rates
+  const wr = d.win_rates || {};
+  $('winrates').innerHTML = ['5m','1h','24h'].map(h => {
+    const v = wr[h] || {status:'warming', n:0};
+    if(v.status !== 'ok') return `<div class="stat-card"><div class="label">+${h}</div><div class="value">warming…</div></div>`;
+    const mean = (v.mean_move_pct || 0).toFixed(2);
+    return `<div class="stat-card">
+      <div class="label">+${h} · n=${v.n}</div>
+      <div class="value ${v.hit_rate>=0.5?'pos':'neg'}">${(v.hit_rate*100).toFixed(1)}%</div>
+      <div class="label" style="margin-top:6px">mean move <span class="${mean>=0?'pos':'neg'}" style="color: inherit; font-weight:700">${mean>=0?'+':''}${mean}%</span></div>
+    </div>`;
+  }).join('');
+
+  // currently active smart wallets
+  const active = d.smart_money_active || [];
+  if(active.length === 0){
+    $('active-wrap').innerHTML = '<div class="warmup">No smart wallets currently positioned. Cycle takes ~5 min after deploy.</div>';
+  } else {
+    $('active-wrap').innerHTML = `<table class="tbl"><thead><tr><th>Wallet</th><th>Side</th><th>Size</th><th>Entry</th><th>Lev</th><th>uPnL</th><th>Wallet 30d ROI</th></tr></thead><tbody>${
+      active.slice(0,25).map(a => {
+        const roi = (a.month_roi || 0) * 100;
+        return `<tr>
+          <td class="name"><a href="/perps/wallet/${a.address}">${shortAddr(a.address)}</a>${a.is_whale?' 🐋':''}</td>
+          <td class="${a.side === 'long' ? 'pos' : 'neg'}">${a.side.toUpperCase()}</td>
+          <td>${fmtUsd(a.position_value_usd)}</td>
+          <td>$${(a.entry_px||0).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
+          <td>${a.leverage ? a.leverage+'×' : '—'}</td>
+          <td class="${(a.unrealized_pnl||0)>=0?'pos':'neg'}">${fmtUsd(a.unrealized_pnl)}</td>
+          <td class="${roi>=0?'pos':'neg'}">${roi>=0?'+':''}${roi.toFixed(1)}%</td>
+        </tr>`;
+      }).join('')
+    }</tbody></table>`;
+  }
+
+  // recent entries
+  const ents = d.recent_entries || [];
+  if(ents.length === 0){
+    $('entries-wrap').innerHTML = '<div class="warmup">No entries logged on this market yet.</div>';
+  } else {
+    const now = Math.floor(Date.now()/1000);
+    $('entries-wrap').innerHTML = `<table class="tbl"><thead><tr><th>When</th><th>Wallet</th><th>Side</th><th>Size</th><th>Entry</th><th>Lev</th><th>+5m</th><th>+1h</th><th>+24h</th></tr></thead><tbody>${
+      ents.slice(0, 30).map(e => {
+        const age = Math.max(0, now - e.detected_at_unix);
+        const oc = (v) => v == null ? '—' : `<span class="${v>=0?'pos':'neg'}">${v>=0?'+':''}${(v*100).toFixed(2)}%</span>`;
+        return `<tr>
+          <td>${fmtAgo(age)} ago</td>
+          <td class="name"><a href="/perps/wallet/${e.address}">${shortAddr(e.address)}</a></td>
+          <td class="${e.side === 'long' ? 'pos' : 'neg'}">${e.side.toUpperCase()}</td>
+          <td>${fmtUsd(e.position_value_usd)}</td>
+          <td>$${(e.entry_px||0).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
+          <td>${e.leverage ? e.leverage+'×' : '—'}</td>
+          <td>${oc(e.outcome_5m_pct)}</td>
+          <td>${oc(e.outcome_1h_pct)}</td>
+          <td>${oc(e.outcome_24h_pct)}</td>
+        </tr>`;
+      }).join('')
+    }</tbody></table>`;
+  }
+}
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>
