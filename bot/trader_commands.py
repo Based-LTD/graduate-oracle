@@ -201,6 +201,11 @@ def _format_buy_receipt(r: dict) -> str:
     except Exception:
         pass
 
+    # Half of fee is burning $GRADUATE — reinforce the link on every receipt
+    burn_line = ""
+    if fee:
+        burn_line = f"🔥 _50% of fee → $GRADUATE buy + burn_\n"
+
     return (
         f"✅ *Bought* `{short}`\n"
         f"`{mint}`\n\n"
@@ -208,6 +213,7 @@ def _format_buy_receipt(r: dict) -> str:
         + (f"  (+ {fee/1e9:.5f} fee)" if fee else "") + "\n"
         f"🪙 Got:   *{_fmt_tokens(tokens_raw)}* tokens\n"
         f"{mc_line}"
+        f"{burn_line}"
         f"📍 Position #{pid}\n"
         f"📊 Phase: _{phase}_  ·  {sig_link}"
     )
