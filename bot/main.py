@@ -2328,12 +2328,27 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
                                 f"_Upgrade: /upgrade for the full feed._")
                 else:
                     msg = _format_alert_rich(snap, msg_extra)
-                kb = InlineKeyboardMarkup([[
+                kb_rows = [[
                     InlineKeyboardButton("Pump", url=f"https://pump.fun/coin/{mint}"),
                     InlineKeyboardButton("Axiom", url=f"https://axiom.trade/t/{mint}"),
                     InlineKeyboardButton("Photon", url=f"https://photon-sol.tinyastro.io/en/lp/{mint}"),
                     InlineKeyboardButton("Dex", url=f"https://dexscreener.com/solana/{mint}"),
-                ]])
+                ]]
+                # Trader buy buttons — operator-only. Adds a second row of
+                # [Buy 0.01] [Buy 0.05] [Buy 0.25] when the recipient is in
+                # ADMIN_TG_IDS and TRADER_ENABLED=1. Non-admins (current prod
+                # users) never see these buttons.
+                if tg_id in _ADMIN_TG_IDS:
+                    try:
+                        import trader_commands
+                        if trader_commands.is_enabled():
+                            kb_rows.append(
+                                trader_commands.build_buy_buttons(mint).inline_keyboard[0]
+                            )
+                    except Exception as e:
+                        # Never let trader integration break alert delivery
+                        print(f"[bot] trader buy-buttons skipped: {e}", flush=True)
+                kb = InlineKeyboardMarkup(kb_rows)
                 await _send_alert(application, tg_id, msg, reply_markup=kb)
                 # Log to tg_fires so the morning audit + /api/alerts/audit
                 # endpoint sees push-fired alerts. Without this, the audit
@@ -2745,6 +2760,18 @@ def main():
     app.add_handler(CommandHandler("plans", cmd_plans))
     app.add_handler(CommandHandler("accuracy", cmd_accuracy))
     app.add_handler(CommandHandler("grant", cmd_grant))
+
+    # Trader commands — operator-gated, off by default. Set TRADER_ENABLED=1
+    # + ADMIN_TG_IDS=<id> on the bot's env to turn on. Isolated in a
+    # separate module so trader bugs can't crash this main bot loop.
+    try:
+        import trader_commands
+        trader_commands.register(app, _ADMIN_TG_IDS)
+    except Exception as e:
+        # Importing the trader module pulls in web/* — if anything goes
+        # wrong we log + skip. The bot keeps running with the existing
+        # public commands.
+        print(f"[bot] trader_commands registration failed (skipping): {e}", flush=True)
 
     # Schedule alert evaluator via JobQueue (proper PTB v21 pattern)
     app.job_queue.run_repeating(alert_tick, interval=15, first=10, name="alert_evaluator")
