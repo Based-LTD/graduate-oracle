@@ -195,6 +195,13 @@ _MIGRATIONS = [
         "ALTER TABLE trader_positions ADD COLUMN sell_fee_lamports INTEGER NOT NULL DEFAULT 0"),
     ("trader_positions", "net_pnl_lamports",
         "ALTER TABLE trader_positions ADD COLUMN net_pnl_lamports INTEGER"),
+    # Day 4.23 — market cap snapshots for the trade receipt
+    ("trader_positions", "entry_mcap_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN entry_mcap_lamports INTEGER"),
+    ("trader_positions", "exit_mcap_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN exit_mcap_lamports INTEGER"),
+    ("trader_positions", "token_total_supply",
+        "ALTER TABLE trader_positions ADD COLUMN token_total_supply INTEGER"),
 ]
 
 
@@ -329,6 +336,42 @@ def mark_sold(
              WHERE id = ?
         """, (sell_signature, int(sell_sol_lamports), ts, gross,
               int(sell_fee_lamports), net, int(position_id)))
+
+
+def compute_mcap_lamports(sol_lamports: int, tokens_raw: int,
+                          token_total_supply_raw: int) -> Optional[int]:
+    """Market cap in lamports given a trade snapshot.
+
+    MC = price_per_raw_token × total_supply
+       = (sol_lamports / tokens_raw) × token_total_supply_raw
+
+    Returns None on invalid inputs. Caller divides by 1e9 to display SOL,
+    multiplies by SOL/USD for USD."""
+    if sol_lamports <= 0 or tokens_raw <= 0 or token_total_supply_raw <= 0:
+        return None
+    # Use float intermediate to avoid integer-division precision loss
+    return int(sol_lamports * token_total_supply_raw / tokens_raw)
+
+
+def set_entry_mcap(position_id: int, *, entry_mcap_lamports: Optional[int],
+                   token_total_supply_raw: Optional[int]):
+    """Stamp the entry market-cap snapshot onto the position row."""
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            "UPDATE trader_positions SET entry_mcap_lamports = ?, "
+            "token_total_supply = ? WHERE id = ?",
+            (entry_mcap_lamports, token_total_supply_raw, int(position_id)),
+        )
+
+
+def set_exit_mcap(position_id: int, exit_mcap_lamports: Optional[int]):
+    """Stamp the exit MC snapshot. Called from orchestrator.sell() after
+    we have the sell quote."""
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            "UPDATE trader_positions SET exit_mcap_lamports = ? WHERE id = ?",
+            (exit_mcap_lamports, int(position_id)),
+        )
 
 
 def set_buy_fee(position_id: int, buy_fee_lamports: int):

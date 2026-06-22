@@ -706,6 +706,29 @@ def _fmt_position_detail(pos: dict, settings: dict) -> str:
         net_pct = (net / cost * 100) if cost else 0
         sign = "🟢" if net >= 0 else "🔴"
         verdict = "PROFIT" if net >= 0 else "LOSS"
+
+        # MC snapshot block — only when both stored
+        entry_mc = pos.get("entry_mcap_lamports")
+        exit_mc = pos.get("exit_mcap_lamports")
+        mc_block = ""
+        if entry_mc and exit_mc:
+            try:
+                import jupiter_price
+                sol_usd = jupiter_price.get_sol_usd()
+            except Exception:
+                sol_usd = None
+            # Reuse the same MC formatter from trader_commands. bot/ isn't
+            # a package, so we import by module name (it's on sys.path).
+            import trader_commands as _tc
+            _fmt_mcap = _tc._fmt_mcap
+            mc_change = ((exit_mc - entry_mc) / entry_mc * 100)
+            arrow = "📈" if mc_change >= 0 else "📉"
+            mc_block = (
+                f"\n📊 MC: *{_fmt_mcap(entry_mc, sol_usd)}* "
+                f"→ *{_fmt_mcap(exit_mc, sol_usd)}* "
+                f"{arrow} {mc_change:+.0f}%"
+            )
+
         cur_line = (
             f"*Status:* sold ({pos.get('exit_reason') or 'manual'})\n\n"
             f"Cost basis: *{cost:.4f}* SOL\n"
@@ -714,6 +737,7 @@ def _fmt_position_detail(pos: dict, settings: dict) -> str:
                if (buy_fee + sell_fee) > 0 else "")
             + f"───────────────────\n"
             f"{sign} *Net: {net:+.4f} SOL ({net_pct:+.2f}%)* — {verdict}"
+            + mc_block
         )
     else:
         cur = pos.get("current_sol_value_lamports")

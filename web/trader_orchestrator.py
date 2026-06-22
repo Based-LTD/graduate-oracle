@@ -369,6 +369,26 @@ def buy(
             tsl_pct=eff_tsl,
             breakeven_pct=eff_be,
         )
+
+        # ── Stage 7c: stamp entry market-cap snapshot ───────────────────
+        # MC = (sol_paid / tokens_received) × total_supply. The curve
+        # gives us token_total_supply for pump.fun pre-grad mints; for
+        # post-grad/Raydium we'd need a separate lookup (Day 4.23+ TODO).
+        try:
+            total_supply = int(curve.get("token_total_supply") or 0)
+            entry_mcap = trader_positions.compute_mcap_lamports(
+                int(built["buy_lamports"]),
+                int(built["expected_tokens_out"]),
+                total_supply,
+            )
+            if entry_mcap and total_supply:
+                trader_positions.set_entry_mcap(
+                    position_id,
+                    entry_mcap_lamports=entry_mcap,
+                    token_total_supply_raw=total_supply,
+                )
+        except Exception as me:
+            print(f"[orchestrator] set_entry_mcap failed: {me}", flush=True)
     except Exception as e:
         raise OrchestratorError("position", f"create_position failed: {e}") from e
 
@@ -552,6 +572,20 @@ def sell(
         dry_run=False,
     )
     sell_fee_lamports = int((sell_fee_result or {}).get("total_fee_lamports") or 0)
+
+    # Stamp exit MC snapshot. token_total_supply was captured at buy time.
+    try:
+        total_supply = int(pos.get("token_total_supply") or 0)
+        if total_supply > 0:
+            exit_mcap = trader_positions.compute_mcap_lamports(
+                int(built["expected_sol_out_lamports"]),
+                int(tokens_to_sell),
+                total_supply,
+            )
+            if exit_mcap:
+                trader_positions.set_exit_mcap(int(position_id), exit_mcap)
+    except Exception as me:
+        print(f"[orchestrator] set_exit_mcap failed: {me}", flush=True)
 
     # ── Stage 7: mark position as sold ─────────────────────────────────
     # Important: we use the EXPECTED out lamports for PnL accounting NOW.

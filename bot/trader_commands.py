@@ -115,6 +115,35 @@ def _fmt_tokens(raw: int) -> str:
     return f"{whole:,.2f}"
 
 
+def _fmt_mcap(mcap_lamports: int | None, sol_usd: float | None = None) -> str:
+    """Render market cap as 'X.YZ SOL ($N,NNN)'. SOL display rounds to
+    2dp; USD uses K/M for compactness."""
+    if mcap_lamports is None or mcap_lamports <= 0:
+        return "—"
+    sol = mcap_lamports / 1e9
+    if sol_usd and sol_usd > 0:
+        usd = sol * sol_usd
+        if usd >= 1_000_000:
+            usd_str = f"${usd/1_000_000:.2f}M"
+        elif usd >= 1_000:
+            usd_str = f"${usd/1_000:.1f}K"
+        else:
+            usd_str = f"${usd:.0f}"
+        return f"{sol:.2f} SOL ({usd_str})"
+    return f"{sol:.2f} SOL"
+
+
+def _get_sol_usd_cached() -> float | None:
+    """Look up live SOL/USD via web/jupiter_price.get_sol_usd. That module
+    has its own in-process cache; we just delegate. Returns None on any
+    failure so the receipt renders without USD."""
+    try:
+        import jupiter_price
+        return jupiter_price.get_sol_usd()
+    except Exception:
+        return None
+
+
 def _format_buy_receipt(r: dict) -> str:
     """Markdown receipt for a successful buy."""
     mint = r["mint"]
@@ -126,12 +155,27 @@ def _format_buy_receipt(r: dict) -> str:
     sig_link = f"[`{sig[:12]}…`](https://solscan.io/tx/{sig})" if sig else "—"
     fee = (r.get("fee") or {}).get("total_fee_lamports", 0)
     pid = r.get("position_id")
+
+    # Market-cap snapshot at entry — re-read the position row since the
+    # orchestrator stamps it AFTER the result envelope is built.
+    mc_line = ""
+    try:
+        import trader_positions
+        sol_usd = _get_sol_usd_cached()
+        row = trader_positions.get_position(pid) if pid else None
+        mcap = (row or {}).get("entry_mcap_lamports")
+        if mcap:
+            mc_line = f"📈 MC at entry: *{_fmt_mcap(mcap, sol_usd)}*\n"
+    except Exception:
+        pass
+
     return (
         f"✅ *Bought* `{short}`\n"
         f"`{mint}`\n\n"
         f"💰 Spent: *{sol:.4f}* SOL"
         + (f"  (+ {fee/1e9:.5f} fee)" if fee else "") + "\n"
         f"🪙 Got:   *{_fmt_tokens(tokens_raw)}* tokens\n"
+        f"{mc_line}"
         f"📍 Position #{pid}\n"
         f"📊 Phase: _{phase}_  ·  {sig_link}"
     )
@@ -152,9 +196,10 @@ def _format_sell_receipt(r: dict) -> str:
     sig_link = f"[`{sig[:12]}…`](https://solscan.io/tx/{sig})" if sig else "—"
     pct = int(r.get("sell_pct", 1) * 100)
 
-    # Honest accounting block. Pull the just-written position row so we
-    # see the final stored values (buy + buy_fee + sell + sell_fee + net).
+    # Honest accounting block + MC snapshots. Pull the just-written
+    # position row so we see all the final stored values.
     pnl_block = ""
+    mc_block = ""
     try:
         import trader_positions
         row = trader_positions.get_position(pid)
@@ -175,6 +220,20 @@ def _format_sell_receipt(r: dict) -> str:
                 + f"  ───────────────────\n"
                 f"  {sign} Net: *{net:+.4f}* SOL  ({net_pct:+.2f}%)  ← {verdict}"
             )
+
+            # MC snapshots — only shown when both entry + exit are stored
+            entry_mc = row.get("entry_mcap_lamports")
+            exit_mc  = row.get("exit_mcap_lamports")
+            if entry_mc and exit_mc:
+                sol_usd = _get_sol_usd_cached()
+                mc_change = ((exit_mc - entry_mc) / entry_mc * 100) if entry_mc else 0
+                mc_arrow = "📈" if mc_change >= 0 else "📉"
+                mc_block = (
+                    f"\n\n📊 *Market cap:*\n"
+                    f"  Entry: *{_fmt_mcap(entry_mc, sol_usd)}*\n"
+                    f"  Exit:  *{_fmt_mcap(exit_mc, sol_usd)}*  "
+                    f"{mc_arrow} *{mc_change:+.1f}%*"
+                )
     except Exception:
         pass
 
@@ -184,6 +243,7 @@ def _format_sell_receipt(r: dict) -> str:
         f"💰 Received: *{sol_out:.4f}* SOL  (pre-fees)\n"
         f"📍 Position #{pid} → _{new_status}_\n"
         f"{sig_link}"
+        f"{mc_block}"
         f"{pnl_block}"
     )
 
