@@ -135,6 +135,13 @@ CREATE TABLE IF NOT EXISTS trader_user_settings (
     tsl_pct              REAL,
     breakeven_pct        REAL,
     buy_presets_sol_json TEXT,
+    -- Execution / safety knobs (Day 4.20):
+    --   slippage_bps:   max accepted slippage on swap (100=1%, 500=5%)
+    --   jito_tip_mode:  'auto' (Jito p95 floor) | 'fast' (50k) | 'turbo' (200k) | 'ultra' (500k)
+    --   max_trade_sol:  hard cap per buy. Refused if any single /buy exceeds. NULL = no cap.
+    slippage_bps         INTEGER,
+    jito_tip_mode        TEXT,
+    max_trade_sol        REAL,
     updated_at           INTEGER NOT NULL
 );
 
@@ -172,6 +179,12 @@ _MIGRATIONS = [
         "ALTER TABLE trader_positions ADD COLUMN sl_armed_at_breakeven INTEGER NOT NULL DEFAULT 0"),
     ("trader_user_settings", "buy_presets_sol_json",
         "ALTER TABLE trader_user_settings ADD COLUMN buy_presets_sol_json TEXT"),
+    ("trader_user_settings", "slippage_bps",
+        "ALTER TABLE trader_user_settings ADD COLUMN slippage_bps INTEGER"),
+    ("trader_user_settings", "jito_tip_mode",
+        "ALTER TABLE trader_user_settings ADD COLUMN jito_tip_mode TEXT"),
+    ("trader_user_settings", "max_trade_sol",
+        "ALTER TABLE trader_user_settings ADD COLUMN max_trade_sol REAL"),
 ]
 
 
@@ -337,6 +350,19 @@ DEFAULT_SL_PCT        = -50.0   # exit if down 50%
 DEFAULT_TSL_PCT       = 30.0    # trail 30% off the high-water mark
 DEFAULT_BREAKEVEN_PCT = 20.0    # at +20%, flip SL to entry
 DEFAULT_BUY_PRESETS_SOL = [0.01, 0.05, 0.25]  # 3 inline-button amounts
+DEFAULT_SLIPPAGE_BPS    = 500   # 5% — fine for typical pump.fun trades
+DEFAULT_JITO_TIP_MODE   = "auto"  # query Jito p95 floor each tick
+DEFAULT_MAX_TRADE_SOL   = 1.0   # safety cap — refuses single buys > 1 SOL
+
+
+# Jito tip mode → lamports. "auto" returns None which the orchestrator
+# resolves at call time via jito_tip_floor.get_tip_lamports().
+JITO_TIP_MODE_LAMPORTS = {
+    "auto":  None,
+    "fast":   50_000,    # 0.00005 SOL — ~p90 in quiet markets
+    "turbo": 200_000,    # 0.0002 SOL  — p95+ in normal market
+    "ultra": 500_000,    # 0.0005 SOL  — p99 territory, race-to-block
+}
 
 
 def get_user_settings(user_id: str | int) -> dict:
@@ -375,6 +401,23 @@ def get_user_settings(user_id: str | int) -> dict:
     except Exception:
         presets = None
 
+    # Execution / safety fields. Guard column access in case of legacy
+    # rows without the new columns.
+    def _safe_get(col, default):
+        try:
+            if row and col in row.keys() and row[col] is not None:
+                return row[col]
+        except Exception:
+            pass
+        return default
+    slippage_bps  = int(_safe_get("slippage_bps",  DEFAULT_SLIPPAGE_BPS))
+    jito_tip_mode = str(_safe_get("jito_tip_mode", DEFAULT_JITO_TIP_MODE))
+    if jito_tip_mode not in JITO_TIP_MODE_LAMPORTS:
+        jito_tip_mode = DEFAULT_JITO_TIP_MODE
+    max_trade_sol = _safe_get("max_trade_sol", DEFAULT_MAX_TRADE_SOL)
+    if max_trade_sol is not None:
+        max_trade_sol = float(max_trade_sol)
+
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
         "sl_pct":        float(sl),
@@ -382,6 +425,9 @@ def get_user_settings(user_id: str | int) -> dict:
         "breakeven_pct": float(be),
         "buy_presets_sol": presets if (isinstance(presets, list) and presets)
                            else list(DEFAULT_BUY_PRESETS_SOL),
+        "slippage_bps":   slippage_bps,
+        "jito_tip_mode":  jito_tip_mode,
+        "max_trade_sol":  max_trade_sol,
     }
 
 
@@ -392,6 +438,10 @@ def set_user_settings(
     tsl_pct: Optional[float] = None,
     breakeven_pct: Optional[float] = None,
     buy_presets_sol: Optional[list] = None,
+    slippage_bps: Optional[int] = None,
+    jito_tip_mode: Optional[str] = None,
+    max_trade_sol: Optional[float] = None,
+    clear_max_trade_sol: bool = False,
 ):
     """Upsert per-user auto-exit defaults. None values leave the existing
     field untouched (set only what changed)."""
@@ -403,37 +453,55 @@ def set_user_settings(
             "SELECT * FROM trader_user_settings WHERE user_id = ?",
             (str(user_id),),
         ).fetchone()
-        existing_presets = None
-        if existing:
+        # Helper to safely read a possibly-missing column from the existing row.
+        def _e(col, fallback=None):
+            if not existing:
+                return fallback
             try:
-                if "buy_presets_sol_json" in existing.keys():
-                    existing_presets = existing["buy_presets_sol_json"]
+                if col in existing.keys():
+                    return existing[col]
             except Exception:
                 pass
+            return fallback
+
         merged = {
             "tp_ladder_json": _json.dumps(tp_ladder) if tp_ladder is not None
-                              else (existing["tp_ladder_json"] if existing else None),
-            "sl_pct":        sl_pct        if sl_pct        is not None else (existing["sl_pct"]        if existing else None),
-            "tsl_pct":       tsl_pct       if tsl_pct       is not None else (existing["tsl_pct"]       if existing else None),
-            "breakeven_pct": breakeven_pct if breakeven_pct is not None else (existing["breakeven_pct"] if existing else None),
+                              else _e("tp_ladder_json"),
+            "sl_pct":        sl_pct        if sl_pct        is not None else _e("sl_pct"),
+            "tsl_pct":       tsl_pct       if tsl_pct       is not None else _e("tsl_pct"),
+            "breakeven_pct": breakeven_pct if breakeven_pct is not None else _e("breakeven_pct"),
             "buy_presets_sol_json": _json.dumps(buy_presets_sol) if buy_presets_sol is not None
-                                    else existing_presets,
+                                    else _e("buy_presets_sol_json"),
+            "slippage_bps":  slippage_bps  if slippage_bps  is not None else _e("slippage_bps"),
+            "jito_tip_mode": jito_tip_mode if jito_tip_mode is not None else _e("jito_tip_mode"),
+            # max_trade_sol can be None to disable the cap. clear_max_trade_sol
+            # is the explicit "remove the cap" signal — pass-through None means
+            # "leave unchanged."
+            "max_trade_sol": (None if clear_max_trade_sol
+                              else (max_trade_sol if max_trade_sol is not None
+                                    else _e("max_trade_sol"))),
         }
         c.execute("""
             INSERT INTO trader_user_settings
                 (user_id, tp_ladder_json, sl_pct, tsl_pct, breakeven_pct,
-                 buy_presets_sol_json, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 buy_presets_sol_json, slippage_bps, jito_tip_mode,
+                 max_trade_sol, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 tp_ladder_json       = excluded.tp_ladder_json,
                 sl_pct               = excluded.sl_pct,
                 tsl_pct              = excluded.tsl_pct,
                 breakeven_pct        = excluded.breakeven_pct,
                 buy_presets_sol_json = excluded.buy_presets_sol_json,
+                slippage_bps         = excluded.slippage_bps,
+                jito_tip_mode        = excluded.jito_tip_mode,
+                max_trade_sol        = excluded.max_trade_sol,
                 updated_at           = excluded.updated_at
         """, (str(user_id), merged["tp_ladder_json"], merged["sl_pct"],
               merged["tsl_pct"], merged["breakeven_pct"],
-              merged["buy_presets_sol_json"], int(_time.time())))
+              merged["buy_presets_sol_json"], merged["slippage_bps"],
+              merged["jito_tip_mode"], merged["max_trade_sol"],
+              int(_time.time())))
 
 
 def set_position_auto_exit(
@@ -527,6 +595,64 @@ def update_position_monitor_state(
             f"UPDATE trader_positions SET {', '.join(fields)} WHERE id = ?",
             args,
         )
+
+
+# Pre-baked strategy bundles. Applied in one tap from the hub.
+STRATEGY_PRESETS: dict[str, dict] = {
+    "conservative": {
+        "label":     "🎯 Conservative",
+        "blurb":     "Lock the small win. Tight risk.",
+        "tp_ladder": [{"pct": 50, "sell_pct": 100}],
+        "sl_pct":        -25.0,
+        "tsl_pct":        15.0,
+        "breakeven_pct":  10.0,
+        "slippage_bps":   300,
+        "jito_tip_mode":  "auto",
+    },
+    "balanced": {
+        "label":     "⚖️ Balanced",
+        "blurb":     "Take half off at +50%, run the rest with a trail.",
+        "tp_ladder": [
+            {"pct": 50,  "sell_pct": 50},
+            {"pct": 200, "sell_pct": 100},
+        ],
+        "sl_pct":        -50.0,
+        "tsl_pct":        30.0,
+        "breakeven_pct":  20.0,
+        "slippage_bps":   500,
+        "jito_tip_mode":  "auto",
+    },
+    "yolo": {
+        "label":     "🚀 YOLO",
+        "blurb":     "Aim for the moonshot. Wide stops, big tip.",
+        "tp_ladder": [
+            {"pct": 200,  "sell_pct": 33},
+            {"pct": 1000, "sell_pct": 100},
+        ],
+        "sl_pct":        -75.0,
+        "tsl_pct":        50.0,
+        "breakeven_pct":  50.0,
+        "slippage_bps":  1000,
+        "jito_tip_mode":  "turbo",
+    },
+}
+
+
+def apply_strategy_preset(user_id: str | int, name: str):
+    """Overwrite every exit/execution field in one shot. Buy presets are
+    left untouched — the user keeps the amounts they're used to."""
+    if name not in STRATEGY_PRESETS:
+        raise ValueError(f"unknown strategy {name!r}; pick from {sorted(STRATEGY_PRESETS)}")
+    p = STRATEGY_PRESETS[name]
+    set_user_settings(
+        user_id,
+        tp_ladder=list(p["tp_ladder"]),
+        sl_pct=p["sl_pct"],
+        tsl_pct=p["tsl_pct"],
+        breakeven_pct=p["breakeven_pct"],
+        slippage_bps=p["slippage_bps"],
+        jito_tip_mode=p["jito_tip_mode"],
+    )
 
 
 def set_exit_reason(position_id: int, reason: str):

@@ -98,7 +98,11 @@ def buy(
     mint: str,
     sol: float,
     *,
-    slippage_bps: int = DEFAULT_SLIPPAGE_BPS,
+    # NOTE: defaults are ONLY used when the user has no settings AND the
+    # caller doesn't pass explicit kwargs. The buy() body resolves the
+    # effective values per the order:
+    #   per-call kwarg → user settings → package default.
+    slippage_bps: Optional[int] = None,
     priority_fee_microlamports: int = DEFAULT_PRIORITY_FEE_MICROLAMPORTS,
     compute_units: int = DEFAULT_COMPUTE_UNITS,
     jito_tip_lamports: Optional[int] = None,
@@ -107,9 +111,6 @@ def buy(
     live: bool = False,
     rpc_url: Optional[str] = None,
     submit_regions: Optional[list[str]] = None,
-    # ── Per-buy auto-exit overrides (Day 4.11+) ──────────────────────
-    # When None, we fall back to trader_positions.get_user_settings(user_id).
-    # Pass empty list [] to explicitly disable TP ladder on this buy.
     tp_ladder: Optional[list] = None,
     sl_pct: Optional[float] = None,
     tsl_pct: Optional[float] = None,
@@ -146,8 +147,24 @@ def buy(
     """
     if sol <= 0:
         raise OrchestratorError("validate", "sol must be positive")
+
+    # Resolve user settings ONCE up-front so we use them in slippage, tip,
+    # and max-trade gating consistently. None values fall through to package
+    # defaults via get_user_settings.
+    user_settings = trader_positions.get_user_settings(user_id)
+    if slippage_bps is None:
+        slippage_bps = user_settings.get("slippage_bps", DEFAULT_SLIPPAGE_BPS)
     if slippage_bps < 0 or slippage_bps > 10_000:
         raise OrchestratorError("validate", f"slippage_bps {slippage_bps} out of range")
+
+    # Safety cap — refuse single buys above the user's configured max.
+    max_trade_sol = user_settings.get("max_trade_sol")
+    if max_trade_sol is not None and sol > float(max_trade_sol):
+        raise OrchestratorError(
+            "validate",
+            f"single-trade size {sol} SOL exceeds your max-trade cap "
+            f"of {float(max_trade_sol):.4f} SOL. Change it in /trader → Settings.",
+        )
 
     # ── Stage 1: resolve wallet ────────────────────────────────────────
     try:
@@ -234,12 +251,21 @@ def buy(
     # sizes) and adds 100-300ms latency (irrelevant for TG-bot trades).
     effective_tip = jito_tip_lamports
     if effective_tip is None and live:
-        try:
-            effective_tip = jito_tip_floor.get_tip_lamports(percentile="p95")
-        except jito_tip_floor.TipFloorError as e:
-            effective_tip = DEFAULT_JITO_TIP_LAMPORTS
-            print(f"[orchestrator] tip_floor lookup failed ({e}) — "
-                  f"falling back to default {effective_tip} lamports", flush=True)
+        # Honor the user's jito_tip_mode setting: 'auto' (Jito floor),
+        # 'fast' (50k), 'turbo' (200k), 'ultra' (500k). The mode → lamport
+        # map lives in trader_positions.JITO_TIP_MODE_LAMPORTS; "auto"
+        # returns None there and we query the floor.
+        mode = user_settings.get("jito_tip_mode", "auto")
+        fixed = trader_positions.JITO_TIP_MODE_LAMPORTS.get(mode)
+        if fixed is not None:
+            effective_tip = fixed
+        else:  # "auto"
+            try:
+                effective_tip = jito_tip_floor.get_tip_lamports(percentile="p95")
+            except jito_tip_floor.TipFloorError as e:
+                effective_tip = DEFAULT_JITO_TIP_LAMPORTS
+                print(f"[orchestrator] tip_floor lookup failed ({e}) — "
+                      f"falling back to default {effective_tip} lamports", flush=True)
     try:
         built = jupiter_buy.build_buy_tx(
             user_id=user_id, mint=mint, payer_pubkey=payer, sol=sol,

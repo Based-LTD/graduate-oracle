@@ -69,12 +69,16 @@ def _uid(update: Update) -> str:
 
 # ── Preset value sets (the "button bank" for each setting) ──────────────
 
-BUY_AMOUNT_PRESETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
-TP_GAIN_PRESETS = [25, 50, 100, 200, 500, 1000]   # +percentage gain
-TP_SELL_PRESETS = [25, 50, 75, 100]               # % of remaining to sell
-SL_PRESETS = [10, 20, 30, 40, 50, 75]             # negative — exit at -X%
-TSL_PRESETS = [10, 15, 20, 30, 50]                # trail off HWM
-BE_PRESETS = [5, 10, 20, 50]                      # breakeven gain threshold
+# Wider preset ranges (Day 4.20) — pump.fun winners can do 50× routinely
+# so giving users high-end ladders matters.
+BUY_AMOUNT_PRESETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
+TP_GAIN_PRESETS    = [25, 50, 100, 200, 500, 1000, 2000, 5000]
+TP_SELL_PRESETS    = [10, 25, 33, 50, 75, 100]
+SL_PRESETS         = [10, 15, 20, 25, 30, 40, 50, 75, 90]
+TSL_PRESETS        = [10, 15, 20, 25, 30, 40, 50, 70]
+BE_PRESETS         = [5, 10, 15, 20, 30, 50]
+SLIPPAGE_PRESETS_BPS = [100, 200, 500, 1000, 1500, 2000, 3000, 5000]   # 1% → 50%
+MAX_TRADE_PRESETS    = [0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]  # SOL; "off" = no cap
 
 MAX_TP_RUNGS = 4   # ladders longer than this hurt UX (too many buttons)
 
@@ -90,23 +94,33 @@ def _fmt_settings(s: dict) -> str:
             f"  TP{i+1}: +{r['pct']:.0f}% → sell {r['sell_pct']:.0f}%"
         )
     ladder = "\n".join(ladder_lines) if ladder_lines else "  _(none)_"
+    cap = s.get("max_trade_sol")
+    cap_line = f"*{cap:.4f}* SOL" if cap is not None else "_no cap_"
     return (
-        "*🛒 Buy amounts (3 inline buttons):*\n"
+        "*🛒 Buy amounts (inline buttons):*\n"
         f"  {presets} SOL\n\n"
         f"*🎯 Take-profit ladder:*\n{ladder}\n\n"
         f"*🛑 Stop loss:* {s['sl_pct']:+.0f}%\n"
         f"*📈 Trailing stop:* {s['tsl_pct']:.0f}% off high\n"
-        f"*🔒 Breakeven:* at +{s['breakeven_pct']:.0f}% gain → SL flips to entry"
+        f"*🔒 Breakeven:* at +{s['breakeven_pct']:.0f}% gain\n\n"
+        f"*⚡ Slippage:* {s['slippage_bps']/100:.1f}%\n"
+        f"*💨 Speed (Jito tip):* `{s['jito_tip_mode']}`\n"
+        f"*🛡 Max per trade:* {cap_line}"
     )
 
 
 def _kb_main() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎨 Strategy Preset", callback_data="s:strat")],
         [InlineKeyboardButton("🛒 Buy Amounts", callback_data="s:b"),
          InlineKeyboardButton("🎯 TP Ladder",   callback_data="s:t")],
         [InlineKeyboardButton("🛑 Stop Loss",    callback_data="s:l"),
          InlineKeyboardButton("📈 Trailing",     callback_data="s:p")],
         [InlineKeyboardButton("🔒 Breakeven",    callback_data="s:e"),
+         InlineKeyboardButton("⚡ Slippage",     callback_data="s:slip")],
+        [InlineKeyboardButton("💨 Speed (Tip)",  callback_data="s:tip"),
+         InlineKeyboardButton("🛡 Max Trade",    callback_data="s:cap")],
+        [InlineKeyboardButton("🏠 Home",        callback_data="h:m"),
          InlineKeyboardButton("✕ Close",        callback_data="s:close")],
     ])
 
@@ -257,6 +271,123 @@ def _fmt_be(s: dict) -> str:
     )
 
 
+# ── Slippage / Speed / Max-Trade ────────────────────────────────────────
+
+def _fmt_slippage(s: dict) -> str:
+    return (
+        "*⚡ SLIPPAGE TOLERANCE*\n\n"
+        f"Currently: *{s['slippage_bps']/100:.1f}%*\n\n"
+        "Max price drift accepted between quote and on-chain execution. "
+        "Higher = trade lands more reliably but you pay worse fills. "
+        "Lower = better fills but failed buys when volatile.\n\n"
+        "Pump.fun pre-grad typically needs 5-15%; post-grad on Raydium "
+        "can do 1-3%."
+    )
+
+
+def _kb_slippage(s: dict) -> InlineKeyboardMarkup:
+    btns = []
+    for bps in SLIPPAGE_PRESETS_BPS:
+        tag = " ✓" if bps == s["slippage_bps"] else ""
+        btns.append(InlineKeyboardButton(
+            f"{bps/100:.1f}%{tag}", callback_data=f"s:slip:{bps}",
+        ))
+    return InlineKeyboardMarkup([
+        btns[:4], btns[4:],
+        [InlineKeyboardButton("← Back", callback_data="s:m")],
+    ])
+
+
+_TIP_MODE_DESCRIPTIONS = {
+    "auto":  "Auto — match the live Jito p95 floor",
+    "fast":  "Fast — 50k lamports (~$0.005)",
+    "turbo": "Turbo — 200k lamports (~$0.02)",
+    "ultra": "Ultra — 500k lamports (~$0.05)",
+}
+
+
+def _fmt_tip(s: dict) -> str:
+    mode = s["jito_tip_mode"]
+    desc = _TIP_MODE_DESCRIPTIONS.get(mode, mode)
+    return (
+        "*💨 EXECUTION SPEED*\n\n"
+        f"Currently: *{desc}*\n\n"
+        "How much you tip Jito validators to prioritize your tx. Higher "
+        "tip = your bundle wins more auctions = your buy lands first.\n\n"
+        "• *Auto* tracks the live floor — lands ~95% of the time, cheapest\n"
+        "• *Fast/Turbo/Ultra* are fixed amounts that escalate aggression\n"
+        "• Use Ultra when racing a hot launch; Auto otherwise"
+    )
+
+
+def _kb_tip(s: dict) -> InlineKeyboardMarkup:
+    current = s["jito_tip_mode"]
+    rows = []
+    for mode in ("auto", "fast", "turbo", "ultra"):
+        tag = " ✓" if mode == current else ""
+        rows.append([InlineKeyboardButton(
+            f"{mode.capitalize()}{tag}", callback_data=f"s:tip:{mode}",
+        )])
+    rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _fmt_cap(s: dict) -> str:
+    cap = s.get("max_trade_sol")
+    cap_line = f"*{cap:.4f}* SOL" if cap is not None else "*No cap*"
+    return (
+        "*🛡 MAX PER TRADE*\n\n"
+        f"Currently: {cap_line}\n\n"
+        "Hard safety cap. Any single /buy or [Buy] button tap that "
+        "exceeds this amount is REFUSED before reaching the chain. "
+        "Protects against fat-fingered taps and stale buy-button data.\n\n"
+        "Set generously above your largest expected trade."
+    )
+
+
+def _kb_cap(s: dict) -> InlineKeyboardMarkup:
+    cap = s.get("max_trade_sol")
+    btns = []
+    for v in MAX_TRADE_PRESETS:
+        tag = " ✓" if cap is not None and abs(cap - v) < 1e-9 else ""
+        btns.append(InlineKeyboardButton(f"{v} SOL{tag}",
+            callback_data=f"s:cap:{v}"))
+    off_tag = " ✓" if cap is None else ""
+    rows = [btns[:4], btns[4:],
+            [InlineKeyboardButton(f"No cap{off_tag}", callback_data="s:cap:off")],
+            [InlineKeyboardButton("← Back", callback_data="s:m")]]
+    return InlineKeyboardMarkup(rows)
+
+
+# ── Strategy presets ───────────────────────────────────────────────────
+
+def _fmt_strategy() -> str:
+    import trader_positions
+    lines = ["*🎨 STRATEGY PRESETS*\n",
+             "Apply a complete bundle of exit + execution rules with "
+             "one tap. Buy amounts stay as you have them.\n"]
+    for name in ("conservative", "balanced", "yolo"):
+        p = trader_positions.STRATEGY_PRESETS[name]
+        ladder = "  ".join(f"+{r['pct']:.0f}%/{r['sell_pct']:.0f}%"
+                           for r in p["tp_ladder"])
+        lines.append(
+            f"\n{p['label']}\n"
+            f"  _{p['blurb']}_\n"
+            f"  TP: {ladder}  ·  SL {p['sl_pct']:+.0f}%  ·  TSL {p['tsl_pct']:.0f}%\n"
+            f"  Slippage {p['slippage_bps']/100:.1f}%  ·  Speed `{p['jito_tip_mode']}`"
+        )
+    return "\n".join(lines)
+
+
+def _kb_strategy() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎯 Conservative", callback_data="s:strat:conservative")],
+        [InlineKeyboardButton("⚖️ Balanced",    callback_data="s:strat:balanced")],
+        [InlineKeyboardButton("🚀 YOLO",        callback_data="s:strat:yolo")],
+        [InlineKeyboardButton("← Back",         callback_data="s:m")],
+    ])
+
+
 # ── Command handler ────────────────────────────────────────────────────
 
 async def cmd_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -371,6 +502,36 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             trader_positions.set_user_settings(uid, breakeven_pct=abs(pct))
             return await _render(q, uid, "e")
 
+        if screen == "slip" and len(parts) >= 3:
+            bps = int(parts[2])
+            trader_positions.set_user_settings(uid, slippage_bps=bps)
+            return await _render(q, uid, "slip")
+
+        if screen == "tip" and len(parts) >= 3:
+            mode = parts[2]
+            if mode in trader_positions.JITO_TIP_MODE_LAMPORTS:
+                trader_positions.set_user_settings(uid, jito_tip_mode=mode)
+            return await _render(q, uid, "tip")
+
+        if screen == "cap" and len(parts) >= 3:
+            val = parts[2]
+            if val == "off":
+                trader_positions.set_user_settings(uid, clear_max_trade_sol=True)
+            else:
+                try:
+                    trader_positions.set_user_settings(uid, max_trade_sol=float(val))
+                except ValueError:
+                    pass
+            return await _render(q, uid, "cap")
+
+        if screen == "strat" and len(parts) >= 3:
+            name = parts[2]
+            try:
+                trader_positions.apply_strategy_preset(uid, name)
+            except ValueError:
+                pass
+            return await _render(q, uid, "m")  # back to main with new values
+
         # ── Pure navigation (no mutation) ──
         return await _render(q, uid, ":".join(parts[1:]) or "m")
 
@@ -405,6 +566,14 @@ async def _render(q, uid: str, screen: str):
     elif code == "e":
         text = _fmt_be(s)
         kb = _kb_simple_picker("s:e", BE_PRESETS, s["breakeven_pct"])
+    elif code == "slip":
+        text, kb = _fmt_slippage(s), _kb_slippage(s)
+    elif code == "tip":
+        text, kb = _fmt_tip(s), _kb_tip(s)
+    elif code == "cap":
+        text, kb = _fmt_cap(s), _kb_cap(s)
+    elif code == "strat":
+        text, kb = _fmt_strategy(), _kb_strategy()
     else:
         text = "*⚙️ TRADER SETUP*\n\n" + _fmt_settings(s)
         kb = _kb_main()
