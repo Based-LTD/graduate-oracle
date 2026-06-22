@@ -41,8 +41,25 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
     constants,
 )
+
+
+def _persistent_home_kb() -> ReplyKeyboardMarkup:
+    """Tiny always-visible keyboard at the bottom of the chat. Tapping
+    a button sends the corresponding slash command (which our command
+    handlers pick up). resize_keyboard=True makes the buttons small
+    instead of taking up keyboard-sized real estate; is_persistent=True
+    keeps it shown when the regular keyboard is dismissed."""
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("/trader"), KeyboardButton("/portfolio"), KeyboardButton("/wallet")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -900,6 +917,21 @@ async def cmd_trader(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
     try:
+        # Install the persistent home keyboard on first /trader invocation
+        # in this session. Once installed it stays at the bottom of the
+        # chat (under the text input) forever — Daniel can tap /trader,
+        # /portfolio, or /wallet from anywhere without typing.
+        if not ctx.user_data.get("home_kb_v1"):
+            try:
+                await update.message.reply_text(
+                    "🏠 _Home buttons installed below — tap anytime to navigate._",
+                    parse_mode=constants.ParseMode.MARKDOWN,
+                    reply_markup=_persistent_home_kb(),
+                )
+                ctx.user_data["home_kb_v1"] = True
+            except Exception as ke:
+                print(f"[trader_setup] home_kb install failed: {ke}", flush=True)
+
         text = _fmt_hub_main(_uid(update))
         await update.message.reply_text(
             text, parse_mode=constants.ParseMode.MARKDOWN,
