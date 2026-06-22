@@ -694,58 +694,94 @@ def _fmt_position_detail(pos: dict, settings: dict) -> str:
     mint = pos["mint"]
     pid = pos["id"]
     cost = pos["buy_sol_lamports"] / 1e9
-    cur = pos.get("current_sol_value_lamports")
-    if cur is None:
-        cur_line = "_no quote available (mint may have rugged)_"
-    else:
-        cur_sol = cur / 1e9
-        pnl = (cur - pos["buy_sol_lamports"]) / 1e9
-        pct = pnl / cost * 100 if cost else 0
-        arrow = "📈" if pnl >= 0 else "📉"
-        cur_line = f"Now: *{cur_sol:.4f}* SOL  {arrow} *{pct:+.1f}%* ({pnl:+.4f})"
+    status = pos.get("status", "open")
 
-    # Exit rules
-    ladder_str = ""
-    try:
-        if pos.get("tp_ladder_json"):
-            ladder = json.loads(pos["tp_ladder_json"])
-            for i, r in enumerate(ladder):
-                done = "✓ " if i < (pos.get("next_tp_index") or 0) else ""
-                ladder_str += f"\n  {done}TP{i+1}: +{r['pct']:.0f}% sell {r['sell_pct']:.0f}%"
-    except Exception:
-        pass
-    sl_pct = pos.get("sl_pct")
-    tsl_pct = pos.get("tsl_pct")
-    be_pct = pos.get("breakeven_pct")
-    armed = bool(pos.get("sl_armed_at_breakeven"))
-    rules = []
-    if ladder_str:
-        rules.append(f"🎯 Ladder:{ladder_str}")
-    if sl_pct is not None:
-        sl_display = "0% (at entry — breakeven armed)" if armed else f"{sl_pct:+.0f}%"
-        rules.append(f"🛑 SL: {sl_display}")
-    if tsl_pct is not None:
-        rules.append(f"📈 TSL: {tsl_pct:.0f}% off high")
-    if be_pct is not None and not armed:
-        rules.append(f"🔒 BE: at +{be_pct:.0f}% flips SL to entry")
+    # Two distinct views: open positions show LIVE PnL (Jupiter quote vs
+    # cost); closed positions show REALIZED net PnL with fee breakdown.
+    if status == "sold":
+        sell_total = (pos.get("sell_sol_lamports") or 0) / 1e9
+        buy_fee = (pos.get("buy_fee_lamports") or 0) / 1e9
+        sell_fee = (pos.get("sell_fee_lamports") or 0) / 1e9
+        net = (pos.get("net_pnl_lamports") or 0) / 1e9
+        net_pct = (net / cost * 100) if cost else 0
+        sign = "🟢" if net >= 0 else "🔴"
+        verdict = "PROFIT" if net >= 0 else "LOSS"
+        cur_line = (
+            f"*Status:* sold ({pos.get('exit_reason') or 'manual'})\n\n"
+            f"Cost basis: *{cost:.4f}* SOL\n"
+            f"Got back:   *{sell_total:.4f}* SOL\n"
+            + (f"Fees:      −*{buy_fee + sell_fee:.5f}* SOL\n"
+               if (buy_fee + sell_fee) > 0 else "")
+            + f"───────────────────\n"
+            f"{sign} *Net: {net:+.4f} SOL ({net_pct:+.2f}%)* — {verdict}"
+        )
+    else:
+        cur = pos.get("current_sol_value_lamports")
+        if cur is None:
+            cur_line = (f"*Status:* open\n\n"
+                        f"Cost: *{cost:.4f}* SOL\n"
+                        f"_no quote available (mint may have rugged)_")
+        else:
+            cur_sol = cur / 1e9
+            pnl = (cur - pos["buy_sol_lamports"]) / 1e9
+            pct = pnl / cost * 100 if cost else 0
+            arrow = "📈" if pnl >= 0 else "📉"
+            cur_line = (
+                f"*Status:* open\n\n"
+                f"Cost: *{cost:.4f}* SOL\n"
+                f"Now:  *{cur_sol:.4f}* SOL  {arrow} *{pct:+.1f}%* ({pnl:+.4f})"
+            )
+
+    # Exit rules — only meaningful for open positions
+    rules_block = ""
+    if status == "open":
+        ladder_str = ""
+        try:
+            if pos.get("tp_ladder_json"):
+                ladder = json.loads(pos["tp_ladder_json"])
+                for i, r in enumerate(ladder):
+                    done = "✓ " if i < (pos.get("next_tp_index") or 0) else ""
+                    ladder_str += f"\n  {done}TP{i+1}: +{r['pct']:.0f}% sell {r['sell_pct']:.0f}%"
+        except Exception:
+            pass
+        sl_pct = pos.get("sl_pct")
+        tsl_pct = pos.get("tsl_pct")
+        be_pct = pos.get("breakeven_pct")
+        armed = bool(pos.get("sl_armed_at_breakeven"))
+        rules = []
+        if ladder_str:
+            rules.append(f"🎯 Ladder:{ladder_str}")
+        if sl_pct is not None:
+            sl_display = "0% (at entry — breakeven armed)" if armed else f"{sl_pct:+.0f}%"
+            rules.append(f"🛑 SL: {sl_display}")
+        if tsl_pct is not None:
+            rules.append(f"📈 TSL: {tsl_pct:.0f}% off high")
+        if be_pct is not None and not armed:
+            rules.append(f"🔒 BE: at +{be_pct:.0f}% flips SL to entry")
+        if rules:
+            rules_block = "\n\n" + "\n".join(rules)
 
     return (
         f"*📍 POSITION #{pid}*\n"
         f"`{mint}`\n\n"
-        f"Cost: *{cost:.4f}* SOL\n"
-        f"{cur_line}\n\n"
-        + "\n".join(rules)
+        f"{cur_line}"
+        f"{rules_block}"
     )
 
 
-def _kb_position_detail(pid: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Sell 25%", callback_data=f"ts:{pid}:25"),
-         InlineKeyboardButton("Sell 50%", callback_data=f"ts:{pid}:50"),
-         InlineKeyboardButton("Sell ALL", callback_data=f"ts:{pid}:100")],
-        [InlineKeyboardButton("← Portfolio", callback_data="h:p"),
-         InlineKeyboardButton("🏠 Home",     callback_data="h:m")],
+def _kb_position_detail(pid: int, is_open: bool = True) -> InlineKeyboardMarkup:
+    rows = []
+    if is_open:
+        rows.append([
+            InlineKeyboardButton("Sell 25%", callback_data=f"ts:{pid}:25"),
+            InlineKeyboardButton("Sell 50%", callback_data=f"ts:{pid}:50"),
+            InlineKeyboardButton("Sell ALL", callback_data=f"ts:{pid}:100"),
+        ])
+    rows.append([
+        InlineKeyboardButton("← Portfolio", callback_data="h:p"),
+        InlineKeyboardButton("🏠 Home",     callback_data="h:m"),
     ])
+    return InlineKeyboardMarkup(rows)
 
 
 # ── Wallet ──────────────────────────────────────────────────────────────
@@ -873,9 +909,12 @@ async def cb_hub(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("← Portfolio", callback_data="h:p")],
                 ])
             else:
-                enriched = trader_portfolio.value_position(row)
+                is_open = row.get("status") == "open"
+                # Only quote Jupiter for OPEN positions; closed rows have
+                # static realized numbers stored.
+                enriched = trader_portfolio.value_position(row) if is_open else row
                 text = _fmt_position_detail(enriched, {})
-                kb = _kb_position_detail(pid)
+                kb = _kb_position_detail(pid, is_open=is_open)
         elif screen == "p":
             import trader_portfolio
             s = trader_portfolio.portfolio_summary(uid)

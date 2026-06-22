@@ -387,6 +387,16 @@ def buy(
             trade_signature=buy_signature,
             dry_run=False,
         )
+        # Stamp the fee onto the position row so the sell receipt can
+        # compute honest net PnL. Best-effort — DB hiccup here doesn't
+        # break the trade.
+        try:
+            trader_positions.set_buy_fee(
+                position_id,
+                int(fee_result.get("total_fee_lamports") or 0),
+            )
+        except Exception as fe:
+            print(f"[orchestrator] set_buy_fee failed: {fe}", flush=True)
 
     return {
         "phase":                            phase,
@@ -532,6 +542,17 @@ def sell(
         )
     sell_signature = rpc_result["signature"]
 
+    # ── Stage 6.5: collect sell-side fee BEFORE we mark sold ──────────
+    # Need the fee number to compute honest net PnL in mark_sold.
+    sell_fee_result = fee_skim.apply_fee(
+        user_id=user_id,
+        trade_sol_lamports=int(built["expected_sol_out_lamports"]),
+        trade_kind="sell",
+        trade_signature=sell_signature,
+        dry_run=False,
+    )
+    sell_fee_lamports = int((sell_fee_result or {}).get("total_fee_lamports") or 0)
+
     # ── Stage 7: mark position as sold ─────────────────────────────────
     # Important: we use the EXPECTED out lamports for PnL accounting NOW.
     # The actual realized amount can be reconciled later by polling the
@@ -542,6 +563,7 @@ def sell(
                 int(position_id),
                 sell_signature=sell_signature,
                 sell_sol_lamports=int(built["expected_sol_out_lamports"]),
+                sell_fee_lamports=sell_fee_lamports,
             )
             new_status = "sold"
         else:
@@ -564,14 +586,9 @@ def sell(
             f"sell tx {sell_signature} landed but DB update failed: {e}",
         ) from e
 
-    # Fee on the SOL received from the sell. Same skim model as buy.
-    fee_result = fee_skim.apply_fee(
-        user_id=user_id,
-        trade_sol_lamports=int(built["expected_sol_out_lamports"]),
-        trade_kind="sell",
-        trade_signature=sell_signature,
-        dry_run=False,
-    )
+    # Fee result was computed BEFORE mark_sold so net PnL accounting
+    # could include it. Just pass it through to the caller.
+    fee_result = sell_fee_result
 
     return {
         "phase":                       "submitted",

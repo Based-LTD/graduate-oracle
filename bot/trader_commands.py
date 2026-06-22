@@ -93,12 +93,34 @@ def _fmt_pct(frac: Optional[float]) -> str:
     return f"{frac*100:+.1f}%"
 
 
+# pump.fun mints use 6 decimals (the SPL Token convention for these
+# launches). Token amounts from Jupiter come back in raw smallest units;
+# we divide by 1e6 to display whole tokens. The variable could be made
+# dynamic by reading the mint's decimals, but 6 is universal for pump.fun.
+PUMP_TOKEN_DECIMALS = 6
+
+
+def _fmt_tokens(raw: int) -> str:
+    """Render a raw-unit token amount as a human-readable whole-token count.
+    Adds K/M/B suffix for large amounts so the receipt stays readable."""
+    if raw is None:
+        return "?"
+    whole = raw / (10 ** PUMP_TOKEN_DECIMALS)
+    if whole >= 1_000_000_000:
+        return f"{whole/1_000_000_000:.2f}B"
+    if whole >= 1_000_000:
+        return f"{whole/1_000_000:.2f}M"
+    if whole >= 1_000:
+        return f"{whole/1_000:.2f}K"
+    return f"{whole:,.2f}"
+
+
 def _format_buy_receipt(r: dict) -> str:
     """Markdown receipt for a successful buy."""
     mint = r["mint"]
     short = mint[:6] + "…" + mint[-4:]
     sol = r["sol"]
-    tokens = r.get("expected_tokens_out", 0)
+    tokens_raw = r.get("expected_tokens_out", 0)
     phase = r["phase"]
     sig = r.get("buy_signature") or ""
     sig_link = f"[`{sig[:12]}…`](https://solscan.io/tx/{sig})" if sig else "—"
@@ -109,29 +131,70 @@ def _format_buy_receipt(r: dict) -> str:
         f"`{mint}`\n\n"
         f"💰 Spent: *{sol:.4f}* SOL"
         + (f"  (+ {fee/1e9:.5f} fee)" if fee else "") + "\n"
-        f"🪙 Got:   *{tokens:,}* tokens\n"
+        f"🪙 Got:   *{_fmt_tokens(tokens_raw)}* tokens\n"
         f"📍 Position #{pid}\n"
-        f"📊 Phase: _{phase}_  ·  {sig_link}\n"
+        f"📊 Phase: _{phase}_  ·  {sig_link}"
     )
 
 
 def _format_sell_receipt(r: dict) -> str:
+    """Honest sell receipt: shows cost basis, gross received, fees paid,
+    and the NET PnL with explicit win/loss indicator. Previous version
+    showed only gross received → users mistook small wins for losses
+    (and vice-versa) once the 1% × 2 fee skim was applied."""
     mint = r["mint"]
     short = mint[:6] + "…" + mint[-4:]
-    tokens = r.get("tokens_sold", 0)
-    sol = r.get("expected_sol_out_lamports", 0) / 1e9
+    tokens_raw = r.get("tokens_sold", 0)
+    sol_out = r.get("expected_sol_out_lamports", 0) / 1e9
     pid = r["position_id"]
     new_status = r.get("new_status", "?")
     sig = r.get("sell_signature") or ""
     sig_link = f"[`{sig[:12]}…`](https://solscan.io/tx/{sig})" if sig else "—"
     pct = int(r.get("sell_pct", 1) * 100)
+
+    # Honest accounting block. Pull the just-written position row so we
+    # see the final stored values (buy + buy_fee + sell + sell_fee + net).
+    pnl_block = ""
+    try:
+        import trader_positions
+        row = trader_positions.get_position(pid)
+        if row and row.get("status") == "sold":
+            buy = row["buy_sol_lamports"] / 1e9
+            sell_total = (row.get("sell_sol_lamports") or 0) / 1e9
+            fees = ((row.get("buy_fee_lamports") or 0) +
+                    (row.get("sell_fee_lamports") or 0)) / 1e9
+            net = (row.get("net_pnl_lamports") or 0) / 1e9
+            net_pct = (net / buy * 100) if buy else 0
+            sign = "🟢" if net >= 0 else "🔴"
+            verdict = "*PROFIT*" if net >= 0 else "*LOSS*"
+            pnl_block = (
+                f"\n\n📊 *PnL on this trade:*\n"
+                f"  Cost basis: *{buy:.4f}* SOL\n"
+                f"  Got back:   *{sell_total:.4f}* SOL\n"
+                + (f"  Fees:      −*{fees:.5f}* SOL\n" if fees > 0 else "")
+                + f"  ───────────────────\n"
+                f"  {sign} Net: *{net:+.4f}* SOL  ({net_pct:+.2f}%)  ← {verdict}"
+            )
+    except Exception:
+        pass
+
     return (
         f"✅ *Sold {pct}%* of `{short}`\n"
-        f"🪙 Tokens: *{tokens:,}*\n"
-        f"💰 Got:    *{sol:.4f}* SOL\n"
+        f"🪙 Tokens:   *{_fmt_tokens(tokens_raw)}*\n"
+        f"💰 Received: *{sol_out:.4f}* SOL  (pre-fees)\n"
         f"📍 Position #{pid} → _{new_status}_\n"
         f"{sig_link}"
+        f"{pnl_block}"
     )
+
+
+def _kb_position_actions(pid: int) -> InlineKeyboardMarkup:
+    """The sell-button row used on buy receipts + portfolio rows."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Sell 25%", callback_data=f"ts:{pid}:25"),
+        InlineKeyboardButton("Sell 50%", callback_data=f"ts:{pid}:50"),
+        InlineKeyboardButton("Sell ALL", callback_data=f"ts:{pid}:100"),
+    ]])
 
 
 def _format_portfolio(summary: dict) -> str:
@@ -255,10 +318,13 @@ async def _run_buy(update: Update, sol: float, mint: str, overrides: dict,
             signal_source=signal_source, live=True,
             **overrides,
         )
+        pid = result.get("position_id")
+        kb = _kb_position_actions(pid) if pid else None
         await update.message.reply_text(
             _format_buy_receipt(result),
             parse_mode=constants.ParseMode.MARKDOWN,
             disable_web_page_preview=True,
+            reply_markup=kb,
         )
     except Exception as e:
         # OrchestratorError + anything else. Try to use user_facing_msg.
@@ -488,7 +554,8 @@ async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     # Run the buy. We send the receipt as a NEW message under the alert
-    # so the original alert stays intact.
+    # so the original alert stays intact. The receipt carries sell buttons
+    # so the operator can exit without going back to /portfolio.
     user_id = _operator_user_id(update)
     try:
         import trader_orchestrator
@@ -496,10 +563,13 @@ async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             user_id, mint, sol,
             signal_source="tg_button", live=True,
         )
+        pid = result.get("position_id")
+        kb = _kb_position_actions(pid) if pid else None
         await query.message.reply_text(
             _format_buy_receipt(result),
             parse_mode=constants.ParseMode.MARKDOWN,
             disable_web_page_preview=True,
+            reply_markup=kb,
         )
     except Exception as e:
         msg = getattr(e, "user_facing_msg", None) or str(e)[:200]

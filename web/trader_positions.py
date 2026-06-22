@@ -185,6 +185,16 @@ _MIGRATIONS = [
         "ALTER TABLE trader_user_settings ADD COLUMN jito_tip_mode TEXT"),
     ("trader_user_settings", "max_trade_sol",
         "ALTER TABLE trader_user_settings ADD COLUMN max_trade_sol REAL"),
+    # Honest-accounting columns (Day 4.22). Receipt previously showed only
+    # gross sell-out, hiding 1%+1% fee skim → users thought wins were
+    # losses (or vice versa). Now we record fees both sides so the sell
+    # receipt can render gross/fees/net cleanly.
+    ("trader_positions", "buy_fee_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN buy_fee_lamports INTEGER NOT NULL DEFAULT 0"),
+    ("trader_positions", "sell_fee_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN sell_fee_lamports INTEGER NOT NULL DEFAULT 0"),
+    ("trader_positions", "net_pnl_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN net_pnl_lamports INTEGER"),
 ]
 
 
@@ -278,29 +288,59 @@ def mark_sold(
     *,
     sell_signature: str,
     sell_sol_lamports: int,
+    sell_fee_lamports: int = 0,
     sell_timestamp: Optional[int] = None,
 ):
-    """Close out a position with the sell outcome. Computes realized PnL
-    as (sell_sol_lamports - buy_sol_lamports). Idempotent for the same
-    sell_signature (caller's job to not double-sell)."""
+    """Close out a position with the sell outcome.
+
+    Stores two PnL numbers:
+      • realized_pnl_lamports (GROSS): sell - buy. Naïve swap delta.
+      • net_pnl_lamports (NET): sell - buy - buy_fee - sell_fee. What the
+        wallet actually netted. The user receipt should ALWAYS show this
+        one — gross alone misleads when the bot is taking a fee skim.
+
+    Idempotent for the same sell_signature (caller's job to not double-sell).
+    """
     ts = sell_timestamp if sell_timestamp is not None else int(time.time())
     with contextlib.closing(_conn()) as c, c:
         row = c.execute(
-            "SELECT buy_sol_lamports FROM trader_positions WHERE id = ?",
+            "SELECT buy_sol_lamports, buy_fee_lamports FROM trader_positions WHERE id = ?",
             (int(position_id),),
         ).fetchone()
         if row is None:
             raise KeyError(f"no position with id={position_id}")
-        pnl = int(sell_sol_lamports) - int(row["buy_sol_lamports"])
+        buy = int(row["buy_sol_lamports"])
+        # buy_fee_lamports column was added Day 4.22 — defensive default
+        try:
+            buy_fee = int(row["buy_fee_lamports"] or 0)
+        except (KeyError, TypeError):
+            buy_fee = 0
+        gross = int(sell_sol_lamports) - buy
+        net = gross - buy_fee - int(sell_fee_lamports)
         c.execute("""
             UPDATE trader_positions
                SET status = 'sold',
                    sell_signature = ?,
                    sell_sol_lamports = ?,
                    sell_timestamp = ?,
-                   realized_pnl_lamports = ?
+                   realized_pnl_lamports = ?,
+                   sell_fee_lamports = ?,
+                   net_pnl_lamports = ?
              WHERE id = ?
-        """, (sell_signature, int(sell_sol_lamports), ts, pnl, int(position_id)))
+        """, (sell_signature, int(sell_sol_lamports), ts, gross,
+              int(sell_fee_lamports), net, int(position_id)))
+
+
+def set_buy_fee(position_id: int, buy_fee_lamports: int):
+    """Stamp the fee paid at buy time onto the position. Called by the
+    orchestrator after the fee skim returns (best-effort — failures here
+    don't break the trade, but they mean the sell receipt undercounts
+    fees later)."""
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            "UPDATE trader_positions SET buy_fee_lamports = ? WHERE id = ?",
+            (int(buy_fee_lamports), int(position_id)),
+        )
 
 
 # ── Readers ─────────────────────────────────────────────────────────────
