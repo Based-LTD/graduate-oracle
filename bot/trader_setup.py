@@ -62,8 +62,11 @@ def _persistent_home_kb() -> ReplyKeyboardMarkup:
     )
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes,
 )
 
@@ -144,21 +147,39 @@ def _kb_main() -> InlineKeyboardMarkup:
 
 
 def _kb_buy_presets(s: dict) -> InlineKeyboardMarkup:
-    """Sub-menu: edit the 3 buy preset slots."""
+    """Sub-menu: edit the 3 buy preset slots.
+
+    Layout per slot:
+      [━━━ Slot N — current: X SOL ━━━]   ← visual divider (noop)
+      [0.001] [0.005] [0.01] [0.025]
+      [0.05]  [0.1]   [0.25] [✏️ Custom]
+    """
     rows = []
     for slot in range(3):
         current = s["buy_presets_sol"][slot]
-        # Row 1 per slot: header (non-button) is rendered in text
-        # Row of preset buttons:
+        # Header divider — clickable but noop. Shows which slot's row
+        # is which, fixes the previous confusion of unlabeled rows.
+        rows.append([InlineKeyboardButton(
+            f"━━━ Slot {slot+1} — current: {current} SOL ━━━",
+            callback_data=f"s:bs:hdr:{slot}",
+        )])
         slot_buttons = []
         for amt in BUY_AMOUNT_PRESETS:
             label = f"{amt}" + (" ✓" if amt == current else "")
             slot_buttons.append(InlineKeyboardButton(
-                label, callback_data=f"s:bs:{slot}:{amt}",
+                label, callback_data=f"s:bs:set:{slot}:{amt}",
             ))
-        # 4 per row for tighter layout
+        # Custom-input button — last position in slot's button group
+        custom_btn = InlineKeyboardButton(
+            "✏️ Custom", callback_data=f"s:bs:custom:{slot}",
+        )
+        # Pack as 4-per-row; custom replaces the 8th slot if 10 presets,
+        # or appends if fewer. Here we have 10 presets — show 4+4 + custom row.
         rows.append(slot_buttons[:4])
-        rows.append(slot_buttons[4:])
+        rows.append(slot_buttons[4:8])
+        # Remaining presets + custom in a final small row
+        last_row = list(slot_buttons[8:]) + [custom_btn]
+        rows.append(last_row)
     rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
     return InlineKeyboardMarkup(rows)
 
@@ -167,8 +188,9 @@ def _fmt_buy_presets(s: dict) -> str:
     p = s["buy_presets_sol"]
     return (
         "*🛒 BUY AMOUNTS*\n\n"
-        "The 3 inline buttons shown under every alert.\n"
-        "Tap one of the 8 amounts in each row to assign it to that slot.\n\n"
+        "These are the 3 inline buttons under every signal alert.\n"
+        "Tap a preset to assign it, or *✏️ Custom* for any amount "
+        "(e.g. 0.15 SOL).\n\n"
         f"  Slot 1: *{p[0]}* SOL\n"
         f"  Slot 2: *{p[1]}* SOL\n"
         f"  Slot 3: *{p[2]}* SOL"
@@ -540,15 +562,47 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
 
         # ── Mutations first; they all reload settings + redirect to a screen ──
-        if screen == "bs" and len(parts) >= 4:
-            slot, amt = int(parts[2]), float(parts[3])
-            s = trader_positions.get_user_settings(uid)
-            presets = list(s["buy_presets_sol"])
-            while len(presets) < 3:
-                presets.append(0.05)
-            presets[slot] = amt
-            trader_positions.set_user_settings(uid, buy_presets_sol=presets[:3])
-            return await _render(q, uid, "b")
+        if screen == "bs" and len(parts) >= 3:
+            action = parts[2]
+            # ── Header (visual divider) — noop, just re-render ──
+            if action == "hdr":
+                return await _render(q, uid, "b")
+            # ── Preset value set ──
+            if action == "set" and len(parts) >= 5:
+                slot, amt = int(parts[3]), float(parts[4])
+                s = trader_positions.get_user_settings(uid)
+                presets = list(s["buy_presets_sol"])
+                while len(presets) < 3:
+                    presets.append(0.05)
+                presets[slot] = amt
+                trader_positions.set_user_settings(uid, buy_presets_sol=presets[:3])
+                return await _render(q, uid, "b")
+            # ── Custom amount — open the text-input wizard ──
+            if action == "custom" and len(parts) >= 4:
+                slot = int(parts[3])
+                ctx.user_data["bs_custom_slot"] = slot
+                ctx.user_data["bs_state"] = "awaiting_custom"
+                await q.edit_message_text(
+                    f"✏️ *Set Slot {slot+1} — Custom amount*\n\n"
+                    f"Reply with the SOL amount (e.g. `0.15`).\n"
+                    f"Min: 0.0001 SOL · Max: 10 SOL\n\n"
+                    f"_Reply `cancel` to abort._",
+                    parse_mode=constants.ParseMode.MARKDOWN,
+                )
+                return
+            # Legacy 4-part fallback (old callback_data shape): s:bs:<slot>:<amt>
+            if len(parts) >= 4:
+                try:
+                    slot, amt = int(parts[2]), float(parts[3])
+                    s = trader_positions.get_user_settings(uid)
+                    presets = list(s["buy_presets_sol"])
+                    while len(presets) < 3:
+                        presets.append(0.05)
+                    presets[slot] = amt
+                    trader_positions.set_user_settings(uid, buy_presets_sol=presets[:3])
+                    return await _render(q, uid, "b")
+                except (ValueError, IndexError):
+                    pass
 
         if screen == "trg" and len(parts) >= 4:
             idx, pct = int(parts[2]), int(parts[3])
@@ -1147,6 +1201,58 @@ async def cb_hub(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── Registration ────────────────────────────────────────────────────────
 
+async def handle_custom_buy_amount(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Text-input handler for the ✏️ Custom buy-amount picker.
+    Only fires when user_data['bs_state'] == 'awaiting_custom'. Otherwise
+    returns silently so other text handlers (withdraw wizard, etc.) can
+    process the message."""
+    if not update.message or not update.message.text:
+        return
+    if (ctx.user_data or {}).get("bs_state") != "awaiting_custom":
+        return
+    text = update.message.text.strip()
+    if text.lower() == "cancel":
+        ctx.user_data.pop("bs_state", None)
+        ctx.user_data.pop("bs_custom_slot", None)
+        await update.message.reply_text("✖️ Cancelled.")
+        raise ApplicationHandlerStop
+
+    slot = ctx.user_data.get("bs_custom_slot")
+    if slot is None:
+        ctx.user_data.pop("bs_state", None)
+        raise ApplicationHandlerStop
+
+    try:
+        amt = float(text)
+    except ValueError:
+        await update.message.reply_text(
+            "Not a number. Try again (e.g. `0.15`) or `cancel`.",
+        )
+        raise ApplicationHandlerStop
+    if not (0.0001 <= amt <= 10):
+        await update.message.reply_text(
+            "Out of range. Must be 0.0001 to 10 SOL. Try again or `cancel`.",
+        )
+        raise ApplicationHandlerStop
+
+    uid = str(update.effective_user.id)
+    import trader_positions as _tp
+    s = _tp.get_user_settings(uid)
+    presets = list(s["buy_presets_sol"])
+    while len(presets) < 3:
+        presets.append(0.05)
+    presets[int(slot)] = amt
+    _tp.set_user_settings(uid, buy_presets_sol=presets[:3])
+    ctx.user_data.pop("bs_state", None)
+    ctx.user_data.pop("bs_custom_slot", None)
+    await update.message.reply_text(
+        f"✅ Slot {int(slot)+1} set to *{amt}* SOL.\n\n"
+        "Open `/trader → ⚙️ Settings → 🛒 Buy Amounts` to verify.",
+        parse_mode=constants.ParseMode.MARKDOWN,
+    )
+    raise ApplicationHandlerStop
+
+
 def register(app: Application, admin_ids: set[int]):
     global _admin_ids
     _admin_ids = set(admin_ids)
@@ -1158,4 +1264,10 @@ def register(app: Application, admin_ids: set[int]):
     # Callback routers
     app.add_handler(CallbackQueryHandler(cb_hub,   pattern=r"^h:"))
     app.add_handler(CallbackQueryHandler(cb_setup, pattern=r"^s:"))
+    # Text-input handler for ✏️ Custom buy-amount. group=-10 to run
+    # before default handlers, but it's a no-op unless bs_state is set.
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_buy_amount),
+        group=-10,
+    )
     print(f"[trader_setup] hub + settings registered (admin_ids={len(_admin_ids)})", flush=True)
