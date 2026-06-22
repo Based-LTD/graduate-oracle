@@ -86,7 +86,52 @@ CREATE TABLE IF NOT EXISTS trader_positions (
     sell_signature                  TEXT,
     sell_sol_lamports               INTEGER,
     sell_timestamp                  INTEGER,
-    realized_pnl_lamports           INTEGER          -- sell - buy_sol_lamports
+    realized_pnl_lamports           INTEGER,          -- sell - buy_sol_lamports
+
+    -- Auto-exit config (Day 4.11 — feature set "B"):
+    --   tp_ladder_json: JSON array of {pct, sell_pct} dicts. Triggered in
+    --     order; partial sells reduce token_amount but leave position open
+    --     until the last rung. Example:
+    --       [{"pct": 50, "sell_pct": 30},
+    --        {"pct": 200, "sell_pct": 50},
+    --        {"pct": 500, "sell_pct": 100}]
+    --     means: +50% sell 30%, +200% sell another 50% of remaining,
+    --     +500% sell what's left.
+    --   sl_pct: percentage drawdown from entry that triggers full exit.
+    --     Negative number (e.g. -50 = exit at 50% loss).
+    --   tsl_pct: trailing stop, in percent below the high-water mark.
+    --     Example: 30 = exit if price drops 30% from peak since buy.
+    --   breakeven_pct: once price reaches this gain, move sl_pct to 0
+    --     (= entry). One-shot — flips position.sl_pct_armed_at_breakeven=1.
+    --   next_tp_index: which rung of the ladder fires next (0 = TP1).
+    --   high_water_mark_lamports: max expected_sol_out (Jupiter quote) we
+    --     have observed for the CURRENT remaining token_amount. Reset on
+    --     partial sell.
+    --   last_monitor_check_at: unix ts of last monitor poll for this row.
+    --   exit_reason: when status='sold', why? 'manual' / 'tp1' / 'tp2' /
+    --     'tp3' / 'sl' / 'tsl' / 'breakeven' / null.
+    --   sl_armed_at_breakeven: 1 if breakeven flip already happened.
+    tp_ladder_json                  TEXT,
+    sl_pct                          REAL,
+    tsl_pct                         REAL,
+    breakeven_pct                   REAL,
+    next_tp_index                   INTEGER NOT NULL DEFAULT 0,
+    high_water_mark_lamports        INTEGER,
+    last_monitor_check_at           INTEGER,
+    exit_reason                     TEXT,
+    sl_armed_at_breakeven           INTEGER NOT NULL DEFAULT 0
+);
+
+-- ── Per-user auto-exit defaults ──────────────────────────────────────
+-- Applied to new positions when the buy() caller doesn't override.
+-- Lets a user say "all my buys should TP at 2x then trail at 30%" once.
+CREATE TABLE IF NOT EXISTS trader_user_settings (
+    user_id          TEXT PRIMARY KEY,
+    tp_ladder_json   TEXT,
+    sl_pct           REAL,
+    tsl_pct          REAL,
+    breakeven_pct    REAL,
+    updated_at       INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_trader_positions_user
@@ -98,9 +143,40 @@ CREATE INDEX IF NOT EXISTS idx_trader_positions_buy_sig
 """
 
 
+# Migrations — columns added to an existing trader_positions table.
+# Each is a (column_name, ALTER TABLE statement) pair. Applied in order;
+# already-present columns are skipped silently. Safe to re-run on every
+# init_schema().
+_MIGRATIONS = [
+    ("tp_ladder_json",            "ALTER TABLE trader_positions ADD COLUMN tp_ladder_json TEXT"),
+    ("sl_pct",                    "ALTER TABLE trader_positions ADD COLUMN sl_pct REAL"),
+    ("tsl_pct",                   "ALTER TABLE trader_positions ADD COLUMN tsl_pct REAL"),
+    ("breakeven_pct",             "ALTER TABLE trader_positions ADD COLUMN breakeven_pct REAL"),
+    ("next_tp_index",             "ALTER TABLE trader_positions ADD COLUMN next_tp_index INTEGER NOT NULL DEFAULT 0"),
+    ("high_water_mark_lamports",  "ALTER TABLE trader_positions ADD COLUMN high_water_mark_lamports INTEGER"),
+    ("last_monitor_check_at",     "ALTER TABLE trader_positions ADD COLUMN last_monitor_check_at INTEGER"),
+    ("exit_reason",               "ALTER TABLE trader_positions ADD COLUMN exit_reason TEXT"),
+    ("sl_armed_at_breakeven",     "ALTER TABLE trader_positions ADD COLUMN sl_armed_at_breakeven INTEGER NOT NULL DEFAULT 0"),
+]
+
+
 def init_schema():
     with contextlib.closing(_conn()) as c, c:
         c.executescript(_SCHEMA)
+        # Apply auto-exit migrations to pre-existing databases. We check
+        # column existence first to avoid raising "duplicate column" errors
+        # on tables that already have them (e.g. fresh installs created
+        # via the _SCHEMA above already have these columns).
+        existing = {row["name"] for row in
+                    c.execute("PRAGMA table_info(trader_positions)").fetchall()}
+        for col, stmt in _MIGRATIONS:
+            if col not in existing:
+                try:
+                    c.execute(stmt)
+                except sqlite3.OperationalError as e:
+                    # Duplicate or other migration-collision — log + keep going
+                    if "duplicate column" not in str(e).lower():
+                        raise
 
 
 # ── Writers ─────────────────────────────────────────────────────────────
@@ -230,3 +306,191 @@ def list_open_positions_for_mint(mint: str) -> list[dict]:
              ORDER BY buy_timestamp ASC
         """, (mint,)).fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Auto-exit config ────────────────────────────────────────────────────
+
+# Default TP ladder for new positions when neither the per-position arg
+# nor the user-default override is set. 50% at +50% gain, 50% at +200%.
+# Sized for the typical pump.fun winner: take the first runner profit
+# fast, hold the moonshot half on a trailing stop.
+DEFAULT_TP_LADDER = [
+    {"pct": 50,  "sell_pct": 50},
+    {"pct": 200, "sell_pct": 100},  # 100% of REMAINING — closes the position
+]
+DEFAULT_SL_PCT        = -50.0   # exit if down 50%
+DEFAULT_TSL_PCT       = 30.0    # trail 30% off the high-water mark
+DEFAULT_BREAKEVEN_PCT = 20.0    # at +20%, flip SL to entry
+
+
+def get_user_settings(user_id: str | int) -> dict:
+    """Return the user's auto-exit defaults, falling back to package
+    defaults when no row exists or specific fields are NULL.
+
+    Shape: {tp_ladder, sl_pct, tsl_pct, breakeven_pct}.
+      tp_ladder is the parsed Python list, not the JSON string.
+    """
+    import json as _json
+    with contextlib.closing(_conn()) as c:
+        row = c.execute(
+            "SELECT * FROM trader_user_settings WHERE user_id = ?",
+            (str(user_id),),
+        ).fetchone()
+
+    ladder_json = (row and row["tp_ladder_json"]) or None
+    try:
+        ladder = _json.loads(ladder_json) if ladder_json else None
+    except Exception:
+        ladder = None
+
+    sl  = row["sl_pct"]        if row and row["sl_pct"]        is not None else DEFAULT_SL_PCT
+    tsl = row["tsl_pct"]       if row and row["tsl_pct"]       is not None else DEFAULT_TSL_PCT
+    be  = row["breakeven_pct"] if row and row["breakeven_pct"] is not None else DEFAULT_BREAKEVEN_PCT
+    return {
+        "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
+        "sl_pct":        float(sl),
+        "tsl_pct":       float(tsl),
+        "breakeven_pct": float(be),
+    }
+
+
+def set_user_settings(
+    user_id: str | int, *,
+    tp_ladder: Optional[list] = None,
+    sl_pct: Optional[float] = None,
+    tsl_pct: Optional[float] = None,
+    breakeven_pct: Optional[float] = None,
+):
+    """Upsert per-user auto-exit defaults. None values leave the existing
+    field untouched (set only what changed)."""
+    import json as _json
+    import time as _time
+    init_schema()
+    with contextlib.closing(_conn()) as c, c:
+        existing = c.execute(
+            "SELECT * FROM trader_user_settings WHERE user_id = ?",
+            (str(user_id),),
+        ).fetchone()
+        merged = {
+            "tp_ladder_json": _json.dumps(tp_ladder) if tp_ladder is not None
+                              else (existing["tp_ladder_json"] if existing else None),
+            "sl_pct":        sl_pct        if sl_pct        is not None else (existing["sl_pct"]        if existing else None),
+            "tsl_pct":       tsl_pct       if tsl_pct       is not None else (existing["tsl_pct"]       if existing else None),
+            "breakeven_pct": breakeven_pct if breakeven_pct is not None else (existing["breakeven_pct"] if existing else None),
+        }
+        c.execute("""
+            INSERT INTO trader_user_settings
+                (user_id, tp_ladder_json, sl_pct, tsl_pct, breakeven_pct, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                tp_ladder_json = excluded.tp_ladder_json,
+                sl_pct         = excluded.sl_pct,
+                tsl_pct        = excluded.tsl_pct,
+                breakeven_pct  = excluded.breakeven_pct,
+                updated_at     = excluded.updated_at
+        """, (str(user_id), merged["tp_ladder_json"], merged["sl_pct"],
+              merged["tsl_pct"], merged["breakeven_pct"], int(_time.time())))
+
+
+def set_position_auto_exit(
+    position_id: int, *,
+    tp_ladder: Optional[list] = None,
+    sl_pct: Optional[float] = None,
+    tsl_pct: Optional[float] = None,
+    breakeven_pct: Optional[float] = None,
+):
+    """Override the auto-exit config for a single position. Use for
+    'I want this one specific buy to TP at 5x' style overrides.
+
+    None values leave the existing field unchanged. Pass an empty list
+    `[]` for tp_ladder to explicitly disable laddered TP on this row."""
+    import json as _json
+    fields, args = [], []
+    if tp_ladder is not None:
+        fields.append("tp_ladder_json = ?")
+        args.append(_json.dumps(tp_ladder))
+    if sl_pct is not None:
+        fields.append("sl_pct = ?")
+        args.append(float(sl_pct))
+    if tsl_pct is not None:
+        fields.append("tsl_pct = ?")
+        args.append(float(tsl_pct))
+    if breakeven_pct is not None:
+        fields.append("breakeven_pct = ?")
+        args.append(float(breakeven_pct))
+    if not fields:
+        return
+    args.append(int(position_id))
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            f"UPDATE trader_positions SET {', '.join(fields)} WHERE id = ?",
+            args,
+        )
+
+
+def get_position_auto_exit(position_id: int) -> Optional[dict]:
+    """Return the parsed auto-exit config for one position, or None if
+    the row doesn't exist. tp_ladder is parsed Python list."""
+    import json as _json
+    row = get_position(position_id)
+    if row is None:
+        return None
+    ladder = None
+    if row.get("tp_ladder_json"):
+        try:
+            ladder = _json.loads(row["tp_ladder_json"])
+        except Exception:
+            ladder = None
+    return {
+        "tp_ladder":              ladder,
+        "sl_pct":                 row.get("sl_pct"),
+        "tsl_pct":                row.get("tsl_pct"),
+        "breakeven_pct":          row.get("breakeven_pct"),
+        "next_tp_index":          row.get("next_tp_index") or 0,
+        "high_water_mark_lamports": row.get("high_water_mark_lamports"),
+        "sl_armed_at_breakeven":  bool(row.get("sl_armed_at_breakeven")),
+    }
+
+
+def update_position_monitor_state(
+    position_id: int, *,
+    high_water_mark_lamports: Optional[int] = None,
+    next_tp_index: Optional[int] = None,
+    sl_armed_at_breakeven: Optional[bool] = None,
+    last_monitor_check_at: Optional[int] = None,
+):
+    """Monitor-loop state writes. Each kwarg is optional — only set what
+    changed. Used by the monitor to advance position state without
+    touching unrelated fields."""
+    fields, args = [], []
+    if high_water_mark_lamports is not None:
+        fields.append("high_water_mark_lamports = ?")
+        args.append(int(high_water_mark_lamports))
+    if next_tp_index is not None:
+        fields.append("next_tp_index = ?")
+        args.append(int(next_tp_index))
+    if sl_armed_at_breakeven is not None:
+        fields.append("sl_armed_at_breakeven = ?")
+        args.append(1 if sl_armed_at_breakeven else 0)
+    if last_monitor_check_at is not None:
+        fields.append("last_monitor_check_at = ?")
+        args.append(int(last_monitor_check_at))
+    if not fields:
+        return
+    args.append(int(position_id))
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            f"UPDATE trader_positions SET {', '.join(fields)} WHERE id = ?",
+            args,
+        )
+
+
+def set_exit_reason(position_id: int, reason: str):
+    """Tag a position with WHY it was closed (set during sell, in addition
+    to status='sold'). Values: 'manual' / 'tp1' / 'tp2' / 'tp3' / 'sl' /
+    'tsl' / 'breakeven'."""
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            "UPDATE trader_positions SET exit_reason = ? WHERE id = ?",
+            (reason, int(position_id)),
+        )

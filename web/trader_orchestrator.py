@@ -107,6 +107,13 @@ def buy(
     live: bool = False,
     rpc_url: Optional[str] = None,
     submit_regions: Optional[list[str]] = None,
+    # ── Per-buy auto-exit overrides (Day 4.11+) ──────────────────────
+    # When None, we fall back to trader_positions.get_user_settings(user_id).
+    # Pass empty list [] to explicitly disable TP ladder on this buy.
+    tp_ladder: Optional[list] = None,
+    sl_pct: Optional[float] = None,
+    tsl_pct: Optional[float] = None,
+    breakeven_pct: Optional[float] = None,
 ) -> dict:
     """Execute one buy, end to end. Returns an envelope with everything
     the bot needs to render a confirmation message AND everything the
@@ -315,6 +322,26 @@ def buy(
             buy_route=built["route"],
             buy_tier=tier,
             buy_signal_source=signal_source,
+        )
+
+        # ── Stage 7b: stamp auto-exit config onto the new position ──────
+        # Resolution order:
+        #   1. Explicit per-buy kwarg (tp_ladder=, sl_pct=, etc.)
+        #   2. User defaults (trader_positions.get_user_settings)
+        #   3. Package defaults (DEFAULT_TP_LADDER etc.)
+        # We always stamp something — even manual buys get sensible
+        # auto-exits unless the caller explicitly disables (e.g. tp_ladder=[]).
+        user_defaults = trader_positions.get_user_settings(user_id)
+        eff_ladder    = tp_ladder      if tp_ladder      is not None else user_defaults["tp_ladder"]
+        eff_sl        = sl_pct         if sl_pct         is not None else user_defaults["sl_pct"]
+        eff_tsl       = tsl_pct        if tsl_pct        is not None else user_defaults["tsl_pct"]
+        eff_be        = breakeven_pct  if breakeven_pct  is not None else user_defaults["breakeven_pct"]
+        trader_positions.set_position_auto_exit(
+            position_id,
+            tp_ladder=eff_ladder,
+            sl_pct=eff_sl,
+            tsl_pct=eff_tsl,
+            breakeven_pct=eff_be,
         )
     except Exception as e:
         raise OrchestratorError("position", f"create_position failed: {e}") from e

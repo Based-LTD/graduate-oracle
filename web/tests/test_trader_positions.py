@@ -197,5 +197,118 @@ class TestTraderPositions(unittest.TestCase):
         self.assertEqual(row["fail_reason"], "jito rejected all regions")
 
 
+class TestAutoExitConfig(unittest.TestCase):
+    """Day 4.11 — auto-exit schema, user defaults, per-position overrides,
+    and monitor-state writes."""
+
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+        self.tmp.close()
+        os.environ["TRADER_DB_PATH"] = self.tmp.name
+        import importlib
+        global tp
+        import trader_positions as _tp
+        importlib.reload(_tp)
+        tp = _tp
+        tp.init_schema()
+
+    def tearDown(self):
+        os.environ.pop("TRADER_DB_PATH", None)
+        try:
+            os.unlink(self.tmp.name)
+        except OSError:
+            pass
+
+    # ── User defaults ────────────────────────────────────────────────
+    def test_user_settings_returns_package_defaults_when_no_row(self):
+        s = tp.get_user_settings("42")
+        self.assertEqual(s["tp_ladder"], tp.DEFAULT_TP_LADDER)
+        self.assertEqual(s["sl_pct"],        tp.DEFAULT_SL_PCT)
+        self.assertEqual(s["tsl_pct"],       tp.DEFAULT_TSL_PCT)
+        self.assertEqual(s["breakeven_pct"], tp.DEFAULT_BREAKEVEN_PCT)
+
+    def test_user_settings_roundtrip(self):
+        tp.set_user_settings(
+            "42",
+            tp_ladder=[{"pct": 100, "sell_pct": 30}, {"pct": 500, "sell_pct": 100}],
+            sl_pct=-40, tsl_pct=25, breakeven_pct=15,
+        )
+        s = tp.get_user_settings("42")
+        self.assertEqual(len(s["tp_ladder"]), 2)
+        self.assertEqual(s["tp_ladder"][0]["pct"], 100)
+        self.assertEqual(s["sl_pct"], -40)
+        self.assertEqual(s["tsl_pct"], 25)
+        self.assertEqual(s["breakeven_pct"], 15)
+
+    def test_user_settings_partial_update_preserves_unset_fields(self):
+        tp.set_user_settings("42", sl_pct=-30)
+        s = tp.get_user_settings("42")
+        self.assertEqual(s["sl_pct"], -30)
+        # Others should be defaults
+        self.assertEqual(s["tsl_pct"], tp.DEFAULT_TSL_PCT)
+        # Now update tsl only — sl should stay at -30
+        tp.set_user_settings("42", tsl_pct=20)
+        s = tp.get_user_settings("42")
+        self.assertEqual(s["sl_pct"], -30)
+        self.assertEqual(s["tsl_pct"], 20)
+
+    # ── Per-position overrides ──────────────────────────────────────────
+    def test_get_position_auto_exit_returns_none_for_missing(self):
+        self.assertIsNone(tp.get_position_auto_exit(99999))
+
+    def test_set_position_auto_exit_persists_ladder(self):
+        pid = tp.create_position(**_good_args())
+        tp.set_position_auto_exit(pid,
+            tp_ladder=[{"pct": 75, "sell_pct": 60}], sl_pct=-25, tsl_pct=15,
+        )
+        cfg = tp.get_position_auto_exit(pid)
+        self.assertEqual(len(cfg["tp_ladder"]), 1)
+        self.assertEqual(cfg["tp_ladder"][0]["pct"], 75)
+        self.assertEqual(cfg["sl_pct"], -25)
+        self.assertEqual(cfg["tsl_pct"], 15)
+        self.assertEqual(cfg["next_tp_index"], 0)
+        self.assertFalse(cfg["sl_armed_at_breakeven"])
+
+    def test_set_position_auto_exit_partial_update_preserves_others(self):
+        pid = tp.create_position(**_good_args())
+        tp.set_position_auto_exit(pid, sl_pct=-40, tsl_pct=25)
+        tp.set_position_auto_exit(pid, sl_pct=-20)  # update only sl
+        cfg = tp.get_position_auto_exit(pid)
+        self.assertEqual(cfg["sl_pct"], -20)
+        self.assertEqual(cfg["tsl_pct"], 25)  # unchanged
+
+    # ── Monitor state ────────────────────────────────────────────────
+    def test_update_monitor_state_advances_high_water_mark(self):
+        pid = tp.create_position(**_good_args())
+        tp.update_position_monitor_state(pid,
+            high_water_mark_lamports=1_200_000_000,
+            last_monitor_check_at=1_700_000_000,
+        )
+        cfg = tp.get_position_auto_exit(pid)
+        self.assertEqual(cfg["high_water_mark_lamports"], 1_200_000_000)
+        row = tp.get_position(pid)
+        self.assertEqual(row["last_monitor_check_at"], 1_700_000_000)
+
+    def test_update_monitor_state_advances_next_tp_index(self):
+        pid = tp.create_position(**_good_args())
+        tp.update_position_monitor_state(pid, next_tp_index=1)
+        cfg = tp.get_position_auto_exit(pid)
+        self.assertEqual(cfg["next_tp_index"], 1)
+
+    def test_update_monitor_state_arms_breakeven_once(self):
+        pid = tp.create_position(**_good_args())
+        cfg = tp.get_position_auto_exit(pid)
+        self.assertFalse(cfg["sl_armed_at_breakeven"])
+        tp.update_position_monitor_state(pid, sl_armed_at_breakeven=True)
+        self.assertTrue(tp.get_position_auto_exit(pid)["sl_armed_at_breakeven"])
+
+    # ── Exit reason ────────────────────────────────────────────────────
+    def test_set_exit_reason_stamps_row(self):
+        pid = tp.create_position(**_good_args())
+        tp.set_exit_reason(pid, "tp1")
+        row = tp.get_position(pid)
+        self.assertEqual(row["exit_reason"], "tp1")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
