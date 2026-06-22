@@ -200,6 +200,7 @@ def _format_sell_receipt(r: dict) -> str:
     # position row so we see all the final stored values.
     pnl_block = ""
     mc_block = ""
+    wallet_block = ""
     try:
         import trader_positions
         row = trader_positions.get_position(pid)
@@ -220,6 +221,39 @@ def _format_sell_receipt(r: dict) -> str:
                 + f"  ───────────────────\n"
                 f"  {sign} Net: *{net:+.4f}* SOL  ({net_pct:+.2f}%)  ← {verdict}"
             )
+
+            # Wallet-truth: ACTUAL on-chain SOL delta for the buy + sell
+            # txs, minus the recorded fee-skim. Captures tx fees, Jito
+            # tip, compute-budget, ATA rent, and slippage — none of which
+            # are in the swap-leg math above. Best-effort: never blocks.
+            try:
+                import wallet_truth
+                buy_sig = row.get("buy_signature") or ""
+                sell_sig = row.get("sell_signature") or ""
+                buy_delta = wallet_truth.fetch_payer_sol_delta_lamports(buy_sig)
+                sell_delta = wallet_truth.fetch_payer_sol_delta_lamports(sell_sig)
+                if buy_delta is not None and sell_delta is not None:
+                    fee_skim_total = ((row.get("buy_fee_lamports") or 0) +
+                                      (row.get("sell_fee_lamports") or 0))
+                    # buy_delta is negative (wallet lost SOL on the buy)
+                    # sell_delta is positive (wallet gained SOL on the sell)
+                    # fee_skim_total is positive (already left wallet too)
+                    wallet_net_lamports = buy_delta + sell_delta - fee_skim_total
+                    wallet_net_sol = wallet_net_lamports / 1e9
+                    wallet_net_pct = (wallet_net_sol / buy * 100) if buy else 0
+                    sign_w = "🟢" if wallet_net_lamports >= 0 else "🔴"
+                    # buy_delta is already negative, no extra minus needed
+                    wallet_block = (
+                        f"\n\n💼 *Wallet-truth:*\n"
+                        f"  Wallet out (buy):  *{buy_delta/1e9:+.5f}* SOL\n"
+                        f"  Wallet in (sell):  *{sell_delta/1e9:+.5f}* SOL\n"
+                        f"  Fee skim:         −*{fee_skim_total/1e9:.5f}* SOL\n"
+                        f"  ───────────────────\n"
+                        f"  {sign_w} Wallet net: *{wallet_net_sol:+.5f}* SOL  "
+                        f"({wallet_net_pct:+.2f}%)"
+                    )
+            except Exception as we:
+                print(f"[trader_commands] wallet_truth failed: {we}", flush=True)
 
             # MC snapshots — only shown when both entry + exit are stored
             entry_mc = row.get("entry_mcap_lamports")
@@ -245,6 +279,7 @@ def _format_sell_receipt(r: dict) -> str:
         f"{sig_link}"
         f"{mc_block}"
         f"{pnl_block}"
+        f"{wallet_block}"
     )
 
 
