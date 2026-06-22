@@ -129,6 +129,7 @@ def _fmt_settings(s: dict) -> str:
 def _kb_main() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎨 Strategy Preset", callback_data="s:strat")],
+        [InlineKeyboardButton("🤖 Auto-Trade",    callback_data="s:at")],
         [InlineKeyboardButton("🛒 Buy Amounts", callback_data="s:b"),
          InlineKeyboardButton("🎯 TP Ladder",   callback_data="s:t")],
         [InlineKeyboardButton("🛑 Stop Loss",    callback_data="s:l"),
@@ -393,6 +394,73 @@ def _kb_cap(s: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+# ── Auto-trade settings ────────────────────────────────────────────────
+
+_AUTO_SIZE_PRESETS_SOL = [0.001, 0.005, 0.01, 0.05, 0.1]   # picker buttons
+_AUTO_CAP_PRESETS      = [1, 3, 5, 10]                      # max concurrent
+
+
+def _fmt_auto_trade(s: dict) -> str:
+    enabled = s.get("auto_trade_enabled")
+    size_sol = (s.get("auto_trade_size_lamports") or 0) / 1e9
+    min_tier = s.get("auto_trade_min_tier") or "ACT"
+    cap = s.get("auto_trade_max_concurrent") or 3
+    tier_label = {
+        "ACT":   "ACT only (strictest)",
+        "WATCH": "ACT + WATCH",
+        "SCOUT": "ACT + WATCH + SCOUT (all)",
+    }.get(min_tier, min_tier)
+    state = "🟢 *ON*" if enabled else "🔴 *OFF*"
+    return (
+        "*🤖 AUTO-TRADE*\n\n"
+        f"State: {state}\n"
+        f"Size per buy: *{size_sol:.4f}* SOL\n"
+        f"Tier filter: *{tier_label}*\n"
+        f"Max concurrent: *{cap}* open positions\n\n"
+        "_When ON: bot auto-buys every alert that meets the tier filter. "
+        "Your TP/SL/TSL strategy applies. All rate limits + balance "
+        "checks still enforced. Receipts labeled `🤖 AUTO-BUY`._\n\n"
+        "⚠️ _Most pump.fun trades lose money. Auto-trading means losses "
+        "compound fast. Start small and watch closely._"
+    )
+
+
+def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
+    enabled = bool(s.get("auto_trade_enabled"))
+    cur_size = (s.get("auto_trade_size_lamports") or 0) / 1e9
+    cur_tier = s.get("auto_trade_min_tier") or "ACT"
+    cur_cap = s.get("auto_trade_max_concurrent") or 3
+    rows = []
+    # Master toggle
+    if enabled:
+        rows.append([InlineKeyboardButton("🛑 Turn OFF",
+                                          callback_data="s:at:off")])
+    else:
+        rows.append([InlineKeyboardButton("✅ Turn ON",
+                                          callback_data="s:at:on")])
+    # Size picker
+    rows.append([
+        InlineKeyboardButton(
+            ("✓ " if abs(v - cur_size) < 1e-9 else "") + f"{v:g} SOL",
+            callback_data=f"s:at:size:{int(v*1e9)}",
+        ) for v in _AUTO_SIZE_PRESETS_SOL
+    ])
+    # Tier
+    rows.append([
+        InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
+                             callback_data=f"s:at:tier:{t}")
+        for t, label in [("ACT", "ACT"), ("WATCH", "+WATCH"), ("SCOUT", "+SCOUT")]
+    ])
+    # Cap
+    rows.append([
+        InlineKeyboardButton(("✓ " if cur_cap == c else "") + f"{c}",
+                             callback_data=f"s:at:cap:{c}")
+        for c in _AUTO_CAP_PRESETS
+    ])
+    rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
+    return InlineKeyboardMarkup(rows)
+
+
 # ── Strategy presets ───────────────────────────────────────────────────
 
 def _fmt_strategy() -> str:
@@ -572,6 +640,27 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 pass
             return await _render(q, uid, "m")  # back to main with new values
 
+        # ── Auto-trade actions ──
+        if screen == "at" and len(parts) >= 3:
+            action = parts[2]
+            try:
+                if action == "on":
+                    trader_positions.set_auto_trade_config(uid, enabled=True)
+                elif action == "off":
+                    trader_positions.set_auto_trade_config(uid, enabled=False)
+                elif action == "size" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, size_lamports=int(parts[3]))
+                elif action == "tier" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, min_tier=parts[3])
+                elif action == "cap" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, max_concurrent=int(parts[3]))
+            except (ValueError, Exception) as e:
+                print(f"[trader_setup] auto-trade action failed: {e}", flush=True)
+            return await _render(q, uid, "at")
+
         # ── Pure navigation (no mutation) ──
         return await _render(q, uid, ":".join(parts[1:]) or "m")
 
@@ -614,6 +703,8 @@ async def _render(q, uid: str, screen: str):
         text, kb = _fmt_cap(s), _kb_cap(s)
     elif code == "strat":
         text, kb = _fmt_strategy(), _kb_strategy()
+    elif code == "at":
+        text, kb = _fmt_auto_trade(s), _kb_auto_trade(s)
     else:
         text = "*⚙️ TRADER SETUP*\n\n" + _fmt_settings(s)
         kb = _kb_main()

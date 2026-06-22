@@ -1358,7 +1358,23 @@ async def cmd_alerts(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for r in rows:
         thr_pct = int((r['threshold'] or 0) * 100)
         if r['kind'] == 'composite_score':
-            desc = "live composite signal (ACT/WATCH/SCOUT)"
+            # Reflect the actual tier filter (params.min_tier) instead of
+            # always showing all three tiers. Otherwise users who ran
+            # `/alert composite_score act` see a misleading label.
+            min_tier = None
+            try:
+                import json as _json
+                p = _json.loads(r['params']) if r['params'] else {}
+                if isinstance(p, dict):
+                    min_tier = p.get('min_tier')
+            except Exception:
+                pass
+            tier_label = {
+                "ACT":   "ACT only",
+                "WATCH": "ACT + WATCH",
+                "SCOUT": "ACT + WATCH + SCOUT",
+            }.get(min_tier, "ACT/WATCH/SCOUT (all tiers)")
+            desc = f"live composite signal · *{tier_label}*"
             thr_part = ""
         elif r['kind'] == 'grad_prob':
             desc = f"graduation probability ≥ *{thr_pct}%*"
@@ -1842,6 +1858,107 @@ def _escape_md(s: str) -> str:
             out.append("\\")
         out.append(ch)
     return "".join(out)
+
+
+async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str):
+    """If the user has auto-trade enabled AND this alert's tier meets
+    their threshold AND they're under their max-concurrent open cap,
+    fire a buy via orchestrator.
+
+    All existing safety guards apply automatically because we route
+    through orchestrator.buy():
+      • TOS acceptance check
+      • Rate limiter (3s spacing + 10/min burst)
+      • Balance floor (refuses if wallet too low)
+      • max_trade_sol cap
+      • Slippage / tip from user settings
+
+    Buy receipt is sent labeled with the 🤖 AUTO-BUY prefix so the user
+    sees clearly that this wasn't a manual tap."""
+    user_id = str(tg_id)
+    try:
+        import trader_positions
+        cfg = trader_positions.get_user_settings(user_id)
+    except Exception as e:
+        print(f"[auto_trade] get_user_settings failed: {e}", flush=True)
+        return
+
+    if not cfg.get("auto_trade_enabled"):
+        return
+
+    # Tier gate. ACT > WATCH > SCOUT.
+    alert_tier = (snap or {}).get("tier") or ""
+    min_tier   = cfg.get("auto_trade_min_tier") or "ACT"
+    rank = {"SCOUT": 1, "WATCH": 2, "ACT": 3}
+    if rank.get(alert_tier, 0) < rank.get(min_tier, 3):
+        return
+
+    # Max concurrent cap
+    try:
+        n_open = trader_positions.count_open_positions(user_id)
+    except Exception as e:
+        print(f"[auto_trade] count_open_positions failed: {e}", flush=True)
+        return
+    cap = int(cfg.get("auto_trade_max_concurrent") or 3)
+    if n_open >= cap:
+        await application.bot.send_message(
+            tg_id,
+            f"🤖 Auto-trade SKIPPED on `{mint[:6]}…{mint[-4:]}` "
+            f"— you have {n_open} open positions (cap = {cap}).\n"
+            f"Increase cap in /trader → Settings → Auto-Trade, or close "
+            f"some positions first.",
+            parse_mode=constants.ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        )
+        return
+
+    size_lamports = int(cfg.get("auto_trade_size_lamports") or 5_000_000)
+    sol_amount = size_lamports / 1e9
+
+    # Run the buy in a try; catch all OrchestratorError shapes so a
+    # buy failure becomes a notification instead of a silent miss.
+    try:
+        import trader_orchestrator
+        result = trader_orchestrator.buy(
+            user_id=user_id,
+            mint=mint,
+            sol=sol_amount,
+            live=True,
+        )
+    except Exception as e:
+        # User-facing message extraction. OrchestratorError has a clean
+        # .user_facing_msg attribute; fall back to repr for unexpected.
+        msg = getattr(e, "user_facing_msg", None) or str(e)[:200]
+        await application.bot.send_message(
+            tg_id,
+            f"🤖 Auto-trade FAILED on `{mint[:6]}…{mint[-4:]}`: {msg}",
+            parse_mode=constants.ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        )
+        return
+
+    # Success — render the receipt via the trader_commands formatter so
+    # we match the manual-buy UX, just with an AUTO-BUY prefix.
+    try:
+        import trader_commands
+        body = trader_commands._format_buy_receipt(result)
+        text = f"🤖 *AUTO-BUY*\n\n{body}"
+        kb = trader_commands._kb_position_actions(result.get("position_id"))
+        await application.bot.send_message(
+            tg_id, text,
+            parse_mode=constants.ParseMode.MARKDOWN,
+            reply_markup=kb,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        print(f"[auto_trade] receipt render failed: {e}", flush=True)
+        # Still tell the user it succeeded
+        await application.bot.send_message(
+            tg_id,
+            f"🤖 *AUTO-BUY* on `{mint[:6]}…` succeeded. "
+            f"See /trader → Portfolio.",
+            parse_mode=constants.ParseMode.MARKDOWN,
+        )
 
 
 async def _send_alert(application, chat_id: int, text: str, **kw):
@@ -2381,6 +2498,20 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
                         print(f"[bot] trader buy-buttons skipped: {e}", flush=True)
                 kb = InlineKeyboardMarkup(kb_rows)
                 await _send_alert(application, tg_id, msg, reply_markup=kb)
+
+                # ── Auto-trade evaluator ────────────────────────────
+                # If user has opted in AND alert tier meets their threshold
+                # AND they're under their concurrent-open cap → fire a buy.
+                # Operator-only during beta (same gate as buy buttons).
+                # Goes through orchestrator.buy() so all existing safety
+                # (rate limit, balance floor, TOS, max_trade_sol cap) applies.
+                if (kind == "composite_score"
+                        and tg_id in _ADMIN_TG_IDS):
+                    try:
+                        await _maybe_auto_trade(application, tg_id, snap, mint)
+                    except Exception as e:
+                        print(f"[bot] auto-trade evaluator failed: {e}",
+                              flush=True)
                 # Log to tg_fires so the morning audit + /api/alerts/audit
                 # endpoint sees push-fired alerts. Without this, the audit
                 # is blind to anything the push path delivers (which is

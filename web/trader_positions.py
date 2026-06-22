@@ -202,6 +202,15 @@ _MIGRATIONS = [
         "ALTER TABLE trader_positions ADD COLUMN exit_mcap_lamports INTEGER"),
     ("trader_positions", "token_total_supply",
         "ALTER TABLE trader_positions ADD COLUMN token_total_supply INTEGER"),
+    # Day 4.39 — auto-trade settings per-user
+    ("trader_user_settings", "auto_trade_enabled",
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_enabled INTEGER DEFAULT 0"),
+    ("trader_user_settings", "auto_trade_size_lamports",
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_size_lamports INTEGER DEFAULT 5000000"),  # 0.005 SOL
+    ("trader_user_settings", "auto_trade_min_tier",
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_min_tier TEXT DEFAULT 'ACT'"),
+    ("trader_user_settings", "auto_trade_max_concurrent",
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_max_concurrent INTEGER DEFAULT 3"),
 ]
 
 
@@ -408,6 +417,57 @@ def set_exit_mcap(position_id: int, exit_mcap_lamports: Optional[int]):
         )
 
 
+def set_auto_trade_config(
+    user_id: str | int, *,
+    enabled: Optional[bool] = None,
+    size_lamports: Optional[int] = None,
+    min_tier: Optional[str] = None,
+    max_concurrent: Optional[int] = None,
+):
+    """Update one or more auto-trade fields for a user. None = leave alone."""
+    init_schema()
+    fields, vals = [], []
+    if enabled is not None:
+        fields.append("auto_trade_enabled = ?")
+        vals.append(1 if enabled else 0)
+    if size_lamports is not None:
+        fields.append("auto_trade_size_lamports = ?")
+        vals.append(int(size_lamports))
+    if min_tier is not None:
+        if min_tier not in ("ACT", "WATCH", "SCOUT"):
+            raise ValueError(f"min_tier {min_tier!r} must be ACT/WATCH/SCOUT")
+        fields.append("auto_trade_min_tier = ?")
+        vals.append(min_tier)
+    if max_concurrent is not None:
+        fields.append("auto_trade_max_concurrent = ?")
+        vals.append(int(max_concurrent))
+    if not fields:
+        return
+    vals.append(str(user_id))
+    # Make sure a settings row exists for this user before updating
+    with contextlib.closing(_conn()) as c, c:
+        c.execute(
+            "INSERT OR IGNORE INTO trader_user_settings (user_id) VALUES (?)",
+            (str(user_id),),
+        )
+        c.execute(
+            f"UPDATE trader_user_settings SET {', '.join(fields)} WHERE user_id = ?",
+            vals,
+        )
+
+
+def count_open_positions(user_id: str | int) -> int:
+    """How many open positions does this user have? Used by the auto-
+    trade evaluator to enforce max_concurrent."""
+    with contextlib.closing(_conn()) as c:
+        row = c.execute(
+            "SELECT COUNT(*) AS n FROM trader_positions "
+            "WHERE user_id = ? AND status = 'open'",
+            (str(user_id),),
+        ).fetchone()
+    return int((row["n"] if row else 0) or 0)
+
+
 def set_buy_fee(position_id: int, buy_fee_lamports: int):
     """Stamp the fee paid at buy time onto the position. Called by the
     orchestrator after the fee skim returns (best-effort — failures here
@@ -540,6 +600,13 @@ def get_user_settings(user_id: str | int) -> dict:
     if max_trade_sol is not None:
         max_trade_sol = float(max_trade_sol)
 
+    # Auto-trade settings — Day 4.39. Default OFF for safety; user must
+    # explicitly enable in /trader → Settings → Auto-Trade.
+    at_enabled = bool(_safe_get("auto_trade_enabled", 0))
+    at_size_lamports = int(_safe_get("auto_trade_size_lamports", 5_000_000))
+    at_min_tier = _safe_get("auto_trade_min_tier", "ACT") or "ACT"
+    at_max_concurrent = int(_safe_get("auto_trade_max_concurrent", 3))
+
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
         "sl_pct":        float(sl),
@@ -550,6 +617,10 @@ def get_user_settings(user_id: str | int) -> dict:
         "slippage_bps":   slippage_bps,
         "jito_tip_mode":  jito_tip_mode,
         "max_trade_sol":  max_trade_sol,
+        "auto_trade_enabled":        at_enabled,
+        "auto_trade_size_lamports":  at_size_lamports,
+        "auto_trade_min_tier":       at_min_tier,
+        "auto_trade_max_concurrent": at_max_concurrent,
     }
 
 
