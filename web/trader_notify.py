@@ -115,3 +115,54 @@ def notify_auto_exit(telegram_id: str | int, *,
             f"_Run /portfolio to inspect; sell manually if needed._"
         )
     return send_message(telegram_id, text)
+
+
+def notify_position_closed(telegram_id: str | int, position_id: int) -> bool:
+    """Send a full PnL summary when a position has finished closing
+    (status='sold'). Reads the accumulated totals from trader_positions
+    so multi-leg exits are reported honestly (Day 4.35 fix).
+
+    Called after the FINAL leg's auto-exit. The per-leg
+    notify_auto_exit message above this gives the leg-specific tx;
+    this gives the overall trade outcome.
+    """
+    try:
+        import trader_positions
+        row = trader_positions.get_position(int(position_id))
+        if not row or row.get("status") != "sold":
+            return False
+        mint = row.get("mint") or ""
+        short_mint = mint[:6] + "…" + mint[-4:] if mint else "?"
+        buy        = (row.get("buy_sol_lamports") or 0) / 1e9
+        sell_total = (row.get("sell_sol_lamports") or 0) / 1e9
+        fees       = ((row.get("buy_fee_lamports") or 0) +
+                      (row.get("sell_fee_lamports") or 0)) / 1e9
+        net        = (row.get("net_pnl_lamports") or 0) / 1e9
+        net_pct    = (net / buy * 100) if buy else 0
+        sign       = "🟢" if net >= 0 else "🔴"
+        verdict    = "*PROFIT*" if net >= 0 else "*LOSS*"
+
+        # Optional MC delta block
+        mc_block = ""
+        entry_mc = row.get("entry_mcap_lamports")
+        exit_mc  = row.get("exit_mcap_lamports")
+        if entry_mc and exit_mc:
+            mc_change = (exit_mc - entry_mc) / entry_mc * 100
+            mc_arrow  = "📈" if mc_change >= 0 else "📉"
+            mc_block  = (f"\n\n📊 *MC:* {entry_mc/1e9:.1f} SOL → "
+                         f"{exit_mc/1e9:.1f} SOL  {mc_arrow} *{mc_change:+.1f}%*")
+
+        text = (
+            f"✅ *Position #{position_id} closed* — {short_mint}\n\n"
+            f"📊 *PnL summary (all legs):*\n"
+            f"  Cost basis: *{buy:.4f}* SOL\n"
+            f"  Got back:   *{sell_total:.4f}* SOL\n"
+            + (f"  Fees:      −*{fees:.5f}* SOL\n" if fees > 0 else "")
+            + f"  ───────────────────\n"
+            f"  {sign} Net: *{net:+.4f}* SOL  ({net_pct:+.2f}%)  ← {verdict}"
+            + mc_block
+        )
+        return send_message(telegram_id, text)
+    except Exception as e:
+        print(f"[trader_notify] notify_position_closed failed: {e}", flush=True)
+        return False

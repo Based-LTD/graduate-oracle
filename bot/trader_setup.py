@@ -796,15 +796,16 @@ def _kb_hub_main() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Portfolio", callback_data="h:p"),
          InlineKeyboardButton("💰 Wallet",    callback_data="h:w")],
-        [InlineKeyboardButton("⚙️ Settings",  callback_data="s:m"),
-         InlineKeyboardButton("🚪 Close All", callback_data="h:c")],
-        [InlineKeyboardButton("🔄 Refresh",   callback_data="h:m"),
-         InlineKeyboardButton("✕ Close",     callback_data="h:close")],
+        [InlineKeyboardButton("📜 History",   callback_data="h:hist"),
+         InlineKeyboardButton("⚙️ Settings",  callback_data="s:m")],
+        [InlineKeyboardButton("🚪 Close All", callback_data="h:c"),
+         InlineKeyboardButton("🔄 Refresh",   callback_data="h:m")],
+        [InlineKeyboardButton("✕ Close",     callback_data="h:close")],
     ])
 
 
 def _fmt_hub_main(uid: str) -> str:
-    """The dashboard: balance + positions summary + PnL."""
+    """The dashboard: balance + open positions + realized PnL."""
     import trader_wallets, trader_portfolio
     # Balance
     try:
@@ -817,7 +818,7 @@ def _fmt_hub_main(uid: str) -> str:
     except Exception as e:
         bal_line = f"💰 _balance unavailable: {str(e)[:40]}_"
 
-    # Portfolio summary
+    # Open positions (unrealized)
     try:
         s = trader_portfolio.portfolio_summary(uid)
         n = s["n_open"]
@@ -836,7 +837,23 @@ def _fmt_hub_main(uid: str) -> str:
     except Exception as e:
         port_line = f"📊 _portfolio unavailable: {str(e)[:40]}_"
 
-    return f"*🤖 GRADUATE TRADER*\n\n{bal_line}\n\n{port_line}"
+    # Realized — closed-trade aggregate. Honest cumulative number.
+    try:
+        rs = trader_portfolio.realized_summary(uid)
+        if rs["n_trades"] == 0:
+            real_line = "💵 _No closed trades yet._"
+        else:
+            net = rs["total_net_pnl_lamports"] / 1e9
+            wr  = rs["win_rate"] * 100
+            sign = "🟢" if net >= 0 else "🔴"
+            real_line = (
+                f"💵 *Realized*: {sign} *{net:+.4f}* SOL  "
+                f"({rs['n_wins']}W / {rs['n_losses']}L · {wr:.0f}% wr)"
+            )
+    except Exception as e:
+        real_line = f"💵 _realized unavailable: {str(e)[:40]}_"
+
+    return f"*🤖 GRADUATE TRADER*\n\n{bal_line}\n\n{port_line}\n\n{real_line}"
 
 
 # ── Portfolio list ──────────────────────────────────────────────────────
@@ -1057,6 +1074,70 @@ def _kb_closeall_confirm(has_positions: bool) -> InlineKeyboardMarkup:
 
 # ── /trader command ────────────────────────────────────────────────────
 
+def _fmt_history(uid: str) -> str:
+    """Render closed-trade history. Used by /history command + h:hist button."""
+    import trader_portfolio, sqlite3, contextlib
+    import trader_positions as _tp
+    try:
+        rs = trader_portfolio.realized_summary(uid)
+    except Exception as e:
+        return f"❌ history failed: {str(e)[:200]}"
+    if rs["n_trades"] == 0:
+        return ("📜 *No closed trades yet.*\n\nClosed trades will appear here "
+                "with PnL once they fire.")
+
+    net = rs["total_net_pnl_lamports"] / 1e9
+    fees = rs["total_fees_lamports"] / 1e9
+    sign = "🟢" if net >= 0 else "🔴"
+    lines = [
+        f"📜 *Closed trades — {rs['n_trades']} total*\n",
+        f"  {sign} Realized: *{net:+.4f}* SOL",
+        f"  Wins/Losses: *{rs['n_wins']}* / *{rs['n_losses']}*  "
+        f"({rs['win_rate']*100:.0f}% wr)",
+        f"  Fees paid: *{fees:.5f}* SOL",
+        f"  Best: *{rs['best_trade']/1e9:+.4f}*  ·  "
+        f"Worst: *{rs['worst_trade']/1e9:+.4f}*",
+        "\n─── *Recent (last 10)* ───",
+    ]
+
+    db_path = _tp._db_path()
+    with contextlib.closing(sqlite3.connect(db_path, timeout=10)) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            "SELECT id, mint, buy_sol_lamports, net_pnl_lamports, "
+            "       exit_reason, sell_timestamp "
+            "  FROM trader_positions "
+            " WHERE user_id = ? AND status = 'sold' "
+            " ORDER BY sell_timestamp DESC LIMIT 10",
+            (str(uid),),
+        ).fetchall()
+    for r in rows:
+        d = dict(r)
+        net_l = (d.get("net_pnl_lamports") or 0) / 1e9
+        cost = (d.get("buy_sol_lamports") or 0) / 1e9
+        pct = (net_l / cost * 100) if cost else 0
+        s = "🟢" if net_l >= 0 else "🔴"
+        reason = d.get("exit_reason") or "manual"
+        short_mint = d["mint"][:6] + "…"
+        lines.append(
+            f"`#{d['id']:>3}` {s} *{net_l:+.4f}* SOL ({pct:+.1f}%) "
+            f"— `{short_mint}` · _{reason}_"
+        )
+    return "\n".join(lines)
+
+
+async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Recent closed trades + cumulative realized PnL."""
+    if not _is_admin(update):
+        return
+    uid = _uid(update)
+    await update.message.reply_text(
+        _fmt_history(uid),
+        parse_mode=constants.ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
+    )
+
+
 async def cmd_trader(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Top-level entry point — opens the hub."""
     if not _is_admin(update):
@@ -1161,6 +1242,12 @@ async def cb_hub(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             text, kb = _fmt_portfolio_list(s), _kb_portfolio_list(s)
         elif screen == "w":
             text, kb = _fmt_wallet(uid), _kb_wallet()
+        elif screen == "hist":
+            text = _fmt_history(uid)
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Refresh", callback_data="h:hist"),
+                 InlineKeyboardButton("🏠 Home",    callback_data="h:m")],
+            ])
         elif screen == "c":
             import trader_portfolio
             s = trader_portfolio.portfolio_summary(uid)
@@ -1259,6 +1346,7 @@ def register(app: Application, admin_ids: set[int]):
     # Hub (primary entry)
     app.add_handler(CommandHandler("trader", cmd_trader))
     app.add_handler(CommandHandler("start_trader", cmd_trader))  # alias
+    app.add_handler(CommandHandler("history", cmd_history))
     # Settings (legacy power-user)
     app.add_handler(CommandHandler("setup", cmd_setup))
     # Callback routers

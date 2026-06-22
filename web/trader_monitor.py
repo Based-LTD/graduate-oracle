@@ -323,6 +323,12 @@ def tick(user_id: str | int, *, live: bool = False,
                     sell_signature=sell_result.get("sell_signature") or "",
                     sol_out_lamports=int(sell_result.get("expected_sol_out_lamports") or 0),
                 )
+                # When the final leg closes the position, send a full
+                # PnL summary so the user sees the whole-trade outcome
+                # (not just the per-leg ticks). Multi-leg accounting was
+                # fixed in Day 4.35 so the totals are honest.
+                if sell_result.get("new_status") == "sold":
+                    trader_notify.notify_position_closed(user_id, pid)
             except Exception as ne:
                 print(f"[trader_monitor] notify_auto_exit failed: {ne}", flush=True)
         except Exception as e:

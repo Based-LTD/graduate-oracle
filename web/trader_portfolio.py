@@ -88,6 +88,50 @@ def value_open_positions(user_id: str | int, *, slippage_bps: int = 500,
                            timeout_s=timeout_s_per) for r in rows]
 
 
+def realized_summary(user_id: str | int) -> dict:
+    """Aggregate stats across CLOSED positions for this user.
+    Used by the hub + /history. Read-only — pure DB query, no Jupiter."""
+    import sqlite3, contextlib
+    db_path = trader_positions._db_path()
+    with contextlib.closing(sqlite3.connect(db_path, timeout=10)) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            "SELECT buy_sol_lamports, sell_sol_lamports, buy_fee_lamports, "
+            "       sell_fee_lamports, net_pnl_lamports, exit_reason, "
+            "       sell_timestamp "
+            "  FROM trader_positions "
+            " WHERE user_id = ? AND status = 'sold' "
+            " ORDER BY sell_timestamp DESC",
+            (str(user_id),),
+        ).fetchall()
+    n = len(rows)
+    if n == 0:
+        return {"n_trades": 0, "n_wins": 0, "n_losses": 0,
+                "total_cost_lamports": 0, "total_received_lamports": 0,
+                "total_fees_lamports": 0, "total_net_pnl_lamports": 0,
+                "win_rate": 0.0, "best_trade": None, "worst_trade": None}
+    n_wins = sum(1 for r in rows if (r["net_pnl_lamports"] or 0) > 0)
+    n_losses = n - n_wins
+    total_cost = sum(int(r["buy_sol_lamports"] or 0) for r in rows)
+    total_recv = sum(int(r["sell_sol_lamports"] or 0) for r in rows)
+    total_fees = sum(int((r["buy_fee_lamports"] or 0) + (r["sell_fee_lamports"] or 0))
+                     for r in rows)
+    total_net = sum(int(r["net_pnl_lamports"] or 0) for r in rows)
+    nets = [int(r["net_pnl_lamports"] or 0) for r in rows]
+    return {
+        "n_trades":               n,
+        "n_wins":                 n_wins,
+        "n_losses":               n_losses,
+        "win_rate":               (n_wins / n) if n else 0.0,
+        "total_cost_lamports":    total_cost,
+        "total_received_lamports": total_recv,
+        "total_fees_lamports":    total_fees,
+        "total_net_pnl_lamports": total_net,
+        "best_trade":             max(nets) if nets else 0,
+        "worst_trade":            min(nets) if nets else 0,
+    }
+
+
 def portfolio_summary(user_id: str | int, *, slippage_bps: int = 500) -> dict:
     """High-level totals for the /portfolio header. Returns:
         {
