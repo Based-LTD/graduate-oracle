@@ -420,11 +420,348 @@ async def _render(q, uid: str, screen: str):
             raise
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# HUB — the top-level button menu (/trader). Everything reachable from
+# inline buttons; no commands required.
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Callback prefix:  h:<screen>[:<arg>...]
+#   h:m         → main dashboard
+#   h:p         → portfolio list
+#   h:p:<id>    → portfolio position detail
+#   h:w         → wallet
+#   h:c         → close-all confirmation
+#   h:cy        → close-all confirmed (executes)
+#   h:refresh   → re-render current screen (no-op if same)
+#   h:close     → dismiss
+#
+# Settings link → existing s: callback chain.
+
+
+def _kb_hub_main() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Portfolio", callback_data="h:p"),
+         InlineKeyboardButton("💰 Wallet",    callback_data="h:w")],
+        [InlineKeyboardButton("⚙️ Settings",  callback_data="s:m"),
+         InlineKeyboardButton("🚪 Close All", callback_data="h:c")],
+        [InlineKeyboardButton("🔄 Refresh",   callback_data="h:m"),
+         InlineKeyboardButton("✕ Close",     callback_data="h:close")],
+    ])
+
+
+def _fmt_hub_main(uid: str) -> str:
+    """The dashboard: balance + positions summary + PnL."""
+    import trader_wallets, trader_portfolio
+    # Balance
+    try:
+        wallet = trader_wallets.wallet_for(uid)
+        if wallet:
+            bal_sol = trader_wallets.get_balance_sol(wallet["public_key"])
+            bal_line = f"💰 *{bal_sol:.4f}* SOL  ·  `{wallet['public_key'][:6]}…{wallet['public_key'][-4:]}`"
+        else:
+            bal_line = "💰 _No wallet yet — tap Wallet to provision_"
+    except Exception as e:
+        bal_line = f"💰 _balance unavailable: {str(e)[:40]}_"
+
+    # Portfolio summary
+    try:
+        s = trader_portfolio.portfolio_summary(uid)
+        n = s["n_open"]
+        if n == 0:
+            port_line = "📊 _No open positions._\n_Tap [Buy 0.0X] under any ACT/WATCH alert._"
+        else:
+            pnl = s["total_unrealized_pnl_lamports"] / 1e9
+            pct = s["total_unrealized_pnl_pct"] * 100
+            cost = s["total_cost_basis_lamports"] / 1e9
+            val  = s["total_current_value_lamports"] / 1e9
+            arrow = "📈" if pnl >= 0 else "📉"
+            port_line = (
+                f"📊 *{n}* open  ·  cost *{cost:.4f}*  ·  now *{val:.4f}*\n"
+                f"   {arrow} unrealized: *{pnl:+.4f}* SOL  ({pct:+.1f}%)"
+            )
+    except Exception as e:
+        port_line = f"📊 _portfolio unavailable: {str(e)[:40]}_"
+
+    return f"*🤖 GRADUATE TRADER*\n\n{bal_line}\n\n{port_line}"
+
+
+# ── Portfolio list ──────────────────────────────────────────────────────
+
+def _fmt_portfolio_list(s: dict) -> str:
+    n = s["n_open"]
+    if n == 0:
+        return ("*📊 PORTFOLIO*\n\n_No open positions._\n\n"
+                "Tap a Buy button under any ACT/WATCH/SCOUT alert "
+                "to open one.")
+    lines = [f"*📊 PORTFOLIO* ({n} open)\n",
+             "Tap a position to manage:"]
+    return "\n".join(lines)
+
+
+def _kb_portfolio_list(s: dict) -> InlineKeyboardMarkup:
+    rows = []
+    for p in s["positions"][:15]:
+        pid = p["id"]
+        mint_short = p["mint"][:5] + "…" + p["mint"][-4:]
+        if p["current_sol_value_lamports"] is None:
+            label = f"#{pid} {mint_short}  ❓ no quote"
+        else:
+            pct = p["unrealized_pnl_pct"] * 100
+            arrow = "📈" if pct >= 0 else "📉"
+            label = f"#{pid} {mint_short}  {arrow} {pct:+.0f}%"
+        rows.append([InlineKeyboardButton(label, callback_data=f"h:p:{pid}")])
+    if s["n_open"] > 15:
+        rows.append([InlineKeyboardButton(
+            f"…+{s['n_open']-15} more", callback_data="h:p"  # no-op
+        )])
+    rows.append([InlineKeyboardButton("← Back", callback_data="h:m")])
+    return InlineKeyboardMarkup(rows)
+
+
+# ── Position detail ─────────────────────────────────────────────────────
+
+def _fmt_position_detail(pos: dict, settings: dict) -> str:
+    import json
+    mint = pos["mint"]
+    pid = pos["id"]
+    cost = pos["buy_sol_lamports"] / 1e9
+    cur = pos.get("current_sol_value_lamports")
+    if cur is None:
+        cur_line = "_no quote available (mint may have rugged)_"
+    else:
+        cur_sol = cur / 1e9
+        pnl = (cur - pos["buy_sol_lamports"]) / 1e9
+        pct = pnl / cost * 100 if cost else 0
+        arrow = "📈" if pnl >= 0 else "📉"
+        cur_line = f"Now: *{cur_sol:.4f}* SOL  {arrow} *{pct:+.1f}%* ({pnl:+.4f})"
+
+    # Exit rules
+    ladder_str = ""
+    try:
+        if pos.get("tp_ladder_json"):
+            ladder = json.loads(pos["tp_ladder_json"])
+            for i, r in enumerate(ladder):
+                done = "✓ " if i < (pos.get("next_tp_index") or 0) else ""
+                ladder_str += f"\n  {done}TP{i+1}: +{r['pct']:.0f}% sell {r['sell_pct']:.0f}%"
+    except Exception:
+        pass
+    sl_pct = pos.get("sl_pct")
+    tsl_pct = pos.get("tsl_pct")
+    be_pct = pos.get("breakeven_pct")
+    armed = bool(pos.get("sl_armed_at_breakeven"))
+    rules = []
+    if ladder_str:
+        rules.append(f"🎯 Ladder:{ladder_str}")
+    if sl_pct is not None:
+        sl_display = "0% (at entry — breakeven armed)" if armed else f"{sl_pct:+.0f}%"
+        rules.append(f"🛑 SL: {sl_display}")
+    if tsl_pct is not None:
+        rules.append(f"📈 TSL: {tsl_pct:.0f}% off high")
+    if be_pct is not None and not armed:
+        rules.append(f"🔒 BE: at +{be_pct:.0f}% flips SL to entry")
+
+    return (
+        f"*📍 POSITION #{pid}*\n"
+        f"`{mint}`\n\n"
+        f"Cost: *{cost:.4f}* SOL\n"
+        f"{cur_line}\n\n"
+        + "\n".join(rules)
+    )
+
+
+def _kb_position_detail(pid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Sell 25%", callback_data=f"ts:{pid}:25"),
+         InlineKeyboardButton("Sell 50%", callback_data=f"ts:{pid}:50"),
+         InlineKeyboardButton("Sell ALL", callback_data=f"ts:{pid}:100")],
+        [InlineKeyboardButton("← Portfolio", callback_data="h:p"),
+         InlineKeyboardButton("🏠 Home",     callback_data="h:m")],
+    ])
+
+
+# ── Wallet ──────────────────────────────────────────────────────────────
+
+def _fmt_wallet(uid: str) -> str:
+    import trader_wallets
+    try:
+        wallet = trader_wallets.get_or_create_wallet(uid)
+        pk = wallet["public_key"]
+        try:
+            bal = trader_wallets.get_balance_sol(pk)
+            bal_str = f"*{bal:.6f}* SOL"
+        except Exception:
+            bal_str = "_RPC unavailable_"
+        return (
+            f"*💰 WALLET*\n\n"
+            f"Balance: {bal_str}\n\n"
+            f"Pubkey (long-press to copy):\n"
+            f"`{pk}`\n\n"
+            "_Send SOL to this address to fund trades._\n"
+            "_Custody is server-side — encrypted with your master key, "
+            "private key never leaves the server._"
+        )
+    except Exception as e:
+        return f"*💰 WALLET*\n\n_error: {str(e)[:200]}_"
+
+
+def _kb_wallet() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh", callback_data="h:w"),
+         InlineKeyboardButton("🏠 Home",   callback_data="h:m")],
+    ])
+
+
+# ── Close all ──────────────────────────────────────────────────────────
+
+def _fmt_closeall_confirm(uid: str) -> str:
+    import trader_portfolio
+    s = trader_portfolio.portfolio_summary(uid)
+    n = s["n_open"]
+    if n == 0:
+        return "*🚪 CLOSE ALL*\n\n_No open positions to close._"
+    pnl = s["total_unrealized_pnl_lamports"] / 1e9
+    return (
+        f"*🚪 CLOSE ALL?*\n\n"
+        f"You have *{n}* open position{'s' if n != 1 else ''}.\n"
+        f"Current unrealized PnL: *{pnl:+.4f}* SOL.\n\n"
+        "_This will sell 100% of every position at market._\n"
+        "_Confirm below._"
+    )
+
+
+def _kb_closeall_confirm(has_positions: bool) -> InlineKeyboardMarkup:
+    if not has_positions:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 Home", callback_data="h:m")],
+        ])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Yes, close ALL", callback_data="h:cy")],
+        [InlineKeyboardButton("✕ Cancel",         callback_data="h:m")],
+    ])
+
+
+# ── /trader command ────────────────────────────────────────────────────
+
+async def cmd_trader(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Top-level entry point — opens the hub."""
+    if not _is_admin(update):
+        return
+    try:
+        text = _fmt_hub_main(_uid(update))
+        await update.message.reply_text(
+            text, parse_mode=constants.ParseMode.MARKDOWN,
+            reply_markup=_kb_hub_main(), disable_web_page_preview=True,
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ /trader failed: {str(e)[:200]}")
+        traceback.print_exc(file=sys.stderr)
+
+
+# ── Hub callback router ────────────────────────────────────────────────
+
+async def cb_hub(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not q:
+        return
+    try:
+        await q.answer()
+    except Exception:
+        pass
+    if not _is_admin(update):
+        return
+
+    data = (q.data or "").strip()
+    if not data.startswith("h:"):
+        return
+
+    try:
+        uid = _uid(update)
+        parts = data.split(":")
+        screen = parts[1] if len(parts) > 1 else "m"
+
+        if screen == "close":
+            try:
+                await q.message.delete()
+            except Exception:
+                pass
+            return
+
+        if screen == "m":
+            text, kb = _fmt_hub_main(uid), _kb_hub_main()
+        elif screen == "p" and len(parts) >= 3:
+            # Position detail
+            import trader_positions
+            import trader_portfolio
+            try:
+                pid = int(parts[2])
+            except ValueError:
+                # Probably a "no-op" callback (e.g. the "…+X more" button)
+                return
+            row = trader_positions.get_position(pid)
+            if row is None or str(row["user_id"]) != uid:
+                text = "_Position not found._"
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("← Portfolio", callback_data="h:p")],
+                ])
+            else:
+                enriched = trader_portfolio.value_position(row)
+                text = _fmt_position_detail(enriched, {})
+                kb = _kb_position_detail(pid)
+        elif screen == "p":
+            import trader_portfolio
+            s = trader_portfolio.portfolio_summary(uid)
+            text, kb = _fmt_portfolio_list(s), _kb_portfolio_list(s)
+        elif screen == "w":
+            text, kb = _fmt_wallet(uid), _kb_wallet()
+        elif screen == "c":
+            import trader_portfolio
+            s = trader_portfolio.portfolio_summary(uid)
+            text = _fmt_closeall_confirm(uid)
+            kb = _kb_closeall_confirm(s["n_open"] > 0)
+        elif screen == "cy":
+            # Confirmed close-all — execute
+            import trader_positions, trader_orchestrator
+            opens = trader_positions.list_open_positions(uid)
+            text_lines = [f"*🚪 Closing {len(opens)} positions…*\n"]
+            for pos in opens:
+                try:
+                    r = trader_orchestrator.sell(uid, pos["id"], sell_pct=1.0, live=True)
+                    sig = r.get("sell_signature", "")[:16]
+                    text_lines.append(f"✅ `#{pos['id']}` {sig}…")
+                except Exception as e:
+                    text_lines.append(f"❌ `#{pos['id']}` {str(e)[:80]}")
+            text = "\n".join(text_lines)
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 Home", callback_data="h:m")],
+            ])
+        else:
+            text, kb = _fmt_hub_main(uid), _kb_hub_main()
+
+        try:
+            await q.edit_message_text(
+                text, parse_mode=constants.ParseMode.MARKDOWN,
+                reply_markup=kb, disable_web_page_preview=True,
+            )
+        except Exception as e:
+            if "not modified" not in str(e).lower():
+                raise
+
+    except Exception as e:
+        print(f"[trader_setup] hub callback failed: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+
+
 # ── Registration ────────────────────────────────────────────────────────
 
 def register(app: Application, admin_ids: set[int]):
     global _admin_ids
     _admin_ids = set(admin_ids)
+    # Hub (primary entry)
+    app.add_handler(CommandHandler("trader", cmd_trader))
+    app.add_handler(CommandHandler("start_trader", cmd_trader))  # alias
+    # Settings (legacy power-user)
     app.add_handler(CommandHandler("setup", cmd_setup))
+    # Callback routers
+    app.add_handler(CallbackQueryHandler(cb_hub,   pattern=r"^h:"))
     app.add_handler(CallbackQueryHandler(cb_setup, pattern=r"^s:"))
-    print(f"[trader_setup] registered (admin_ids={len(_admin_ids)})", flush=True)
+    print(f"[trader_setup] hub + settings registered (admin_ids={len(_admin_ids)})", flush=True)
