@@ -995,13 +995,19 @@ def _fmt_position_detail(pos: dict, settings: dict) -> str:
     )
 
 
-def _kb_position_detail(pid: int, is_open: bool = True) -> InlineKeyboardMarkup:
+def _kb_position_detail(pid: int, is_open: bool = True, mint: str = "") -> InlineKeyboardMarkup:
     rows = []
     if is_open:
         rows.append([
             InlineKeyboardButton("Sell 25%", callback_data=f"ts:{pid}:25"),
             InlineKeyboardButton("Sell 50%", callback_data=f"ts:{pid}:50"),
             InlineKeyboardButton("Sell ALL", callback_data=f"ts:{pid}:100"),
+        ])
+    if mint:
+        # Dexscreener URL button — opens the live chart in browser.
+        rows.append([
+            InlineKeyboardButton("📊 Dexscreener",
+                                 url=f"https://dexscreener.com/solana/{mint}"),
         ])
     rows.append([
         InlineKeyboardButton("← Portfolio", callback_data="h:p"),
@@ -1235,7 +1241,7 @@ async def cb_hub(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 # static realized numbers stored.
                 enriched = trader_portfolio.value_position(row) if is_open else row
                 text = _fmt_position_detail(enriched, {})
-                kb = _kb_position_detail(pid, is_open=is_open)
+                kb = _kb_position_detail(pid, is_open=is_open, mint=row.get("mint") or "")
         elif screen == "p":
             import trader_portfolio
             s = trader_portfolio.portfolio_summary(uid)

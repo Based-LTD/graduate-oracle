@@ -345,18 +345,21 @@ def _format_portfolio(summary: dict) -> str:
         "",
     ]
     for p in summary["positions"][:15]:
-        mint_short = p["mint"][:6] + "…" + p["mint"][-4:]
+        mint = p["mint"]
+        mint_short = mint[:6] + "…" + mint[-4:]
+        # Clickable Dexscreener link — tap mint to open the chart
+        mint_link = f"[{mint_short}](https://dexscreener.com/solana/{mint})"
         pid = p["id"]
         cost = p["buy_sol_lamports"] / 1e9
         if p["current_sol_value_lamports"] is None:
-            out.append(f"`#{pid}` {mint_short}  ·  *{cost:.4f}* SOL  ·  _no quote_")
+            out.append(f"`#{pid}` {mint_link}  ·  *{cost:.4f}* SOL  ·  _no quote_")
         else:
             now = p["current_sol_value_lamports"] / 1e9
             pnl = p["unrealized_pnl_lamports"] / 1e9
             pct = p["unrealized_pnl_pct"] * 100
             arrow = "📈" if pnl > 0 else "📉"
             out.append(
-                f"`#{pid}` {mint_short}  {arrow} *{pct:+.0f}%*  ·  "
+                f"`#{pid}` {mint_link}  {arrow} *{pct:+.0f}%*  ·  "
                 f"{cost:.3f}→{now:.3f} SOL ({pnl:+.4f})"
             )
     return "\n".join(out)
