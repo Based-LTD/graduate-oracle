@@ -407,29 +407,44 @@ class TestFailurePaths(_Base):
                          return_value=_dry_run_submit()),
         ]
 
-    def test_curve_fetch_failure_routes_to_curve_stage(self):
-        from contextlib import ExitStack
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
-                                             return_value={"public_key": PAYER}))
-            stack.enter_context(patch.object(orch.bonding_curve, "fetch",
-                                             side_effect=orch.bonding_curve.BondingCurveError("rpc down")))
-            with self.assertRaises(orch.OrchestratorError) as ctx:
-                orch.buy(42, MINT, 0.5)
-            self.assertEqual(ctx.exception.stage, "curve")
+    # NOTE: curve fetch failure used to raise OrchestratorError("curve").
+    # Post Day-4.25 it no longer does — we tolerate missing/closed curves
+    # and let Jupiter route. See test_curve_fetch_failure_does_not_block_jupiter
+    # in the happy-path class for the replacement coverage.
 
-    def test_graduated_curve_routes_to_route_stage(self):
-        """The defining acceptance test for the Jupiter fork point."""
+    def test_graduated_curve_proceeds_via_jupiter(self):
+        """Post Day-4.25: graduated curves are NO LONGER rejected. Jupiter
+        routes them via Raydium/PumpSwap. Verify the flow completes."""
         from contextlib import ExitStack
         with ExitStack() as stack:
-            stack.enter_context(patch.object(orch.trader_wallets, "get_or_create_wallet",
-                                             return_value={"public_key": PAYER}))
+            for p in self._full_happy_patches_list():
+                stack.enter_context(p)
+            # Swap the curve patch to return a complete=True curve
             stack.enter_context(patch.object(orch.bonding_curve, "fetch",
                                              return_value=_fresh_curve(complete=True)))
-            with self.assertRaises(orch.OrchestratorError) as ctx:
-                orch.buy(42, MINT, 0.5)
-            self.assertEqual(ctx.exception.stage, "route")
-            self.assertIn("graduated", str(ctx.exception).lower())
+            stack.enter_context(patch.object(orch.trader_wallets, "get_balance_lamports",
+                                             return_value=1_000_000_000))
+            stack.enter_context(patch.object(orch.jito_tip_floor, "get_tip_lamports",
+                                             return_value=50_000))
+            # Should NOT raise — should complete successfully
+            result = orch.buy(42, MINT, 0.5, live=True)
+            self.assertEqual(result["phase"], "submitted")
+
+    def test_curve_fetch_failure_does_not_block_jupiter(self):
+        """If the curve account is closed entirely (very old grads),
+        we proceed with stub data and let Jupiter quote."""
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            for p in self._full_happy_patches_list():
+                stack.enter_context(p)
+            stack.enter_context(patch.object(orch.bonding_curve, "fetch",
+                side_effect=orch.bonding_curve.BondingCurveError("curve closed")))
+            stack.enter_context(patch.object(orch.trader_wallets, "get_balance_lamports",
+                                             return_value=1_000_000_000))
+            stack.enter_context(patch.object(orch.jito_tip_floor, "get_tip_lamports",
+                                             return_value=50_000))
+            result = orch.buy(42, MINT, 0.5, live=True)
+            self.assertEqual(result["phase"], "submitted")
 
     def test_blockhash_failure_routes_to_blockhash_stage(self):
         from contextlib import ExitStack

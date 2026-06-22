@@ -51,7 +51,7 @@ _USER_FACING: dict[str, str] = {
     "wallet":   "Wallet not ready. Try /start, then retry.",
     "balance":  "{detail}",  # balance error messages are already user-friendly
     "curve":    "Couldn't read this coin from the chain. Try again in a moment.",
-    "route":    "{detail}",
+    "route":    "{detail}",  # rarely reached; kept for future routing rejections
     "blockhash": "Network is slow — try again in a few seconds.",
     "build":    "Couldn't price this trade — Jupiter route may be unavailable. Try again.",
     "build_too_new": "This mint is too new for Jupiter — try again in 30 seconds.",
@@ -216,20 +216,33 @@ def buy(
                 f"({required/1e9:.6f} SOL) for buy + slippage + tip + tx overhead",
             )
 
-    # ── Stage 2: fetch curve + route decision ──────────────────────────
+    # ── Stage 2: fetch curve (best-effort) ─────────────────────────────
+    # We try to read the curve for creator + token_total_supply + cashback
+    # flag. But Jupiter is the actual routing engine — it doesn't need any
+    # of this. So a missing/closed curve account is NOT a fatal error;
+    # we fall through with stub values and let Jupiter quote anyway.
+    #
+    # Three states:
+    #   (a) Curve exists, complete=false  → pre-grad pump.fun (typical)
+    #   (b) Curve exists, complete=true   → graduated, Jupiter routes via Raydium
+    #   (c) Curve account closed entirely → very old grads. We still attempt
+    #       Jupiter — it knows about Raydium / PumpSwap / etc.
+    curve = {}
     try:
         curve = bonding_curve.fetch(mint, rpc_url=rpc_url)
+        if curve.get("complete"):
+            print(f"[orchestrator] mint {mint} graduated — routing via Jupiter",
+                  flush=True)
     except bonding_curve.BondingCurveError as e:
-        raise OrchestratorError("curve", str(e)) from e
+        # Not on pump.fun OR curve closed. Either way, let Jupiter try.
+        print(f"[orchestrator] curve unavailable for {mint} ({e}) — "
+              f"attempting Jupiter route anyway", flush=True)
 
-    if curve.get("complete"):
-        raise OrchestratorError(
-            "route",
-            "bonding curve has graduated — Jupiter route not implemented yet (Day 4.5+)",
-        )
-
-    # Snapshot fields the position row needs that aren't in the build envelope
-    creator = curve["creator"]
+    # Snapshot fields with safe fallbacks for state (c). We still need a
+    # creator string for the position row (used by the legacy pump-ix
+    # sell path which we no longer reach via Jupiter, but the schema
+    # requires NOT NULL). Use the system program as a sentinel.
+    creator = curve.get("creator") or "11111111111111111111111111111111"
     is_cashback = bool(curve.get("is_cashback_coin", False))
 
     # ── Stage 3: recent blockhash ──────────────────────────────────────
