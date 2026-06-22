@@ -21,7 +21,17 @@ import urllib.error
 import urllib.request
 
 
-_BOT_TOKEN = (os.environ.get("BOT_TOKEN") or os.environ.get("TG_BOT_TOKEN") or "").strip()
+def _resolve_token() -> str:
+    """The bot uses TELEGRAM_BOT_TOKEN in main.py:61. We check that first,
+    then BOT_TOKEN / TG_BOT_TOKEN for back-compat with older deploys."""
+    for name in ("TELEGRAM_BOT_TOKEN", "BOT_TOKEN", "TG_BOT_TOKEN"):
+        v = (os.environ.get(name) or "").strip()
+        if v:
+            return v
+    return ""
+
+
+_BOT_TOKEN = _resolve_token()
 _TG_BASE = f"https://api.telegram.org/bot{_BOT_TOKEN}" if _BOT_TOKEN else ""
 
 
