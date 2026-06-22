@@ -916,6 +916,21 @@ async def cmd_trader(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Top-level entry point — opens the hub."""
     if not _is_admin(update):
         return
+    # TOS gate — required before any trading flow. Once accepted, this
+    # is a fast DB lookup; we don't re-prompt on every hub callback.
+    try:
+        import tos_gate
+        if not tos_gate.is_accepted(update.effective_user.id):
+            await update.message.reply_text(
+                tos_gate.TOS_TEXT,
+                parse_mode=constants.ParseMode.MARKDOWN,
+                reply_markup=tos_gate.tos_keyboard(),
+                disable_web_page_preview=True,
+            )
+            return
+    except Exception as e:
+        print(f"[trader_setup] TOS gate failed: {e}", flush=True)
+        return
     try:
         # Install the persistent home keyboard on first /trader invocation
         # in this session. Once installed it stays at the bottom of the

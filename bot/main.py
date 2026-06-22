@@ -2795,6 +2795,14 @@ def main():
               .post_init(_post_init)
               .build())
 
+    # TOS acceptance — registered early so the inline button callback is
+    # available to all subsequent flows that might surface the prompt.
+    try:
+        import tos_gate
+        tos_gate.register(app)
+    except Exception as e:
+        print(f"[bot] tos_gate registration failed (non-fatal): {e}", flush=True)
+
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("probe", cmd_probe))

@@ -68,9 +68,41 @@ def _is_admin(update: Update) -> bool:
 
 
 async def _require_admin(update: Update) -> bool:
-    """If the caller isn't an admin, return False silently (do not reply —
-    we don't want to advertise that these commands exist)."""
-    return _is_admin(update)
+    """Gate for trader commands. Two checks:
+      1. User is in ADMIN_TG_IDS (beta only — drop this gate when public)
+      2. User has accepted the current TOS version
+
+    Returns False silently for non-admins (we don't want to advertise
+    these commands exist to non-operators during beta).
+
+    For admins who haven't accepted TOS, we DO reply with the prompt
+    so they can complete the gate. They already know the commands exist."""
+    if not _is_admin(update):
+        return False
+    # TOS check — applies even to admins. Bumping TOS_VERSION forces
+    # re-acceptance on the next interaction.
+    try:
+        import tos_gate
+        tg_id = update.effective_user.id
+        if not tos_gate.is_accepted(tg_id):
+            # Render the prompt inline so they can accept and retry.
+            msg = update.message or (update.callback_query and update.callback_query.message)
+            if msg:
+                try:
+                    await msg.reply_text(
+                        tos_gate.TOS_TEXT,
+                        parse_mode=constants.ParseMode.MARKDOWN,
+                        reply_markup=tos_gate.tos_keyboard(),
+                        disable_web_page_preview=True,
+                    )
+                except Exception as e:
+                    print(f"[trader_commands] TOS prompt failed: {e}", flush=True)
+            return False
+    except Exception as e:
+        print(f"[trader_commands] TOS gate check failed: {e}", flush=True)
+        # Fail-closed — better to block than skip the legal record.
+        return False
+    return True
 
 
 def _operator_user_id(update: Update) -> str:
