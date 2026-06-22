@@ -2334,16 +2334,17 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("Photon", url=f"https://photon-sol.tinyastro.io/en/lp/{mint}"),
                     InlineKeyboardButton("Dex", url=f"https://dexscreener.com/solana/{mint}"),
                 ]]
-                # Trader buy buttons — operator-only. Adds a second row of
-                # [Buy 0.01] [Buy 0.05] [Buy 0.25] when the recipient is in
-                # ADMIN_TG_IDS and TRADER_ENABLED=1. Non-admins (current prod
-                # users) never see these buttons.
+                # Trader buy buttons — operator-only. Reads the recipient's
+                # saved buy presets (3 amounts) from trader_user_settings.
+                # Non-admin recipients (current prod users) never see this row.
                 if tg_id in _ADMIN_TG_IDS:
                     try:
                         import trader_commands
                         if trader_commands.is_enabled():
                             kb_rows.append(
-                                trader_commands.build_buy_buttons(mint).inline_keyboard[0]
+                                trader_commands.build_buy_buttons(
+                                    mint, user_id=tg_id,
+                                ).inline_keyboard[0]
                             )
                     except Exception as e:
                         # Never let trader integration break alert delivery
@@ -2766,7 +2767,13 @@ def main():
     # separate module so trader bugs can't crash this main bot loop.
     try:
         import trader_commands
-        trader_commands.register(app, _ADMIN_TG_IDS)
+        if trader_commands.register(app, _ADMIN_TG_IDS):
+            # Setup-menu module — depends on trader_commands being enabled.
+            try:
+                import trader_setup
+                trader_setup.register(app, _ADMIN_TG_IDS)
+            except Exception as e:
+                print(f"[bot] trader_setup registration failed: {e}", flush=True)
     except Exception as e:
         # Importing the trader module pulls in web/* — if anything goes
         # wrong we log + skip. The bot keeps running with the existing

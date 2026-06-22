@@ -232,6 +232,14 @@ def tick(user_id: str | int, *, live: bool = False,
                 pid, sl_armed_at_breakeven=True,
             )
             record["applied"] = True
+            try:
+                import trader_notify
+                trader_notify.notify_auto_exit(
+                    user_id, position_id=pid, mint=pos["mint"],
+                    kind="breakeven_arm", applied=True,
+                )
+            except Exception:
+                pass
             out["actions"].append(record)
             out["n_actions_taken"] += 1
             continue
@@ -279,9 +287,29 @@ def tick(user_id: str | int, *, live: bool = False,
                 # When sl/tsl fires, position is fully closed and we stamp.
             elif kind in ("sl", "tsl"):
                 trader_positions.set_exit_reason(pid, label)
+
+            # ── Notify the user via Telegram ─────────────────────────
+            try:
+                import trader_notify
+                trader_notify.notify_auto_exit(
+                    user_id, position_id=pid, mint=pos["mint"], kind=label,
+                    applied=True,
+                    sell_signature=sell_result.get("sell_signature") or "",
+                    sol_out_lamports=int(sell_result.get("expected_sol_out_lamports") or 0),
+                )
+            except Exception as ne:
+                print(f"[trader_monitor] notify_auto_exit failed: {ne}", flush=True)
         except Exception as e:
             record["applied"] = False
             record["error"] = str(e)[:300]
+            try:
+                import trader_notify
+                trader_notify.notify_auto_exit(
+                    user_id, position_id=pid, mint=pos["mint"], kind=label,
+                    applied=False, error=str(e)[:200],
+                )
+            except Exception:
+                pass
         out["actions"].append(record)
         out["n_actions_taken"] += 1
 

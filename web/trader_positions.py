@@ -125,13 +125,17 @@ CREATE TABLE IF NOT EXISTS trader_positions (
 -- ── Per-user auto-exit defaults ──────────────────────────────────────
 -- Applied to new positions when the buy() caller doesn't override.
 -- Lets a user say "all my buys should TP at 2x then trail at 30%" once.
+--   buy_presets_sol_json: 3-element JSON list of SOL amounts (e.g.
+--     [0.01, 0.05, 0.25]). Drives the [Buy X SOL] inline button row
+--     under composite alerts.
 CREATE TABLE IF NOT EXISTS trader_user_settings (
-    user_id          TEXT PRIMARY KEY,
-    tp_ladder_json   TEXT,
-    sl_pct           REAL,
-    tsl_pct          REAL,
-    breakeven_pct    REAL,
-    updated_at       INTEGER NOT NULL
+    user_id              TEXT PRIMARY KEY,
+    tp_ladder_json       TEXT,
+    sl_pct               REAL,
+    tsl_pct              REAL,
+    breakeven_pct        REAL,
+    buy_presets_sol_json TEXT,
+    updated_at           INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_trader_positions_user
@@ -148,33 +152,44 @@ CREATE INDEX IF NOT EXISTS idx_trader_positions_buy_sig
 # already-present columns are skipped silently. Safe to re-run on every
 # init_schema().
 _MIGRATIONS = [
-    ("tp_ladder_json",            "ALTER TABLE trader_positions ADD COLUMN tp_ladder_json TEXT"),
-    ("sl_pct",                    "ALTER TABLE trader_positions ADD COLUMN sl_pct REAL"),
-    ("tsl_pct",                   "ALTER TABLE trader_positions ADD COLUMN tsl_pct REAL"),
-    ("breakeven_pct",             "ALTER TABLE trader_positions ADD COLUMN breakeven_pct REAL"),
-    ("next_tp_index",             "ALTER TABLE trader_positions ADD COLUMN next_tp_index INTEGER NOT NULL DEFAULT 0"),
-    ("high_water_mark_lamports",  "ALTER TABLE trader_positions ADD COLUMN high_water_mark_lamports INTEGER"),
-    ("last_monitor_check_at",     "ALTER TABLE trader_positions ADD COLUMN last_monitor_check_at INTEGER"),
-    ("exit_reason",               "ALTER TABLE trader_positions ADD COLUMN exit_reason TEXT"),
-    ("sl_armed_at_breakeven",     "ALTER TABLE trader_positions ADD COLUMN sl_armed_at_breakeven INTEGER NOT NULL DEFAULT 0"),
+    ("trader_positions", "tp_ladder_json",
+        "ALTER TABLE trader_positions ADD COLUMN tp_ladder_json TEXT"),
+    ("trader_positions", "sl_pct",
+        "ALTER TABLE trader_positions ADD COLUMN sl_pct REAL"),
+    ("trader_positions", "tsl_pct",
+        "ALTER TABLE trader_positions ADD COLUMN tsl_pct REAL"),
+    ("trader_positions", "breakeven_pct",
+        "ALTER TABLE trader_positions ADD COLUMN breakeven_pct REAL"),
+    ("trader_positions", "next_tp_index",
+        "ALTER TABLE trader_positions ADD COLUMN next_tp_index INTEGER NOT NULL DEFAULT 0"),
+    ("trader_positions", "high_water_mark_lamports",
+        "ALTER TABLE trader_positions ADD COLUMN high_water_mark_lamports INTEGER"),
+    ("trader_positions", "last_monitor_check_at",
+        "ALTER TABLE trader_positions ADD COLUMN last_monitor_check_at INTEGER"),
+    ("trader_positions", "exit_reason",
+        "ALTER TABLE trader_positions ADD COLUMN exit_reason TEXT"),
+    ("trader_positions", "sl_armed_at_breakeven",
+        "ALTER TABLE trader_positions ADD COLUMN sl_armed_at_breakeven INTEGER NOT NULL DEFAULT 0"),
+    ("trader_user_settings", "buy_presets_sol_json",
+        "ALTER TABLE trader_user_settings ADD COLUMN buy_presets_sol_json TEXT"),
 ]
 
 
 def init_schema():
     with contextlib.closing(_conn()) as c, c:
         c.executescript(_SCHEMA)
-        # Apply auto-exit migrations to pre-existing databases. We check
-        # column existence first to avoid raising "duplicate column" errors
-        # on tables that already have them (e.g. fresh installs created
-        # via the _SCHEMA above already have these columns).
-        existing = {row["name"] for row in
-                    c.execute("PRAGMA table_info(trader_positions)").fetchall()}
-        for col, stmt in _MIGRATIONS:
-            if col not in existing:
+        # Apply migrations to pre-existing tables. Check column existence
+        # per-table before each ALTER so we never raise duplicate-column.
+        existing_cols: dict[str, set] = {}
+        for tbl, col, stmt in _MIGRATIONS:
+            if tbl not in existing_cols:
+                existing_cols[tbl] = {row["name"] for row in
+                    c.execute(f"PRAGMA table_info({tbl})").fetchall()}
+            if col not in existing_cols[tbl]:
                 try:
                     c.execute(stmt)
+                    existing_cols[tbl].add(col)
                 except sqlite3.OperationalError as e:
-                    # Duplicate or other migration-collision — log + keep going
                     if "duplicate column" not in str(e).lower():
                         raise
 
@@ -321,6 +336,7 @@ DEFAULT_TP_LADDER = [
 DEFAULT_SL_PCT        = -50.0   # exit if down 50%
 DEFAULT_TSL_PCT       = 30.0    # trail 30% off the high-water mark
 DEFAULT_BREAKEVEN_PCT = 20.0    # at +20%, flip SL to entry
+DEFAULT_BUY_PRESETS_SOL = [0.01, 0.05, 0.25]  # 3 inline-button amounts
 
 
 def get_user_settings(user_id: str | int) -> dict:
@@ -346,11 +362,26 @@ def get_user_settings(user_id: str | int) -> dict:
     sl  = row["sl_pct"]        if row and row["sl_pct"]        is not None else DEFAULT_SL_PCT
     tsl = row["tsl_pct"]       if row and row["tsl_pct"]       is not None else DEFAULT_TSL_PCT
     be  = row["breakeven_pct"] if row and row["breakeven_pct"] is not None else DEFAULT_BREAKEVEN_PCT
+
+    # buy_presets_sol_json wasn't part of the original schema; older rows
+    # won't have the column. Guard the access so first read on legacy
+    # rows doesn't crash.
+    presets = None
+    try:
+        if row and "buy_presets_sol_json" in row.keys():
+            raw = row["buy_presets_sol_json"]
+            if raw:
+                presets = _json.loads(raw)
+    except Exception:
+        presets = None
+
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
         "sl_pct":        float(sl),
         "tsl_pct":       float(tsl),
         "breakeven_pct": float(be),
+        "buy_presets_sol": presets if (isinstance(presets, list) and presets)
+                           else list(DEFAULT_BUY_PRESETS_SOL),
     }
 
 
@@ -360,6 +391,7 @@ def set_user_settings(
     sl_pct: Optional[float] = None,
     tsl_pct: Optional[float] = None,
     breakeven_pct: Optional[float] = None,
+    buy_presets_sol: Optional[list] = None,
 ):
     """Upsert per-user auto-exit defaults. None values leave the existing
     field untouched (set only what changed)."""
@@ -371,25 +403,37 @@ def set_user_settings(
             "SELECT * FROM trader_user_settings WHERE user_id = ?",
             (str(user_id),),
         ).fetchone()
+        existing_presets = None
+        if existing:
+            try:
+                if "buy_presets_sol_json" in existing.keys():
+                    existing_presets = existing["buy_presets_sol_json"]
+            except Exception:
+                pass
         merged = {
             "tp_ladder_json": _json.dumps(tp_ladder) if tp_ladder is not None
                               else (existing["tp_ladder_json"] if existing else None),
             "sl_pct":        sl_pct        if sl_pct        is not None else (existing["sl_pct"]        if existing else None),
             "tsl_pct":       tsl_pct       if tsl_pct       is not None else (existing["tsl_pct"]       if existing else None),
             "breakeven_pct": breakeven_pct if breakeven_pct is not None else (existing["breakeven_pct"] if existing else None),
+            "buy_presets_sol_json": _json.dumps(buy_presets_sol) if buy_presets_sol is not None
+                                    else existing_presets,
         }
         c.execute("""
             INSERT INTO trader_user_settings
-                (user_id, tp_ladder_json, sl_pct, tsl_pct, breakeven_pct, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (user_id, tp_ladder_json, sl_pct, tsl_pct, breakeven_pct,
+                 buy_presets_sol_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
-                tp_ladder_json = excluded.tp_ladder_json,
-                sl_pct         = excluded.sl_pct,
-                tsl_pct        = excluded.tsl_pct,
-                breakeven_pct  = excluded.breakeven_pct,
-                updated_at     = excluded.updated_at
+                tp_ladder_json       = excluded.tp_ladder_json,
+                sl_pct               = excluded.sl_pct,
+                tsl_pct              = excluded.tsl_pct,
+                breakeven_pct        = excluded.breakeven_pct,
+                buy_presets_sol_json = excluded.buy_presets_sol_json,
+                updated_at           = excluded.updated_at
         """, (str(user_id), merged["tp_ladder_json"], merged["sl_pct"],
-              merged["tsl_pct"], merged["breakeven_pct"], int(_time.time())))
+              merged["tsl_pct"], merged["breakeven_pct"],
+              merged["buy_presets_sol_json"], int(_time.time())))
 
 
 def set_position_auto_exit(

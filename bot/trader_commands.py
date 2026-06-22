@@ -206,18 +206,20 @@ async def cmd_tradehelp(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not await _require_admin(update):
         return
     text = (
-        "*Trader commands* — operator-only\n\n"
-        "`/buy <sol> <mint>` — open a position\n"
-        "  Optional: `tp=2x sl=40 tsl=30 be=20`\n"
-        "  Example: `/buy 0.05 ABCDEF...pump tp=3x sl=50`\n\n"
-        "`/sell <position_id> [pct]` — close (default 100%)\n"
-        "  Example: `/sell 42` or `/sell 42 50`\n\n"
-        "`/portfolio` — live PnL on all open positions\n"
+        "*🤖 GRADUATE TRADER*\n\n"
+        "*The easy way:*\n"
+        "`/setup` — interactive button menu to configure everything\n\n"
+        "*Trading:*\n"
+        "`/portfolio` — open positions with live PnL + Sell buttons\n"
         "`/balance` — wallet SOL\n"
-        "`/deposit` — wallet pubkey (for funding)\n"
-        "`/settings` — view/set default exit rules\n"
-        "  `/settings tp=2x sl=40 tsl=30 be=20`\n\n"
-        "_Inline buttons on ACT/WATCH alerts let you buy with one tap._\n"
+        "`/deposit` — wallet pubkey for funding\n"
+        "`/closeall` — sell every open position (panic close)\n\n"
+        "*Power-user CLI (optional):*\n"
+        "`/buy <sol> <mint> [tp=2x sl=40 tsl=30 be=20]`\n"
+        "`/sell <position_id> [pct]`\n"
+        "`/settings tp=2x sl=40 ...`\n\n"
+        "_Tap [Buy] under any ACT/WATCH alert to one-tap buy with your "
+        "configured presets + auto-exits._"
     )
     await update.message.reply_text(text, parse_mode=constants.ParseMode.MARKDOWN)
 
@@ -307,11 +309,42 @@ async def cmd_portfolio(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         import trader_portfolio
         summary = trader_portfolio.portfolio_summary(user_id)
+        # Header
         await update.message.reply_text(
             _format_portfolio(summary),
             parse_mode=constants.ParseMode.MARKDOWN,
             disable_web_page_preview=True,
         )
+        # Per-position sell buttons — separate message per position so
+        # the buttons stay attached to that specific row. Keeps it scrollable
+        # and avoids the 8-buttons-per-row Telegram cap.
+        for pos in summary["positions"][:10]:
+            pid = pos["id"]
+            mint_short = pos["mint"][:6] + "…" + pos["mint"][-4:]
+            cost = pos["buy_sol_lamports"] / 1e9
+            if pos["current_sol_value_lamports"] is not None:
+                now = pos["current_sol_value_lamports"] / 1e9
+                pnl = pos["unrealized_pnl_lamports"] / 1e9
+                pct = pos["unrealized_pnl_pct"] * 100
+                arrow = "📈" if pnl > 0 else "📉"
+                line = (f"`#{pid}` {mint_short}  {arrow} *{pct:+.0f}%*  "
+                        f"({cost:.3f}→{now:.3f} SOL)")
+            else:
+                line = f"`#{pid}` {mint_short}  _no quote_"
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("Sell 25%", callback_data=f"ts:{pid}:25"),
+                InlineKeyboardButton("Sell 50%", callback_data=f"ts:{pid}:50"),
+                InlineKeyboardButton("Sell ALL", callback_data=f"ts:{pid}:100"),
+            ]])
+            await update.message.reply_text(
+                line, parse_mode=constants.ParseMode.MARKDOWN,
+                reply_markup=kb, disable_web_page_preview=True,
+            )
+        if summary["n_open"] > 10:
+            await update.message.reply_text(
+                f"_…+{summary['n_open']-10} more not shown. Use /sell <id> manually._",
+                parse_mode=constants.ParseMode.MARKDOWN,
+            )
     except Exception as e:
         await update.message.reply_text(f"❌ Portfolio failed: {str(e)[:200]}")
         print(f"[trader_commands] /portfolio failed: {e}", file=sys.stderr, flush=True)
@@ -394,13 +427,26 @@ async def cmd_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # Callback data format: "tb:<sol>:<mint>" — short to fit Telegram's 64-byte
 # data limit. "tb" = trader buy.
-CALLBACK_PREFIX_BUY = "tb:"
+CALLBACK_PREFIX_BUY  = "tb:"
+CALLBACK_PREFIX_SELL = "ts:"   # ts:<position_id>:<pct>  (pct ∈ 25/50/100)
 
 
-def build_buy_buttons(mint: str, amounts_sol: list[float] = None) -> InlineKeyboardMarkup:
-    """Build the inline keyboard with buy buttons for `mint`. Returns the
-    markup. The mint string must be <= 44 chars (it is; Solana pubkeys
-    are at most 44 base58 chars)."""
+def build_buy_buttons(mint: str, amounts_sol: list[float] = None,
+                       user_id: Optional[str | int] = None) -> InlineKeyboardMarkup:
+    """Build the inline keyboard with buy buttons for `mint`.
+
+    If `user_id` is provided and no explicit `amounts_sol`, we read the
+    user's saved buy_presets_sol from trader_user_settings. Falls back
+    to the package default [0.01, 0.05, 0.25] if the lookup fails
+    (which means alerts keep working even if the trader DB is down).
+    """
+    if amounts_sol is None and user_id is not None:
+        try:
+            import trader_positions
+            s = trader_positions.get_user_settings(user_id)
+            amounts_sol = s.get("buy_presets_sol") or None
+        except Exception:
+            amounts_sol = None
     if amounts_sol is None:
         amounts_sol = [0.01, 0.05, 0.25]
     row = []
@@ -462,6 +508,83 @@ async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         traceback.print_exc(file=sys.stderr)
 
 
+async def cb_sell(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Inline-button sell handler. Pattern: ts:<position_id>:<pct>."""
+    q = update.callback_query
+    if not q:
+        return
+    try:
+        await q.answer()
+    except Exception:
+        pass
+    if not _is_admin(update):
+        return
+
+    data = (q.data or "").strip()
+    if not data.startswith(CALLBACK_PREFIX_SELL):
+        return
+    try:
+        _, pid_str, pct_str = data.split(":", 2)
+        pid = int(pid_str)
+        pct = float(pct_str) / 100.0
+        if not (0 < pct <= 1.0):
+            raise ValueError
+    except (ValueError, IndexError):
+        await q.message.reply_text("❌ Bad sell button data.")
+        return
+
+    user_id = _operator_user_id(update)
+    try:
+        import trader_orchestrator
+        result = trader_orchestrator.sell(user_id, pid, sell_pct=pct, live=True)
+        await q.message.reply_text(
+            _format_sell_receipt(result),
+            parse_mode=constants.ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        msg = getattr(e, "user_facing_msg", None) or str(e)[:200]
+        await q.message.reply_text(f"❌ {msg}")
+        print(f"[trader_commands] sell button failed: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+
+
+async def cmd_closeall(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Sell 100% of every open position. Convenience for panic-close."""
+    if not await _require_admin(update):
+        return
+    user_id = _operator_user_id(update)
+    try:
+        import trader_positions, trader_orchestrator
+        opens = trader_positions.list_open_positions(user_id)
+        if not opens:
+            await update.message.reply_text("_No open positions to close._",
+                parse_mode=constants.ParseMode.MARKDOWN)
+            return
+        await update.message.reply_text(
+            f"🚪 Closing *{len(opens)}* positions…",
+            parse_mode=constants.ParseMode.MARKDOWN,
+        )
+        results = []
+        for pos in opens:
+            try:
+                r = trader_orchestrator.sell(user_id, pos["id"], sell_pct=1.0, live=True)
+                results.append((pos["id"], True, r.get("sell_signature", "")))
+            except Exception as e:
+                results.append((pos["id"], False, str(e)[:100]))
+        lines = ["*closeall results:*"]
+        for pid, ok, msg in results:
+            icon = "✅" if ok else "❌"
+            short = (msg[:16] + "…") if ok else msg
+            lines.append(f"{icon} `#{pid}` {short}")
+        await update.message.reply_text(
+            "\n".join(lines), parse_mode=constants.ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ /closeall failed: {str(e)[:200]}")
+
+
 # ── Registration entry point ───────────────────────────────────────────
 
 def register(app: Application, admin_ids: set[int]) -> bool:
@@ -484,9 +607,11 @@ def register(app: Application, admin_ids: set[int]) -> bool:
     app.add_handler(CommandHandler("balance",   cmd_balance))
     app.add_handler(CommandHandler("deposit",   cmd_deposit))
     app.add_handler(CommandHandler("settings",  cmd_settings))
+    app.add_handler(CommandHandler("closeall",  cmd_closeall))
     app.add_handler(CommandHandler("tradehelp", cmd_tradehelp))
-    # Buy-button callbacks
-    app.add_handler(CallbackQueryHandler(cb_buy, pattern=f"^{CALLBACK_PREFIX_BUY}"))
+    # Inline-button callbacks
+    app.add_handler(CallbackQueryHandler(cb_buy,  pattern=f"^{CALLBACK_PREFIX_BUY}"))
+    app.add_handler(CallbackQueryHandler(cb_sell, pattern=f"^{CALLBACK_PREFIX_SELL}"))
 
     print(f"[trader_commands] registered with {len(_admin_ids)} admin(s)", flush=True)
     return True
