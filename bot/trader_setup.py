@@ -102,7 +102,7 @@ def _fmt_settings(s: dict) -> str:
         f"*🎯 Take-profit ladder:*\n{ladder}\n\n"
         f"*🛑 Stop loss:* {s['sl_pct']:+.0f}%\n"
         f"*📈 Trailing stop:* {s['tsl_pct']:.0f}% off high\n"
-        f"*🔒 Breakeven:* at +{s['breakeven_pct']:.0f}% gain\n\n"
+        f"*🔒 Breakeven:* {('at +' + format(s['breakeven_pct'], '.0f') + '% gain') if s.get('breakeven_pct') is not None else '*OFF*'}\n\n"
         f"*⚡ Slippage:* {s['slippage_bps']/100:.1f}%\n"
         f"*💨 Speed (Jito tip):* `{s['jito_tip_mode']}`\n"
         f"*🛡 Max per trade:* {cap_line}"
@@ -228,15 +228,22 @@ def _fmt_tp_rung_editor(s: dict, idx: int) -> str:
     )
 
 
-def _kb_simple_picker(prefix: str, presets: list, current: float,
-                      signed_negative: bool = False) -> InlineKeyboardMarkup:
-    """Generic 1-line picker. Used for SL, TSL, breakeven."""
+def _kb_simple_picker(prefix: str, presets: list, current,
+                      signed_negative: bool = False,
+                      allow_off: bool = False) -> InlineKeyboardMarkup:
+    """Generic 1-line picker. Used for SL, TSL, breakeven.
+    allow_off adds an "OFF" button that disables the feature (current=None)."""
     btns = []
     for v in presets:
         display = f"{-v}%" if signed_negative else f"{v}%"
-        tag = " ✓" if v == abs(int(current)) else ""
+        tag = " ✓" if current is not None and v == abs(int(current)) else ""
         btns.append(InlineKeyboardButton(
             f"{display}{tag}", callback_data=f"{prefix}:{v}",
+        ))
+    if allow_off:
+        off_tag = " ✓" if current is None else ""
+        btns.append(InlineKeyboardButton(
+            f"OFF{off_tag}", callback_data=f"{prefix}:off",
         ))
     rows = [btns[:4], btns[4:]] if len(btns) > 4 else [btns]
     rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
@@ -262,12 +269,22 @@ def _fmt_tsl(s: dict) -> str:
 
 
 def _fmt_be(s: dict) -> str:
+    be = s.get("breakeven_pct")
+    if be is None:
+        current_line = (
+            "Currently: *OFF* — stop-loss stays at your configured "
+            "floor regardless of how high price climbs.\n\n"
+        )
+    else:
+        current_line = (
+            f"Currently: when gain reaches *+{be:.0f}%*, the "
+            "stop-loss flips to entry price (0% loss).\n\n"
+        )
     return (
         "*🔒 BREAKEVEN*\n\n"
-        f"Currently: when gain reaches *+{s['breakeven_pct']:.0f}%*, the "
-        "stop-loss flips to entry price (0% loss).\n\n"
-        "One-shot — only flips once. Lower threshold = more aggressive "
-        "risk removal."
+        + current_line
+        + "One-shot — only flips once. Lower threshold = more aggressive "
+          "risk removal. Tap *OFF* to disable entirely (let winners breathe)."
     )
 
 
@@ -498,8 +515,14 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return await _render(q, uid, "p")
 
         if screen == "e" and len(parts) >= 3:
-            pct = int(parts[2])
-            trader_positions.set_user_settings(uid, breakeven_pct=abs(pct))
+            val = parts[2]
+            if val == "off":
+                trader_positions.set_user_settings(uid, clear_breakeven_pct=True)
+            else:
+                try:
+                    trader_positions.set_user_settings(uid, breakeven_pct=abs(int(val)))
+                except ValueError:
+                    pass
             return await _render(q, uid, "e")
 
         if screen == "slip" and len(parts) >= 3:
@@ -565,7 +588,7 @@ async def _render(q, uid: str, screen: str):
         kb = _kb_simple_picker("s:p", TSL_PRESETS, s["tsl_pct"])
     elif code == "e":
         text = _fmt_be(s)
-        kb = _kb_simple_picker("s:e", BE_PRESETS, s["breakeven_pct"])
+        kb = _kb_simple_picker("s:e", BE_PRESETS, s["breakeven_pct"], allow_off=True)
     elif code == "slip":
         text, kb = _fmt_slippage(s), _kb_slippage(s)
     elif code == "tip":

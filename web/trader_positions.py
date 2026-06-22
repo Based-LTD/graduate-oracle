@@ -470,7 +470,12 @@ def get_user_settings(user_id: str | int) -> dict:
 
     sl  = row["sl_pct"]        if row and row["sl_pct"]        is not None else DEFAULT_SL_PCT
     tsl = row["tsl_pct"]       if row and row["tsl_pct"]       is not None else DEFAULT_TSL_PCT
-    be  = row["breakeven_pct"] if row and row["breakeven_pct"] is not None else DEFAULT_BREAKEVEN_PCT
+    # Breakeven distinguishes 3 states: column NULL means user disabled it
+    # explicitly; no row at all means first-time user → fall back to default.
+    if row:
+        be = row["breakeven_pct"]  # may be None → "OFF"
+    else:
+        be = DEFAULT_BREAKEVEN_PCT
 
     # buy_presets_sol_json wasn't part of the original schema; older rows
     # won't have the column. Guard the access so first read on legacy
@@ -505,7 +510,7 @@ def get_user_settings(user_id: str | int) -> dict:
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
         "sl_pct":        float(sl),
         "tsl_pct":       float(tsl),
-        "breakeven_pct": float(be),
+        "breakeven_pct": float(be) if be is not None else None,
         "buy_presets_sol": presets if (isinstance(presets, list) and presets)
                            else list(DEFAULT_BUY_PRESETS_SOL),
         "slippage_bps":   slippage_bps,
@@ -525,6 +530,7 @@ def set_user_settings(
     jito_tip_mode: Optional[str] = None,
     max_trade_sol: Optional[float] = None,
     clear_max_trade_sol: bool = False,
+    clear_breakeven_pct: bool = False,
 ):
     """Upsert per-user auto-exit defaults. None values leave the existing
     field untouched (set only what changed)."""
@@ -552,7 +558,9 @@ def set_user_settings(
                               else _e("tp_ladder_json"),
             "sl_pct":        sl_pct        if sl_pct        is not None else _e("sl_pct"),
             "tsl_pct":       tsl_pct       if tsl_pct       is not None else _e("tsl_pct"),
-            "breakeven_pct": breakeven_pct if breakeven_pct is not None else _e("breakeven_pct"),
+            "breakeven_pct": (None if clear_breakeven_pct
+                             else breakeven_pct if breakeven_pct is not None
+                             else _e("breakeven_pct")),
             "buy_presets_sol_json": _json.dumps(buy_presets_sol) if buy_presets_sol is not None
                                     else _e("buy_presets_sol_json"),
             "slippage_bps":  slippage_bps  if slippage_bps  is not None else _e("slippage_bps"),
