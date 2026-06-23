@@ -79,11 +79,13 @@ def notify_auto_exit(telegram_id: str | int, *,
     emoji = {
         "tp1": "🎯", "tp2": "🎯", "tp3": "🎯", "tp4": "🎯",
         "sl": "🛑", "tsl": "📉", "breakeven_arm": "🔒",
+        "stale": "⏱",
     }.get(kind, "ℹ️")
     label = {
-        "sl":  "Stop-loss",
-        "tsl": "Trailing-stop",
+        "sl":    "Stop-loss",
+        "tsl":   "Trailing-stop",
         "breakeven_arm": "Breakeven armed",
+        "stale": "Stagnation timeout",
     }.get(kind, f"Take-profit {kind.upper()}")
 
     if kind == "breakeven_arm":

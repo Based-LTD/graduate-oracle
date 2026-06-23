@@ -217,9 +217,24 @@ _MIGRATIONS = [
         "ALTER TABLE trader_positions ADD COLUMN hwm_price_per_token_lamports REAL"),
     # Day 4.49 — auto-trade inactivity pause. Hours since last /trader
     # interaction before auto-buys stop firing. 0 = disabled (always
-    # fire). Default 6h — survives an overnight, blocks a vanished user.
+    # fire). DEFAULT 0 — traders run 24/7 unless they opt into the gate.
     ("trader_user_settings", "auto_trade_max_inactive_hours",
-        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_max_inactive_hours INTEGER DEFAULT 6"),
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_max_inactive_hours INTEGER DEFAULT 0"),
+    # Day 4.50 — position stagnation timeout. If a coin's price hasn't
+    # moved by more than `stale_band_pct` in `stale_timeout_minutes`,
+    # auto-close the position. Frees up the concurrent-cap slot for a
+    # live signal. 0 = disabled. Defaults: 20 min, 3% band.
+    ("trader_user_settings", "stale_timeout_minutes",
+        "ALTER TABLE trader_user_settings ADD COLUMN stale_timeout_minutes INTEGER DEFAULT 20"),
+    ("trader_user_settings", "stale_band_pct",
+        "ALTER TABLE trader_user_settings ADD COLUMN stale_band_pct REAL DEFAULT 3.0"),
+    # Per-position anchor — the price-per-token we last considered a
+    # "movement," plus when that was. Updated each tick when price
+    # moves outside the band. Used by stagnation check.
+    ("trader_positions", "stale_anchor_pp",
+        "ALTER TABLE trader_positions ADD COLUMN stale_anchor_pp REAL"),
+    ("trader_positions", "stale_anchor_at",
+        "ALTER TABLE trader_positions ADD COLUMN stale_anchor_at INTEGER"),
 ]
 
 
@@ -240,6 +255,21 @@ def init_schema():
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
+
+        # Day 4.50 — roll back the auto_trade_max_inactive_hours default
+        # from 6h to 0 (OFF). The Day 4.49 deploy set 6h as default which
+        # could pause active 24/7 traders. Reset only rows still at the
+        # old default; users who explicitly chose 6 are unfortunately
+        # also reset, but the new picker preserves their intent on next
+        # visit. Idempotent — runs harmlessly when no rows match.
+        try:
+            c.execute(
+                "UPDATE trader_user_settings "
+                "SET auto_trade_max_inactive_hours = 0 "
+                "WHERE auto_trade_max_inactive_hours = 6"
+            )
+        except sqlite3.OperationalError:
+            pass  # column might not exist on first init — fine
 
 
 # ── Writers ─────────────────────────────────────────────────────────────
@@ -433,6 +463,8 @@ def set_auto_trade_config(
     min_tier: Optional[str] = None,
     max_concurrent: Optional[int] = None,
     max_inactive_hours: Optional[int] = None,
+    stale_timeout_minutes: Optional[int] = None,
+    stale_band_pct: Optional[float] = None,
 ):
     """Update one or more auto-trade fields for a user. None = leave alone."""
     init_schema()
@@ -454,6 +486,12 @@ def set_auto_trade_config(
     if max_inactive_hours is not None:
         fields.append("auto_trade_max_inactive_hours = ?")
         vals.append(int(max_inactive_hours))
+    if stale_timeout_minutes is not None:
+        fields.append("stale_timeout_minutes = ?")
+        vals.append(int(stale_timeout_minutes))
+    if stale_band_pct is not None:
+        fields.append("stale_band_pct = ?")
+        vals.append(float(stale_band_pct))
     if not fields:
         return
     vals.append(str(user_id))
@@ -619,7 +657,11 @@ def get_user_settings(user_id: str | int) -> dict:
     at_size_lamports = int(_safe_get("auto_trade_size_lamports", 5_000_000))
     at_min_tier = _safe_get("auto_trade_min_tier", "ACT") or "ACT"
     at_max_concurrent = int(_safe_get("auto_trade_max_concurrent", 3))
-    at_max_inactive_h = int(_safe_get("auto_trade_max_inactive_hours", 6))
+    # Default is now 0 (OFF). Traders should be able to run 24/7 unless
+    # they explicitly opt into the inactivity gate.
+    at_max_inactive_h = int(_safe_get("auto_trade_max_inactive_hours", 0))
+    stale_timeout_min = int(_safe_get("stale_timeout_minutes", 20))
+    stale_band_pct    = float(_safe_get("stale_band_pct", 3.0))
 
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
@@ -636,6 +678,8 @@ def get_user_settings(user_id: str | int) -> dict:
         "auto_trade_min_tier":            at_min_tier,
         "auto_trade_max_concurrent":      at_max_concurrent,
         "auto_trade_max_inactive_hours":  at_max_inactive_h,
+        "stale_timeout_minutes":          stale_timeout_min,
+        "stale_band_pct":                 stale_band_pct,
     }
 
 
@@ -782,6 +826,8 @@ def update_position_monitor_state(
     next_tp_index: Optional[int] = None,
     sl_armed_at_breakeven: Optional[bool] = None,
     last_monitor_check_at: Optional[int] = None,
+    stale_anchor_pp: Optional[float] = None,
+    stale_anchor_at: Optional[int] = None,
 ):
     """Monitor-loop state writes. Each kwarg is optional — only set what
     changed. Used by the monitor to advance position state without
@@ -802,6 +848,12 @@ def update_position_monitor_state(
     if last_monitor_check_at is not None:
         fields.append("last_monitor_check_at = ?")
         args.append(int(last_monitor_check_at))
+    if stale_anchor_pp is not None:
+        fields.append("stale_anchor_pp = ?")
+        args.append(float(stale_anchor_pp))
+    if stale_anchor_at is not None:
+        fields.append("stale_anchor_at = ?")
+        args.append(int(stale_anchor_at))
     if not fields:
         return
     args.append(int(position_id))

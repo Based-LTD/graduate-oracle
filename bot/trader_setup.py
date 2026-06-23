@@ -97,6 +97,8 @@ TP_SELL_PRESETS    = [10, 25, 33, 50, 75, 100]
 SL_PRESETS         = [10, 15, 20, 25, 30, 40, 50, 75, 90]
 TSL_PRESETS        = [10, 15, 20, 25, 30, 40, 50, 70]
 BE_PRESETS         = [5, 10, 15, 20, 30, 50]
+STALE_TIMEOUT_PRESETS = [10, 20, 30, 60, 120]   # minutes
+STALE_BAND_PRESETS    = [1, 2, 3, 5, 10]        # percent
 SLIPPAGE_PRESETS_BPS = [100, 200, 500, 1000, 1500, 2000, 3000, 5000]   # 1% → 50%
 MAX_TRADE_PRESETS    = [0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]  # SOL; "off" = no cap
 
@@ -138,9 +140,10 @@ def _kb_main() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🛑 Stop Loss",    callback_data="s:l"),
          InlineKeyboardButton("📈 Trailing",     callback_data="s:p")],
         [InlineKeyboardButton("🔒 Breakeven",    callback_data="s:e"),
-         InlineKeyboardButton("⚡ Slippage",     callback_data="s:slip")],
-        [InlineKeyboardButton("💨 Speed (Tip)",  callback_data="s:tip"),
-         InlineKeyboardButton("🛡 Max Trade",    callback_data="s:cap")],
+         InlineKeyboardButton("⏱ Stale Exit",    callback_data="s:stale")],
+        [InlineKeyboardButton("⚡ Slippage",     callback_data="s:slip"),
+         InlineKeyboardButton("💨 Speed (Tip)",  callback_data="s:tip")],
+        [InlineKeyboardButton("🛡 Max Trade",    callback_data="s:cap")],
         [InlineKeyboardButton("🏠 Home",        callback_data="h:m"),
          InlineKeyboardButton("✕ Close",        callback_data="s:close")],
     ])
@@ -503,6 +506,54 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+# ── Stagnation timeout ─────────────────────────────────────────────────
+
+def _fmt_stale(s: dict) -> str:
+    timeout = s.get("stale_timeout_minutes") or 0
+    band    = s.get("stale_band_pct") or 3.0
+    if timeout == 0:
+        line1 = "Currently: *OFF* — positions never auto-close on stagnation."
+    else:
+        line1 = (f"Currently: close any position that stays within "
+                 f"*±{band:.1f}%* of its anchor for *{timeout} min*.")
+    return (
+        "*⏱ STAGNATION TIMEOUT*\n\n"
+        + line1 + "\n\n"
+        "Frees up your concurrent-cap slot when a coin goes dead "
+        "(no movement in either direction). Different from SL — fires "
+        "even if you're slightly green but flat. Different from TSL — "
+        "doesn't require a peak.\n\n"
+        "_Anchor resets every time price moves outside the band, so "
+        "active coins are unaffected. Only fires on truly dead positions._"
+    )
+
+
+def _kb_stale(s: dict) -> InlineKeyboardMarkup:
+    cur_t = s.get("stale_timeout_minutes") or 0
+    cur_b = s.get("stale_band_pct") or 3.0
+    rows = []
+    # Timeout row
+    t_btns = [
+        InlineKeyboardButton(("✓ " if cur_t == v else "") + f"{v}m",
+                             callback_data=f"s:stale:t:{v}")
+        for v in STALE_TIMEOUT_PRESETS
+    ]
+    t_btns.append(InlineKeyboardButton(
+        ("✓ " if cur_t == 0 else "") + "OFF",
+        callback_data="s:stale:t:0",
+    ))
+    rows.append(t_btns)
+    # Band row
+    b_btns = [
+        InlineKeyboardButton(("✓ " if abs(cur_b - v) < 0.01 else "") + f"±{v}%",
+                             callback_data=f"s:stale:b:{v}")
+        for v in STALE_BAND_PRESETS
+    ]
+    rows.append(b_btns)
+    rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
+    return InlineKeyboardMarkup(rows)
+
+
 # ── Strategy presets ───────────────────────────────────────────────────
 
 def _fmt_strategy() -> str:
@@ -738,6 +789,20 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 print(f"[trader_setup] auto-trade action failed: {e}", flush=True)
             return await _render(q, uid, "at")
 
+        # ── Stale-exit actions ──
+        if screen == "stale" and len(parts) >= 3:
+            kind = parts[2]
+            try:
+                if kind == "t" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, stale_timeout_minutes=int(parts[3]))
+                elif kind == "b" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, stale_band_pct=float(parts[3]))
+            except (ValueError, Exception) as e:
+                print(f"[trader_setup] stale-exit action failed: {e}", flush=True)
+            return await _render(q, uid, "stale")
+
         # ── Pure navigation (no mutation) ──
         return await _render(q, uid, ":".join(parts[1:]) or "m")
 
@@ -782,6 +847,8 @@ async def _render(q, uid: str, screen: str):
         text, kb = _fmt_strategy(), _kb_strategy()
     elif code == "at":
         text, kb = _fmt_auto_trade(s), _kb_auto_trade(s)
+    elif code == "stale":
+        text, kb = _fmt_stale(s), _kb_stale(s)
     else:
         text = "*⚙️ TRADER SETUP*\n\n" + _fmt_settings(s)
         kb = _kb_main()

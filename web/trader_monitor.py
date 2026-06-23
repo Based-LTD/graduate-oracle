@@ -192,6 +192,15 @@ def tick(user_id: str | int, *, live: bool = False,
     }
 
     open_positions = trader_positions.list_open_positions(user_id)
+
+    # Read user settings ONCE per tick — stagnation check needs them per
+    # position but the values don't change between positions in one pass.
+    try:
+        _user_cfg = trader_positions.get_user_settings(user_id)
+    except Exception:
+        _user_cfg = {}
+    _stale_timeout_min = int(_user_cfg.get("stale_timeout_minutes") or 0)
+    _stale_band_pct    = float(_user_cfg.get("stale_band_pct") or 3.0)
     out["n_open"] = len(open_positions)
     now = int(_time.time())
 
@@ -257,6 +266,34 @@ def tick(user_id: str | int, *, live: bool = False,
 
         # 3. Evaluate action
         action = evaluate_position(pos, current)
+
+        # 3b. Stagnation check (Day 4.50). Only runs if no TP/SL/TSL fired
+        # AND the user enabled it (stale_timeout_minutes > 0). Tracks an
+        # anchor price; if price moves outside ±stale_band_pct of the
+        # anchor, anchor resets to current price + now. If price stays
+        # inside the band for stale_timeout_minutes, fire "stale" exit.
+        if (action is None and _stale_timeout_min > 0
+                and current_pp > 0 and entry_pp > 0):
+            anchor_pp = pos.get("stale_anchor_pp")
+            anchor_at = pos.get("stale_anchor_at")
+            if not anchor_pp or not anchor_at:
+                # First sighting of this position — set the anchor.
+                trader_positions.update_position_monitor_state(
+                    pid, stale_anchor_pp=current_pp, stale_anchor_at=now,
+                )
+            else:
+                band_size = anchor_pp * (_stale_band_pct / 100.0)
+                moved = abs(current_pp - anchor_pp) > band_size
+                if moved:
+                    # Price escaped the band — reset anchor; the position
+                    # is alive, give it more time.
+                    trader_positions.update_position_monitor_state(
+                        pid, stale_anchor_pp=current_pp, stale_anchor_at=now,
+                    )
+                elif (now - int(anchor_at)) >= _stale_timeout_min * 60:
+                    # Stayed flat past the timeout — call it dead.
+                    action = {"kind": "stale", "label": "stale"}
+
         if action is None:
             out["n_skipped"] += 1
             continue
