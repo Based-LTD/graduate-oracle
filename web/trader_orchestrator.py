@@ -625,10 +625,41 @@ def sell(
 
     mint = pos["mint"]
     payer = pos["payer_pubkey"]
-    tokens_to_sell = int(pos["token_amount"] * sell_pct)
+
+    # Day 4.52b: trust the wallet, not the DB. The stored token_amount
+    # can be wrong (legacy positions stored Jupiter's quote, not the
+    # actual fill; transfers / external sells / token taxes can also
+    # diverge). Querying actual balance prevents the "asks for more
+    # tokens than wallet has → Custom 6024 revert" failure mode.
+    # Falls back to stored amount if RPC fails.
+    stored_amount = int(pos["token_amount"])
+    effective_amount = stored_amount
+    if live:
+        try:
+            actual = trader_wallets.get_token_balance_raw(payer, mint)
+            if actual > 0:
+                effective_amount = min(stored_amount, actual)
+                if actual < stored_amount:
+                    print(f"[orchestrator] sell: stored={stored_amount} "
+                          f"actual={actual} → using actual (DB had stale fill)",
+                          flush=True)
+                    # Self-heal — patch the DB so future ticks don't re-discover this
+                    try:
+                        with contextlib.closing(_open_positions_db()) as c, c:
+                            c.execute(
+                                "UPDATE trader_positions SET token_amount = ? WHERE id = ?",
+                                (actual, int(position_id)),
+                            )
+                    except Exception as he:
+                        print(f"[orchestrator] sell self-heal failed: {he}", flush=True)
+        except Exception as e:
+            print(f"[orchestrator] balance check before sell failed: {e}", flush=True)
+
+    tokens_to_sell = int(effective_amount * sell_pct)
     if tokens_to_sell <= 0:
         raise OrchestratorError("validate",
-            f"computed 0 tokens to sell (position has {pos['token_amount']}, pct {sell_pct})")
+            f"computed 0 tokens to sell (position has {pos['token_amount']}, "
+            f"wallet has {effective_amount}, pct {sell_pct})")
 
     # ── Stage 2: wallet sanity check ──────────────────────────────────
     try:
