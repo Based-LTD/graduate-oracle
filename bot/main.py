@@ -1899,6 +1899,38 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str):
     if not cfg.get("auto_trade_enabled"):
         return
 
+    # Inactivity gate — if the user hasn't interacted with the bot in
+    # N hours, refuse to auto-trade. Defends against "set and forget +
+    # walk away forever" wallet drain. Reset by any /trader interaction
+    # (the bot's _upsert_user updates tg_users.last_seen_at on every
+    # message + callback the user fires). Set max_inactive_hours=0 to
+    # disable this gate entirely.
+    max_inactive_h = int(cfg.get("auto_trade_max_inactive_hours") or 0)
+    if max_inactive_h > 0:
+        try:
+            with contextlib.closing(sqlite3.connect(db.DB_PATH, timeout=5)) as c:
+                c.row_factory = sqlite3.Row
+                row = c.execute(
+                    "SELECT last_seen_at FROM tg_users WHERE telegram_id = ?",
+                    (tg_id,),
+                ).fetchone()
+            last_seen = int(row["last_seen_at"]) if row and row["last_seen_at"] else 0
+        except Exception:
+            last_seen = 0
+        if last_seen > 0:
+            idle_s = int(time.time()) - last_seen
+            if idle_s > max_inactive_h * 3600:
+                await application.bot.send_message(
+                    tg_id,
+                    f"🤖 Auto-trade SKIPPED on `{mint[:6]}…{mint[-4:]}` "
+                    f"— you've been inactive for {idle_s//3600}h "
+                    f"({max_inactive_h}h cap).\n"
+                    f"Send `/trader` to resume auto-buys.",
+                    parse_mode=constants.ParseMode.MARKDOWN,
+                    disable_web_page_preview=True,
+                )
+                return
+
     # Tier gate. ACT > WATCH > SCOUT.
     alert_tier = (snap or {}).get("tier") or ""
     min_tier   = cfg.get("auto_trade_min_tier") or "ACT"

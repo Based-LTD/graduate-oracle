@@ -215,6 +215,11 @@ _MIGRATIONS = [
     # trailing-stop math so partial TP fills don't shift thresholds.
     ("trader_positions", "hwm_price_per_token_lamports",
         "ALTER TABLE trader_positions ADD COLUMN hwm_price_per_token_lamports REAL"),
+    # Day 4.49 — auto-trade inactivity pause. Hours since last /trader
+    # interaction before auto-buys stop firing. 0 = disabled (always
+    # fire). Default 6h — survives an overnight, blocks a vanished user.
+    ("trader_user_settings", "auto_trade_max_inactive_hours",
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_max_inactive_hours INTEGER DEFAULT 6"),
 ]
 
 
@@ -427,6 +432,7 @@ def set_auto_trade_config(
     size_lamports: Optional[int] = None,
     min_tier: Optional[str] = None,
     max_concurrent: Optional[int] = None,
+    max_inactive_hours: Optional[int] = None,
 ):
     """Update one or more auto-trade fields for a user. None = leave alone."""
     init_schema()
@@ -445,6 +451,9 @@ def set_auto_trade_config(
     if max_concurrent is not None:
         fields.append("auto_trade_max_concurrent = ?")
         vals.append(int(max_concurrent))
+    if max_inactive_hours is not None:
+        fields.append("auto_trade_max_inactive_hours = ?")
+        vals.append(int(max_inactive_hours))
     if not fields:
         return
     vals.append(str(user_id))
@@ -610,6 +619,7 @@ def get_user_settings(user_id: str | int) -> dict:
     at_size_lamports = int(_safe_get("auto_trade_size_lamports", 5_000_000))
     at_min_tier = _safe_get("auto_trade_min_tier", "ACT") or "ACT"
     at_max_concurrent = int(_safe_get("auto_trade_max_concurrent", 3))
+    at_max_inactive_h = int(_safe_get("auto_trade_max_inactive_hours", 6))
 
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
@@ -621,10 +631,11 @@ def get_user_settings(user_id: str | int) -> dict:
         "slippage_bps":   slippage_bps,
         "jito_tip_mode":  jito_tip_mode,
         "max_trade_sol":  max_trade_sol,
-        "auto_trade_enabled":        at_enabled,
-        "auto_trade_size_lamports":  at_size_lamports,
-        "auto_trade_min_tier":       at_min_tier,
-        "auto_trade_max_concurrent": at_max_concurrent,
+        "auto_trade_enabled":             at_enabled,
+        "auto_trade_size_lamports":       at_size_lamports,
+        "auto_trade_min_tier":            at_min_tier,
+        "auto_trade_max_concurrent":      at_max_concurrent,
+        "auto_trade_max_inactive_hours":  at_max_inactive_h,
     }
 
 

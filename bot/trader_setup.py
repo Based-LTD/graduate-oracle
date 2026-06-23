@@ -420,6 +420,7 @@ def _kb_cap(s: dict) -> InlineKeyboardMarkup:
 
 _AUTO_SIZE_PRESETS_SOL = [0.001, 0.005, 0.01, 0.05, 0.1]   # picker buttons
 _AUTO_CAP_PRESETS      = [1, 3, 5, 10]                      # max concurrent
+_AUTO_IDLE_PRESETS_H   = [1, 4, 6, 12, 24]                  # inactivity pause hrs
 
 
 def _fmt_auto_trade(s: dict) -> str:
@@ -427,21 +428,28 @@ def _fmt_auto_trade(s: dict) -> str:
     size_sol = (s.get("auto_trade_size_lamports") or 0) / 1e9
     min_tier = s.get("auto_trade_min_tier") or "ACT"
     cap = s.get("auto_trade_max_concurrent") or 3
+    idle_h = s.get("auto_trade_max_inactive_hours") or 0
     tier_label = {
         "ACT":   "ACT only (strictest)",
         "WATCH": "ACT + WATCH",
         "SCOUT": "ACT + WATCH + SCOUT (all)",
     }.get(min_tier, min_tier)
     state = "🟢 *ON*" if enabled else "🔴 *OFF*"
+    idle_line = (f"Pause after: *{idle_h}h* idle" if idle_h > 0
+                 else "Pause after: *OFF* (fires regardless of activity)")
     return (
         "*🤖 AUTO-TRADE*\n\n"
         f"State: {state}\n"
         f"Size per buy: *{size_sol:.4f}* SOL\n"
         f"Tier filter: *{tier_label}*\n"
-        f"Max concurrent: *{cap}* open positions\n\n"
+        f"Max concurrent: *{cap}* open positions\n"
+        f"{idle_line}\n\n"
         "_When ON: bot auto-buys every alert that meets the tier filter. "
         "Your TP/SL/TSL strategy applies. All rate limits + balance "
         "checks still enforced. Receipts labeled `🤖 AUTO-BUY`._\n\n"
+        "_If you haven't interacted with the bot in the idle window, "
+        "auto-buys pause until you send /trader again. Defends against "
+        "set-and-forget wallet drain._\n\n"
         "⚠️ _Most pump.fun trades lose money. Auto-trading means losses "
         "compound fast. Start small and watch closely._"
     )
@@ -452,6 +460,7 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     cur_size = (s.get("auto_trade_size_lamports") or 0) / 1e9
     cur_tier = s.get("auto_trade_min_tier") or "ACT"
     cur_cap = s.get("auto_trade_max_concurrent") or 3
+    cur_idle = s.get("auto_trade_max_inactive_hours") or 0
     rows = []
     # Master toggle
     if enabled:
@@ -479,6 +488,17 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
                              callback_data=f"s:at:cap:{c}")
         for c in _AUTO_CAP_PRESETS
     ])
+    # Inactivity timeout — last row, includes OFF option
+    idle_buttons = [
+        InlineKeyboardButton(("✓ " if cur_idle == h else "") + f"{h}h",
+                             callback_data=f"s:at:idle:{h}")
+        for h in _AUTO_IDLE_PRESETS_H
+    ]
+    idle_buttons.append(InlineKeyboardButton(
+        ("✓ " if cur_idle == 0 else "") + "OFF",
+        callback_data="s:at:idle:0",
+    ))
+    rows.append(idle_buttons)
     rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
     return InlineKeyboardMarkup(rows)
 
@@ -711,6 +731,9 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 elif action == "cap" and len(parts) >= 4:
                     trader_positions.set_auto_trade_config(
                         uid, max_concurrent=int(parts[3]))
+                elif action == "idle" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, max_inactive_hours=int(parts[3]))
             except (ValueError, Exception) as e:
                 print(f"[trader_setup] auto-trade action failed: {e}", flush=True)
             return await _render(q, uid, "at")
