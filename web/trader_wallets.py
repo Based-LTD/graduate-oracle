@@ -554,6 +554,49 @@ def withdraw(
 
 # ── Balance lookup (RPC, no decryption needed) ───────────────────────────
 
+def get_token_balance_raw(payer_pubkey: str, mint: str) -> int:
+    """Return the raw token balance (smallest unit) the payer holds for
+    a given mint. 0 if no ATA exists. Pure RPC, no decryption.
+
+    Used post-confirmation in the orchestrator to find what actually
+    landed in the wallet vs Jupiter's quote — slippage and partial
+    fills cause real divergence. The DB should track on-chain truth,
+    not the quote.
+
+    Works for both legacy SPL and Token-2022 programs without needing
+    the program-id hint — we ask getTokenAccountsByOwner for ALL accounts
+    matching the mint regardless of program."""
+    try:
+        # programId filter omitted intentionally — we want both Token and
+        # Token-2022 ATAs.
+        body = json.dumps({
+            "jsonrpc": "2.0", "id": 1, "method": "getTokenAccountsByOwner",
+            "params": [
+                payer_pubkey,
+                {"mint": mint},
+                {"encoding": "jsonParsed", "commitment": "confirmed"},
+            ],
+        }).encode()
+        r = urllib.request.Request(
+            _RPC, data=body, headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(r, timeout=6.0) as resp:
+            data = json.loads(resp.read())
+        accs = data.get("result", {}).get("value", []) or []
+        total = 0
+        for a in accs:
+            info = a.get("account", {}).get("data", {}).get("parsed", {}).get("info", {})
+            amt = (info.get("tokenAmount") or {}).get("amount")
+            try:
+                total += int(amt)
+            except (TypeError, ValueError):
+                continue
+        return total
+    except Exception as e:
+        print(f"[trader_wallets] get_token_balance_raw failed: {e}", flush=True)
+        return 0
+
+
 def get_balance_lamports(user_id_or_pubkey: str | int) -> int:
     """Returns the current SOL balance in lamports for the user's
     wallet (or for an arbitrary pubkey string). Pure RPC call — no

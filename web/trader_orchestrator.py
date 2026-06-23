@@ -57,7 +57,7 @@ _USER_FACING: dict[str, str] = {
     "build":    "Couldn't price this trade — Jupiter route may be unavailable. Try again.",
     "build_too_new": "This mint is too new for Jupiter — try again in 30 seconds.",
     "sign":     "Wallet signing failed. Contact support.",
-    "submit":   "Couldn't submit the trade. Try again or contact support.",
+    "submit":   "{detail}",  # detail is already user-friendly (Day 4.51+)
     "position": "{detail}",
     "post_submit_accounting":
         "Trade went through but our records didn't update. Your tokens are "
@@ -352,6 +352,20 @@ def buy(
     except Exception as e:
         raise OrchestratorError("sign", str(e)) from e
 
+    # ── Stage 5.9: snapshot pre-buy token balance ──────────────────────
+    # Day 4.52: needed to compute the ACTUAL on-chain fill (post - pre)
+    # after the buy confirms. Jupiter's quote is a hint, not a contract;
+    # slippage causes the actual amount to differ. Without recording the
+    # real fill, later sells try to spend tokens that don't exist and
+    # revert with Custom 6024.
+    pre_token_balance = 0
+    if live:
+        try:
+            pre_token_balance = trader_wallets.get_token_balance_raw(payer, mint)
+        except Exception as e:
+            print(f"[orchestrator] pre-buy token balance check failed: {e}",
+                  flush=True)
+
     # ── Stage 6: SUBMIT ────────────────────────────────────────────────
     # Jupiter returns a VersionedTransaction (v0) with address lookup
     # tables. Jito would accept it but our Rust submit-bundle path was
@@ -418,6 +432,33 @@ def buy(
     # ── Stage 7: write the position row ────────────────────────────────
     phase = submitted.get("phase", "dry-run")  # 'submitted' or 'dry-run'
     buy_signature = submitted.get("signature", "")
+
+    # Day 4.52: read the ACTUAL fill from on-chain. Buy is now confirmed
+    # (Day 4.51 guarantees this — we wouldn't get here otherwise). The
+    # delta (post - pre) is what actually landed in the wallet, even if
+    # Jupiter's quote was different. Falls back to the quoted amount if
+    # the post-balance check fails (defensive — at worst, same behavior
+    # as pre-4.52).
+    actual_token_amount = int(built["expected_tokens_out"])  # fallback
+    if live and phase == "submitted":
+        try:
+            post_token_balance = trader_wallets.get_token_balance_raw(payer, mint)
+            delta = post_token_balance - pre_token_balance
+            if delta > 0:
+                actual_token_amount = delta
+                quoted = int(built["expected_tokens_out"])
+                if abs(quoted - delta) > 1:
+                    print(f"[orchestrator] buy fill: quoted={quoted}, "
+                          f"actual={delta}, gap={quoted-delta} "
+                          f"({(delta-quoted)*100/quoted:+.2f}%)", flush=True)
+            else:
+                print(f"[orchestrator] post-buy balance delta <= 0 "
+                      f"(pre={pre_token_balance}, post={post_token_balance}); "
+                      f"using quoted amount as fallback", flush=True)
+        except Exception as e:
+            print(f"[orchestrator] post-buy token balance check failed: {e}",
+                  flush=True)
+
     try:
         position_id = trader_positions.create_position(
             user_id=user_id,
@@ -427,7 +468,7 @@ def buy(
             is_cashback_coin=is_cashback,
             token_program=built["accounts"]["token_program"],
             buy_sol_lamports=int(built["buy_lamports"]),
-            token_amount=int(built["expected_tokens_out"]),
+            token_amount=actual_token_amount,
             entry_price_lamports_per_token=float(built["entry_price_lamports_per_token"]),
             entry_mcap_sol=float(built.get("entry_mcap_sol") or 0) or None,
             slippage_bps=int(built["slippage_bps"]),
@@ -517,7 +558,10 @@ def buy(
         "sol":                              sol,
         "buy_lamports":                     int(built["buy_lamports"]),
         "buy_signature":                    buy_signature,
-        "expected_tokens_out":              int(built["expected_tokens_out"]),
+        # Day 4.52: this is the actual on-chain fill (or the quote as
+        # fallback in dry-run / balance-check-failure). Receipts show
+        # truth, not the quote.
+        "expected_tokens_out":              actual_token_amount,
         "max_sol_cost_lamports":            int(built["max_sol_cost_lamports"]),
         "entry_price_lamports_per_token":   float(built["entry_price_lamports_per_token"]),
         "entry_mcap_sol":                   float(built.get("entry_mcap_sol") or 0) or None,
