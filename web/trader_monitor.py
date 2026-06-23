@@ -197,18 +197,35 @@ def tick(user_id: str | int, *, live: bool = False,
 
     for pos in open_positions:
         pid = pos["id"]
-        # 1. Quote current value via Jupiter (mint → SOL for remaining tokens)
-        try:
-            q = jupiter_buy.quote_sell(
-                mint=pos["mint"],
-                token_amount=int(pos["token_amount"]),
-                slippage_bps=slippage_bps,
-                timeout_s=3.0,
-            )
-            current = int(q.get("outAmount") or 0)
-        except Exception as e:
+        # 1. Quote current value via Jupiter (mint → SOL for remaining tokens).
+        # Day 4.47: retry ONCE after a brief delay if the first attempt
+        # fails. Jupiter has transient hiccups (~5% of requests during
+        # busy periods); a single retry catches the vast majority while
+        # keeping per-tick latency tolerable. If both fail, mark
+        # unquotable so the next tick re-evaluates.
+        current = 0
+        last_err = None
+        for attempt in (1, 2):
+            try:
+                q = jupiter_buy.quote_sell(
+                    mint=pos["mint"],
+                    token_amount=int(pos["token_amount"]),
+                    slippage_bps=slippage_bps,
+                    timeout_s=3.0,
+                )
+                current = int(q.get("outAmount") or 0)
+                if current > 0:
+                    break
+            except Exception as e:
+                last_err = e
+            if attempt == 1:
+                import time as _t
+                _t.sleep(1.0)
+        if current <= 0:
+            err_msg = (str(last_err)[:200] if last_err
+                       else "Jupiter quoted zero value")
             out["unquotable"].append({
-                "position_id": pid, "mint": pos["mint"], "error": str(e)[:200],
+                "position_id": pid, "mint": pos["mint"], "error": err_msg,
             })
             out["n_unquotable"] += 1
             # Still mark the check timestamp so we don't think we're stalled
