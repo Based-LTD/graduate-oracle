@@ -245,39 +245,34 @@
     </div>
   </div>
 
+  <div style="border:1px solid rgba(126,240,163,0.4); border-left:3px solid #7ef0a3; border-radius:6px; padding:14px 18px; background:rgba(126,240,163,0.05); margin:24px 0;">
+    <p style="margin:0; font-family:'JetBrains Mono',monospace; color:#7ef0a3; font-weight:700; font-size:0.95rem">🟢 FREE BETA — API is open, no key required</p>
+    <p style="margin:6px 0 0; font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:0.85rem; line-height:1.5">
+      During the beta window (through 2026-07-07), every endpoint accepts
+      unauthenticated requests. Just <code>curl</code> and go. Auth will return
+      after beta — see the <a href="#auth" style="color:var(--cyan)">Authentication</a>
+      section for the post-beta shape.
+    </p>
+  </div>
+
   <h2 class="sec">Quick start</h2>
-  <p class="sec-sub">Three steps. Two endpoints.</p>
+  <p class="sec-sub">Two steps. Two endpoints.</p>
 
   <div class="step-row">
     <div class="step-num">1</div>
     <div class="step-body">
-      <strong>Get a key</strong>
-      <p class="sec-sub" style="margin-top:0.4rem">
-        Subscribe in SOL via Phantom at <a href="/api">/api</a> (founding
-        rate locks forever), or hold <strong>2.5M $GO</strong> in a
-        linked wallet for Builder access. Either path returns a key prefixed
-        <code>grad_</code>.
-      </p>
-    </div>
-  </div>
-
-  <div class="step-row">
-    <div class="step-num">2</div>
-    <div class="step-body">
       <strong>Read the live firehose</strong>
-<pre class="code">curl https://graduateoracle.fun/api/v1/live \
-  -H 'Authorization: Bearer grad_...'</pre>
+<pre class="code">curl https://graduateoracle.fun/api/v1/live</pre>
       Returns every currently-tracked mint with calibrated grad_prob,
       entry_mult, age, and supporting context. Updates every ~2 seconds.
     </div>
   </div>
 
   <div class="step-row">
-    <div class="step-num">3</div>
+    <div class="step-num">2</div>
     <div class="step-body">
       <strong>Filter for actionable signals</strong>
 <pre class="code">curl https://graduateoracle.fun/api/v1/live \
-  -H 'Authorization: Bearer grad_...' \
   | jq <span class="val">'.mints[] | select(.grad_prob >= 0.70 and .current_mult <= 2.0)'</span></pre>
       That's the same gate the TG bot fires on. <strong>≥70% grad_prob</strong> —
       <span id="docs-hit-rate">—%</span> forward, on-chain-resolved hit rate over
@@ -287,6 +282,7 @@
   </div>
 
   <h2 class="sec">Pricing</h2>
+  <p class="sec-sub" style="color:#7ef0a3"><strong>Beta: free, all tiers, no key.</strong> The tiers below activate after beta closes (2026-07-07).</p>
   <table class="simple">
     <thead>
       <tr><th>Tier</th><th>Calls/day</th><th>Data freshness</th><th>Webhooks</th><th>Price</th></tr>
@@ -296,7 +292,7 @@
       <tr><td>Pro</td><td>50,000</td><td>real-time</td><td>✓</td><td>1.5 SOL/mo</td></tr>
     </tbody>
   </table>
-  <p class="sec-sub">Pricing in SOL, paid on-chain via the <code>/upgrade</code> flow. <a href="/api">See pricing →</a></p>
+  <p class="sec-sub">Post-beta pricing in SOL, paid on-chain via the <code>/upgrade</code> flow. <a href="/api">See pricing →</a></p>
 
   <h2 class="sec">$GO — Proof Launch tokenomics</h2>
   <p class="sec-sub">
@@ -325,10 +321,13 @@
     schedule, not a pitch deck.
   </p>
 
-  <h2 class="sec">Authentication</h2>
-  <p class="sec-sub">All <code>/api/v1/*</code> endpoints require a bearer token.</p>
-<pre class="code">Authorization: Bearer grad_xxxxxxxxxxxx</pre>
-  <p class="sec-sub">Or via <code>X-API-Key</code> header. Keys are bearer credentials — treat them like passwords.</p>
+  <h2 class="sec" id="auth">Authentication</h2>
+  <p class="sec-sub"><strong style="color:#7ef0a3">During beta:</strong> auth is disabled. Send any request to <code>/api/v1/*</code> without headers — it works.</p>
+  <p class="sec-sub" style="margin-top:0.8rem"><strong>After beta (post 2026-07-07):</strong> all <code>/api/v1/*</code> endpoints require a bearer token. Both forms supported:</p>
+<pre class="code">Authorization: Bearer grad_xxxxxxxxxxxx
+# or
+X-API-Key: grad_xxxxxxxxxxxx</pre>
+  <p class="sec-sub">Keys are bearer credentials — treat them like passwords. Subscribe in SOL via Phantom at <a href="/api">/api</a>, or hold <strong>2.5M $GO</strong> in a linked wallet for Builder access.</p>
 
   <h2 class="sec">Reference</h2>
   <table class="simple">

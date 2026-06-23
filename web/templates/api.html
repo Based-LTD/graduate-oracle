@@ -339,23 +339,22 @@
 
 <section id="quickstart" class="api-quick">
   <h2>Quickstart</h2>
-  <p>Send your key on every request via <code>Authorization: Bearer &lt;key&gt;</code> or <code>X-API-Key: &lt;key&gt;</code> header.</p>
-  <pre class="code-block"># curl
-curl -H "Authorization: Bearer grad_your_key_here" \
-     "https://graduateoracle.fun/api/v1/live?limit=10&min_prob=0.5"
+  <p style="border-left:3px solid #7ef0a3; padding-left:12px; background:rgba(126,240,163,0.06); padding:8px 12px; border-radius:4px"><strong style="color:#7ef0a3">🟢 FREE BETA</strong> — through 2026-07-07, the API is open. No key required. Send any request and it works. After beta, add an <code>Authorization: Bearer &lt;key&gt;</code> or <code>X-API-Key: &lt;key&gt;</code> header.</p>
+  <pre class="code-block"># curl — beta (no key)
+curl "https://graduateoracle.fun/api/v1/live?limit=10&amp;min_prob=0.5"
 
 # python
 import requests
 r = requests.get("https://graduateoracle.fun/api/v1/live",
-                 headers={"Authorization": "Bearer grad_your_key_here"},
                  params={"limit": 10, "min_prob": 0.5})
 print(r.json())
 
 # javascript / node
-const r = await fetch("https://graduateoracle.fun/api/v1/live?limit=10", {
-  headers: { Authorization: "Bearer grad_your_key_here" }
-});
-console.log(await r.json());</pre>
+const r = await fetch("https://graduateoracle.fun/api/v1/live?limit=10");
+console.log(await r.json());
+
+# Post-beta (after 2026-07-07): add header
+#   -H "Authorization: Bearer grad_your_key_here"</pre>
   <p>Full schema + try-it-out interface: <a href="/docs">/docs</a> (Swagger UI, auto-generated).</p>
 </section>
 
