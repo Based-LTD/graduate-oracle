@@ -1873,16 +1873,13 @@ def _escape_md(s: str) -> str:
     return "".join(out)
 
 
-# Day 4.53: auto-trade refuses to fire on stale alerts. An alert
-# more than this many seconds old has lost its informational value —
-# the price has moved, the smart-money window has closed, and the
-# bot would be chasing a dump (Daniel's case 2026-06-23 14:48:
-# bot bought 18-min-old signal at the post-pump bottom).
-AUTO_TRADE_MAX_ALERT_AGE_S = 60
-
-
 async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
                             *, queued_at: int = 0):
+    # Day 4.53 reverted 2026-06-23: had an age guard here (refuse alerts
+    # > 60s old) — killed valid late-but-good catches. Holding the
+    # backlog/staleness problem for a later, smarter fix. For now:
+    # auto-trade fires on every alert that passes the user's own gates.
+    _ = queued_at  # accepted but unused; preserves signature compat
     """If the user has auto-trade enabled AND this alert's tier meets
     their threshold AND they're under their max-concurrent open cap,
     fire a buy via orchestrator.
@@ -1907,29 +1904,6 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
 
     if not cfg.get("auto_trade_enabled"):
         return
-
-    # Day 4.53: STALENESS GUARD — refuse if alert is too old.
-    # The signal-moment price (what the alert displayed) and the
-    # current chart can diverge by 50%+ in 60 seconds on pump.fun.
-    # Auto-buying a stale signal means buying whatever the price is
-    # NOW, not what made the signal worth firing on.
-    if queued_at > 0:
-        alert_age_s = int(time.time()) - queued_at
-        if alert_age_s > AUTO_TRADE_MAX_ALERT_AGE_S:
-            try:
-                await application.bot.send_message(
-                    tg_id,
-                    f"🤖 Auto-trade SKIPPED on `{mint[:6]}…{mint[-4:]}` "
-                    f"— alert is {alert_age_s}s old "
-                    f"(cap = {AUTO_TRADE_MAX_ALERT_AGE_S}s).\n"
-                    f"The signal-moment price has moved too far; "
-                    f"buying now would be chasing.",
-                    parse_mode=constants.ParseMode.MARKDOWN,
-                    disable_web_page_preview=True,
-                )
-            except Exception:
-                pass
-            return
 
     # Inactivity gate — if the user hasn't interacted with the bot in
     # N hours, refuse to auto-trade. Defends against "set and forget +
