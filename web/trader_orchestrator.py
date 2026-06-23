@@ -380,6 +380,35 @@ def buy(
             raise OrchestratorError(
                 "submit", f"RPC submit failed: {rpc_result.get('error')}",
             )
+        # Day 4.51 CRITICAL: wait for the tx to actually CONFIRM and verify
+        # err is null. Otherwise we'd treat a reverted tx (e.g. slippage
+        # tolerance exceeded, insufficient balance, custom program error)
+        # as a successful trade and write a phantom position to the DB.
+        # That happened on 2026-06-23: a sell tx reverted with Custom 6024
+        # but the bot marked the position sold + ran fee skim + sent a
+        # profit DM. Real wallet got hit; tokens stayed in the ATA.
+        import jito_confirm as _jc
+        confirm_result = _jc.wait_for_confirmation(
+            signature=rpc_result["signature"],
+            rpc_url=rpc_url,
+            bundle_ids=[],
+            timeout_s=45,        # tight — buys are time-sensitive
+            poll_interval_s=1.0,
+        )
+        if confirm_result.failed:
+            raise OrchestratorError(
+                "submit",
+                f"BUY tx {rpc_result['signature']} reverted on-chain: "
+                f"{confirm_result.err}. Position NOT created.",
+            )
+        if confirm_result.timed_out:
+            # Tx might still land later. Don't create position; bot must
+            # not assume success. User can inspect the sig on Solscan.
+            raise OrchestratorError(
+                "submit",
+                f"BUY tx {rpc_result['signature']} did not confirm in 45s. "
+                "Check the explorer; if it lands, contact support.",
+            )
         submitted = {
             "phase":     "submitted",
             "signature": rpc_result["signature"],
@@ -621,6 +650,34 @@ def sell(
             "submit", f"RPC sell submit failed: {rpc_result.get('error')}",
         )
     sell_signature = rpc_result["signature"]
+
+    # Day 4.51 CRITICAL: confirm + err-check before treating sell as
+    # successful. Without this, a reverted sell tx (Custom 6024 slippage,
+    # insufficient tokens, AMM-side rejection) gets marked as a profit in
+    # the DB and the fee skim transfers run pointlessly. Daniel hit this
+    # at 2026-06-23 12:12 — position #79 reverted but bot DM'd "+13% profit"
+    # and the user's tokens stayed stuck.
+    import jito_confirm as _jc
+    confirm_result = _jc.wait_for_confirmation(
+        signature=sell_signature,
+        rpc_url=rpc_url_eff,
+        bundle_ids=[],
+        timeout_s=45,
+        poll_interval_s=1.0,
+    )
+    if confirm_result.failed:
+        raise OrchestratorError(
+            "submit",
+            f"SELL tx {sell_signature} reverted on-chain: "
+            f"{confirm_result.err}. Position remains OPEN — tokens still "
+            "in your wallet. Try again or sell manually.",
+        )
+    if confirm_result.timed_out:
+        raise OrchestratorError(
+            "submit",
+            f"SELL tx {sell_signature} did not confirm in 45s. "
+            "Position remains OPEN. Check the explorer.",
+        )
 
     # ── Stage 6.5: collect sell-side fee BEFORE we mark sold ──────────
     # Need the fee number to compute honest net PnL in mark_sold.
