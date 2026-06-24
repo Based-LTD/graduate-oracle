@@ -1301,20 +1301,19 @@ async def cmd_trader(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         print(f"[trader_setup] TOS gate failed: {e}", flush=True)
         return
     try:
-        # Install the persistent home keyboard on first /trader invocation
-        # in this session. Once installed it stays at the bottom of the
-        # chat (under the text input) forever — Daniel can tap /trader,
-        # /portfolio, or /wallet from anywhere without typing.
-        if not ctx.user_data.get("home_kb_v1"):
-            try:
-                await update.message.reply_text(
-                    "🏠 _Home buttons installed below — tap anytime to navigate._",
-                    parse_mode=constants.ParseMode.MARKDOWN,
-                    reply_markup=_persistent_home_kb(),
-                )
-                ctx.user_data["home_kb_v1"] = True
-            except Exception as ke:
-                print(f"[trader_setup] home_kb install failed: {ke}", flush=True)
+        # Re-attach the persistent home keyboard on EVERY /trader invocation.
+        # Telegram's reply keyboard is supposed to persist client-side once
+        # sent, but in practice it can disappear after deploys, long
+        # inactivity windows, or TG client quirks. Re-sending it every
+        # /trader is cheap (1 extra message) and means the keyboard never
+        # vanishes for the user.
+        try:
+            await update.message.reply_text(
+                "🏠",
+                reply_markup=_persistent_home_kb(),
+            )
+        except Exception as ke:
+            print(f"[trader_setup] home_kb install failed: {ke}", flush=True)
 
         text = _fmt_hub_main(_uid(update))
         await update.message.reply_text(
