@@ -1993,6 +1993,31 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
     size_lamports = int(cfg.get("auto_trade_size_lamports") or 5_000_000)
     sol_amount = size_lamports / 1e9
 
+    # Day 4.56: PRE-CHECK Jupiter routability before firing a buy.
+    # If Jupiter can't quote the swap (mint not indexed, no liquidity,
+    # dead pool, etc.) the buy will fail anyway and we'd just spam the
+    # user with "🤖 Auto-trade FAILED" DMs. Skip silently — the user
+    # still got the alert and can manually buy if they really want.
+    # Adds ~200ms per auto-trade decision; saves users from noise.
+    try:
+        import jupiter_buy
+        _q = jupiter_buy.quote(mint=mint, sol_lamports=size_lamports,
+                               slippage_bps=500, timeout_s=2.5)
+        if not _q or not _q.get("outAmount") or int(_q["outAmount"]) <= 0:
+            print(f"[auto_trade] pre-check: no Jupiter route for {mint} "
+                  f"— skipping silently", flush=True)
+            return
+    except jupiter_buy.JupiterNotTradableError:
+        print(f"[auto_trade] pre-check: TOKEN_NOT_TRADABLE for {mint} "
+              f"— skipping silently", flush=True)
+        return
+    except Exception as e:
+        # Jupiter rate-limit or transient API hiccup — log but
+        # proceed; the orchestrator will retry once and either
+        # succeed or surface a real error.
+        print(f"[auto_trade] pre-check failed unexpectedly ({e}) — "
+              f"falling through to orchestrator", flush=True)
+
     # Run the buy in a try; catch all OrchestratorError shapes so a
     # buy failure becomes a notification instead of a silent miss.
     try:
