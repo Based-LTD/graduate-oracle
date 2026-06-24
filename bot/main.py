@@ -1979,17 +1979,51 @@ def _escape_md(s: str) -> str:
 
 async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
                             *, queued_at: int = 0):
-    # Day 4.54: BACKLOG-AWARE STALENESS GUARD.
-    # If this alert was queued BEFORE the current bot process started,
-    # it's a backlog flush from a prior outage (deploy / crash / Fly
-    # maintenance). The price has moved during the outage; auto-buying
-    # would be chasing a price the user never saw. Skip the auto-trade
-    # but DON'T drop the alert — the TG send still happens upstream
-    # so the user sees what they missed.
-    #
-    # Alerts queued AFTER startup get auto-traded as normal — no
-    # age limit, no price drift check. The user's own gates (tier,
-    # concurrent cap) are the only filters.
+    """If the user has auto-trade enabled AND this alert's tier meets
+    their threshold AND they're under their max-concurrent open cap,
+    fire a buy via orchestrator.
+
+    All existing safety guards apply automatically because we route
+    through orchestrator.buy():
+      • TOS acceptance check
+      • Rate limiter (3s spacing + 10/min burst)
+      • Balance floor (refuses if wallet too low)
+      • max_trade_sol cap
+      • Slippage / tip from user settings
+
+    Gate ORDER (post 2026-06-24 fix): cheap, silent filters first; user-
+    facing DMs only after we know this signal WOULD have auto-traded.
+    Avoids spamming users with "skipped" DMs for signals that didn't
+    match their tier anyway.
+
+    Buy receipt is sent labeled with the 🤖 AUTO-BUY prefix so the user
+    sees clearly that this wasn't a manual tap."""
+    user_id = str(tg_id)
+    try:
+        import trader_positions
+        cfg = trader_positions.get_user_settings(user_id)
+    except Exception as e:
+        print(f"[auto_trade] get_user_settings failed: {e}", flush=True)
+        return
+
+    # 1. Auto-trade enabled? Silent exit if off.
+    if not cfg.get("auto_trade_enabled"):
+        return
+
+    # 2. Tier filter — silent exit if the alert tier doesn't qualify.
+    # Must fire BEFORE the backlog DM to avoid noisy "skipped during
+    # outage" messages for signals the user wouldn't have traded anyway.
+    alert_tier = (snap or {}).get("tier") or ""
+    min_tier   = cfg.get("auto_trade_min_tier") or "ACT"
+    rank = {"SCOUT": 1, "WATCH": 2, "ACT": 3}
+    if rank.get(alert_tier, 0) < rank.get(min_tier, 3):
+        return
+
+    # 3. Day 4.54: BACKLOG-AWARE STALENESS GUARD.
+    # Alert was queued BEFORE this bot process started = a backlog
+    # flush from a prior outage. Price has moved; auto-buying would be
+    # chasing a price the user never saw. DM the skip so the user
+    # knows what we did and why.
     if queued_at and queued_at < _BOT_STARTUP_AT:
         try:
             outage_s = _BOT_STARTUP_AT - queued_at
@@ -2004,30 +2038,6 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
             )
         except Exception:
             pass
-        return
-    """If the user has auto-trade enabled AND this alert's tier meets
-    their threshold AND they're under their max-concurrent open cap,
-    fire a buy via orchestrator.
-
-    All existing safety guards apply automatically because we route
-    through orchestrator.buy():
-      • TOS acceptance check
-      • Rate limiter (3s spacing + 10/min burst)
-      • Balance floor (refuses if wallet too low)
-      • max_trade_sol cap
-      • Slippage / tip from user settings
-
-    Buy receipt is sent labeled with the 🤖 AUTO-BUY prefix so the user
-    sees clearly that this wasn't a manual tap."""
-    user_id = str(tg_id)
-    try:
-        import trader_positions
-        cfg = trader_positions.get_user_settings(user_id)
-    except Exception as e:
-        print(f"[auto_trade] get_user_settings failed: {e}", flush=True)
-        return
-
-    if not cfg.get("auto_trade_enabled"):
         return
 
     # Inactivity gate — if the user hasn't interacted with the bot in
@@ -2062,12 +2072,8 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
                 )
                 return
 
-    # Tier gate. ACT > WATCH > SCOUT.
-    alert_tier = (snap or {}).get("tier") or ""
-    min_tier   = cfg.get("auto_trade_min_tier") or "ACT"
-    rank = {"SCOUT": 1, "WATCH": 2, "ACT": 3}
-    if rank.get(alert_tier, 0) < rank.get(min_tier, 3):
-        return
+    # (Tier gate moved to top of function — see step 2 above. This
+    # comment kept as a breadcrumb in case anyone greps for "Tier gate".)
 
     # Max concurrent cap
     try:
