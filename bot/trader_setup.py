@@ -439,7 +439,9 @@ def _kb_cap(s: dict) -> InlineKeyboardMarkup:
 
 # ── Auto-trade settings ────────────────────────────────────────────────
 
-_AUTO_SIZE_PRESETS_SOL = [0.001, 0.005, 0.01, 0.05, 0.1]   # picker buttons
+# picker buttons. 0.001 dropped — too small for net positive after
+# overhead. Added 0.25, 0.5, 1.0, 2.0 for higher-conviction users.
+_AUTO_SIZE_PRESETS_SOL = [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
 _AUTO_CAP_PRESETS      = [1, 3, 5, 10]                      # max concurrent
 _AUTO_IDLE_PRESETS_H   = [1, 4, 6, 12, 24]                  # inactivity pause hrs
 
@@ -490,13 +492,15 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     else:
         rows.append([InlineKeyboardButton("✅ Turn ON",
                                           callback_data="s:at:on")])
-    # Size picker
-    rows.append([
+    # Size picker — split into 2 rows since we have 8 options now.
+    size_buttons = [
         InlineKeyboardButton(
             ("✓ " if abs(v - cur_size) < 1e-9 else "") + f"{v:g} SOL",
             callback_data=f"s:at:size:{int(v*1e9)}",
         ) for v in _AUTO_SIZE_PRESETS_SOL
-    ])
+    ]
+    rows.append(size_buttons[:4])
+    rows.append(size_buttons[4:])
     # Tier
     rows.append([
         InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
