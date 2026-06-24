@@ -29,12 +29,52 @@ from typing import Optional
 import jupiter_buy
 import trader_positions
 
+# Day 4.58: in-memory quote cache for /portfolio path. /portfolio +
+# position-detail screens can be hit many times in a few seconds;
+# without cache, every refresh round-trips to Jupiter even if nothing
+# has changed. 5s TTL is short enough that displayed PnL stays
+# meaningful but eliminates spam-refresh waste.
+#
+# Used ONLY by value_position. The monitor's own quote_sell call is
+# NOT cached — monitor needs fresh price to fire SL/TP correctly.
+import time as _time
+_QUOTE_CACHE: dict = {}        # (mint, token_amount, slippage_bps) -> (ts, quote_dict)
+_QUOTE_CACHE_TTL_S = 5.0
+
+
+def _cached_quote_sell(mint: str, token_amount: int, slippage_bps: int,
+                      timeout_s: float):
+    """Wrap jupiter_buy.quote_sell with a 5s TTL cache. Same exceptions
+    raised on cache miss as the underlying call. Caches successes only —
+    failures bubble up to the caller and don't poison the cache."""
+    now = _time.monotonic()
+    key = (mint, int(token_amount), int(slippage_bps))
+    cached = _QUOTE_CACHE.get(key)
+    if cached and (now - cached[0]) < _QUOTE_CACHE_TTL_S:
+        return cached[1]
+    q = jupiter_buy.quote_sell(
+        mint=mint, token_amount=int(token_amount),
+        slippage_bps=slippage_bps, timeout_s=timeout_s,
+    )
+    _QUOTE_CACHE[key] = (now, q)
+    # Opportunistic cleanup — drop entries older than 30s when cache
+    # gets large, keeps memory bounded under sustained load.
+    if len(_QUOTE_CACHE) > 500:
+        cutoff = now - 30.0
+        for k in list(_QUOTE_CACHE.keys()):
+            if _QUOTE_CACHE[k][0] < cutoff:
+                del _QUOTE_CACHE[k]
+    return q
+
 
 def value_position(pos: dict, *, slippage_bps: int = 500,
                    timeout_s: float = 3.0) -> dict:
     """Enrich a single position with live valuation. Always returns a dict
     (never raises) — if Jupiter fails, `valuation_error` is populated and
-    the value fields are None."""
+    the value fields are None.
+
+    Uses _cached_quote_sell with 5s TTL — fast refresh paths reuse a
+    recent quote instead of hammering Jupiter."""
     out = dict(pos)
     out["current_sol_value_lamports"] = None
     out["unrealized_pnl_lamports"]    = None
@@ -49,7 +89,7 @@ def value_position(pos: dict, *, slippage_bps: int = 500,
         return out
 
     try:
-        q = jupiter_buy.quote_sell(
+        q = _cached_quote_sell(
             mint=pos["mint"],
             token_amount=int(token_amount),
             slippage_bps=slippage_bps,

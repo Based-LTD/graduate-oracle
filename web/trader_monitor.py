@@ -35,6 +35,37 @@ from typing import Optional, Tuple, Union
 import jupiter_buy
 import trader_positions
 
+# Day 4.58 Fix 3: bonding-curve fetch cache. 3s TTL is short enough
+# that the curve state is fresh for trigger decisions but long enough
+# to suppress re-fetching across the per-position loop within one tick.
+# Bypasses Jupiter for pre-grad pump.fun mints (~70% of trades).
+_CURVE_CACHE: dict = {}              # mint -> (timestamp, curve_dict)
+_CURVE_CACHE_TTL_S = 3.0
+
+
+def _cached_curve_fetch(mint: str):
+    """Read bonding curve state via the same RPC the orchestrator uses,
+    cached briefly. Returns None on any failure (caller falls back to
+    Jupiter). Never raises."""
+    now = _time.monotonic()
+    cached = _CURVE_CACHE.get(mint)
+    if cached and (now - cached[0]) < _CURVE_CACHE_TTL_S:
+        return cached[1]
+    try:
+        import bonding_curve as _bc
+        import trader_wallets as _tw
+        curve = _bc.fetch(mint, rpc_url=_tw._RPC)
+        _CURVE_CACHE[mint] = (now, curve)
+        # Opportunistic cleanup
+        if len(_CURVE_CACHE) > 500:
+            cutoff = now - 30.0
+            for k in list(_CURVE_CACHE.keys()):
+                if _CURVE_CACHE[k][0] < cutoff:
+                    del _CURVE_CACHE[k]
+        return curve
+    except Exception:
+        return None
+
 # Default monitor cadence — once every 6 seconds. Slow enough not to
 # hammer Jupiter; fast enough to catch fast pump.fun rugs. Tunable per
 # tick() call.
@@ -206,30 +237,55 @@ def tick(user_id: str | int, *, live: bool = False,
 
     for pos in open_positions:
         pid = pos["id"]
-        # 1. Quote current value via Jupiter (mint → SOL for remaining tokens).
-        # Day 4.47: retry ONCE after a brief delay if the first attempt
-        # fails. Jupiter has transient hiccups (~5% of requests during
-        # busy periods); a single retry catches the vast majority while
-        # keeping per-tick latency tolerable. If both fail, mark
-        # unquotable so the next tick re-evaluates.
+        # 1. Get current value. Day 4.58 (Fix 3): for pre-graduation
+        # pump.fun mints we can derive the price directly from the
+        # bonding curve's virtual reserves (constant-product formula),
+        # bypassing Jupiter entirely. ~70% of our trades are pre-grad,
+        # so this dramatically reduces Jupiter load. For graduated
+        # mints (no bonding curve) we fall back to Jupiter.
         current = 0
-        last_err = None
-        for attempt in (1, 2):
+        used_curve = False
+        if pos["mint"].endswith("pump"):
             try:
-                q = jupiter_buy.quote_sell(
-                    mint=pos["mint"],
-                    token_amount=int(pos["token_amount"]),
-                    slippage_bps=slippage_bps,
-                    timeout_s=3.0,
-                )
-                current = int(q.get("outAmount") or 0)
-                if current > 0:
-                    break
+                curve = _cached_curve_fetch(pos["mint"])
+                if curve and not curve.get("complete"):
+                    vsol = int(curve.get("virtual_sol_reserves") or 0)
+                    vtok = int(curve.get("virtual_token_reserves") or 0)
+                    tok = int(pos["token_amount"])
+                    if vsol > 0 and vtok > 0 and tok > 0:
+                        # Constant-product: amount_out = vsol * tok / (vtok + tok)
+                        current = (vsol * tok) // (vtok + tok)
+                        # Pump.fun charges a 1% trade fee — apply to be honest
+                        current = int(current * 0.99)
+                        if current > 0:
+                            used_curve = True
             except Exception as e:
-                last_err = e
-            if attempt == 1:
-                import time as _t
-                _t.sleep(1.0)
+                # Any curve fetch failure: fall through to Jupiter
+                print(f"[monitor] curve fetch failed for {pos['mint'][:10]}: {e}",
+                      flush=True)
+
+        # Jupiter path — used for graduated mints, non-pump.fun mints,
+        # or when the bonding-curve path failed.
+        # Day 4.47: retry ONCE after a brief delay if the first attempt
+        # fails. Catches transient Jupiter hiccups.
+        last_err = None
+        if not used_curve:
+            for attempt in (1, 2):
+                try:
+                    q = jupiter_buy.quote_sell(
+                        mint=pos["mint"],
+                        token_amount=int(pos["token_amount"]),
+                        slippage_bps=slippage_bps,
+                        timeout_s=3.0,
+                    )
+                    current = int(q.get("outAmount") or 0)
+                    if current > 0:
+                        break
+                except Exception as e:
+                    last_err = e
+                if attempt == 1:
+                    import time as _t
+                    _t.sleep(1.0)
         if current <= 0:
             err_msg = (str(last_err)[:200] if last_err
                        else "Jupiter quoted zero value")
