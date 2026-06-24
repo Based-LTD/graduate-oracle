@@ -122,8 +122,8 @@ def _fmt_settings(s: dict) -> str:
         "*🛒 Buy amounts (inline buttons):*\n"
         f"  {presets} SOL\n\n"
         f"*🎯 Take-profit ladder:*\n{ladder}\n\n"
-        f"*🛑 Stop loss:* {s['sl_pct']:+.0f}%\n"
-        f"*📈 Trailing stop:* {s['tsl_pct']:.0f}% off high\n"
+        f"*🛑 Stop loss:* {(format(s['sl_pct'], '+.0f') + '%') if s.get('sl_pct') is not None else '*OFF*'}\n"
+        f"*📈 Trailing stop:* {(format(s['tsl_pct'], '.0f') + '% off high') if s.get('tsl_pct') is not None else '*OFF*'}\n"
         f"*🔒 Breakeven:* {('at +' + format(s['breakeven_pct'], '.0f') + '% gain') if s.get('breakeven_pct') is not None else '*OFF*'}\n\n"
         f"*⚡ Slippage:* {s['slippage_bps']/100:.1f}%\n"
         f"*💨 Speed (Jito tip):* `{s['jito_tip_mode']}`\n"
@@ -210,8 +210,15 @@ def _kb_tp_ladder(s: dict) -> InlineKeyboardMarkup:
             ),
             InlineKeyboardButton("✕", callback_data=f"s:tx:{i}"),
         ])
+    actions = []
     if len(s["tp_ladder"]) < MAX_TP_RUNGS:
-        rows.append([InlineKeyboardButton("➕ Add rung", callback_data="s:ta")])
+        actions.append(InlineKeyboardButton("➕ Add rung", callback_data="s:ta"))
+    if len(s["tp_ladder"]) > 0:
+        # One-tap "turn TP off entirely" — clears the whole ladder
+        actions.append(InlineKeyboardButton("🛑 OFF (clear all)",
+                                            callback_data="s:tclr"))
+    if actions:
+        rows.append(actions)
     rows.append([InlineKeyboardButton("← Back", callback_data="s:m")])
     return InlineKeyboardMarkup(rows)
 
@@ -294,20 +301,31 @@ def _kb_simple_picker(prefix: str, presets: list, current,
 
 
 def _fmt_sl(s: dict) -> str:
+    sl = s.get("sl_pct")
+    if sl is None:
+        cur = "Currently: *OFF* — positions never auto-exit on a drawdown.\n\n"
+    else:
+        cur = (f"Currently: exit at *{sl:+.0f}%* gain "
+               f"(i.e. {-sl:.0f}% loss).\n\n")
     return (
         "*🛑 STOP LOSS*\n\n"
-        f"Currently: exit at *{s['sl_pct']:+.0f}%* gain (i.e. {-s['sl_pct']:.0f}% loss).\n\n"
-        "Tap a value to update. Lower = tighter risk."
+        + cur +
+        "Tap a value to update. Lower = tighter risk. Tap *OFF* to disable."
     )
 
 
 def _fmt_tsl(s: dict) -> str:
+    tsl = s.get("tsl_pct")
+    if tsl is None:
+        cur = "Currently: *OFF* — no trailing exit. Position rides until SL/TP/manual.\n\n"
+    else:
+        cur = (f"Currently: exit if price drops *{tsl:.0f}%* below the high "
+               "seen since buying.\n\n")
     return (
         "*📈 TRAILING STOP*\n\n"
-        f"Currently: exit if price drops *{s['tsl_pct']:.0f}%* below the high "
-        "seen since buying.\n\n"
+        + cur +
         "Only triggers AFTER price has risen above entry. Higher = more room "
-        "for volatility; lower = locks profits faster."
+        "for volatility; lower = locks profits faster. Tap *OFF* to disable."
     )
 
 
@@ -714,14 +732,31 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 trader_positions.set_user_settings(uid, tp_ladder=ladder)
             return await _render(q, uid, "t")
 
+        if screen == "tclr":
+            # One-tap clear: turn TP entirely off.
+            trader_positions.set_user_settings(uid, tp_ladder=[])
+            return await _render(q, uid, "t")
+
         if screen == "l" and len(parts) >= 3:
-            pct = int(parts[2])
-            trader_positions.set_user_settings(uid, sl_pct=-abs(pct))
+            val = parts[2]
+            if val == "off":
+                trader_positions.set_user_settings(uid, clear_sl_pct=True)
+            else:
+                try:
+                    trader_positions.set_user_settings(uid, sl_pct=-abs(int(val)))
+                except ValueError:
+                    pass
             return await _render(q, uid, "l")
 
         if screen == "p" and len(parts) >= 3:
-            pct = int(parts[2])
-            trader_positions.set_user_settings(uid, tsl_pct=abs(pct))
+            val = parts[2]
+            if val == "off":
+                trader_positions.set_user_settings(uid, clear_tsl_pct=True)
+            else:
+                try:
+                    trader_positions.set_user_settings(uid, tsl_pct=abs(int(val)))
+                except ValueError:
+                    pass
             return await _render(q, uid, "p")
 
         if screen == "e" and len(parts) >= 3:
@@ -830,10 +865,10 @@ async def _render(q, uid: str, screen: str):
         text, kb = _fmt_tp_rung_editor(s, idx), _kb_tp_rung_editor(s, idx)
     elif code == "l":
         text = _fmt_sl(s)
-        kb = _kb_simple_picker("s:l", SL_PRESETS, s["sl_pct"], signed_negative=True)
+        kb = _kb_simple_picker("s:l", SL_PRESETS, s["sl_pct"], signed_negative=True, allow_off=True)
     elif code == "p":
         text = _fmt_tsl(s)
-        kb = _kb_simple_picker("s:p", TSL_PRESETS, s["tsl_pct"])
+        kb = _kb_simple_picker("s:p", TSL_PRESETS, s["tsl_pct"], allow_off=True)
     elif code == "e":
         text = _fmt_be(s)
         kb = _kb_simple_picker("s:e", BE_PRESETS, s["breakeven_pct"], allow_off=True)

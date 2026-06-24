@@ -613,8 +613,14 @@ def get_user_settings(user_id: str | int) -> dict:
     except Exception:
         ladder = None
 
-    sl  = row["sl_pct"]        if row and row["sl_pct"]        is not None else DEFAULT_SL_PCT
-    tsl = row["tsl_pct"]       if row and row["tsl_pct"]       is not None else DEFAULT_TSL_PCT
+    # SL/TSL: if user has a settings row, preserve None (explicit OFF).
+    # If no row at all (first-time user), fall back to defaults.
+    if row:
+        sl = row["sl_pct"]
+        tsl = row["tsl_pct"]
+    else:
+        sl = DEFAULT_SL_PCT
+        tsl = DEFAULT_TSL_PCT
     # Breakeven distinguishes 3 states: column NULL means user disabled it
     # explicitly; no row at all means first-time user → fall back to default.
     if row:
@@ -665,8 +671,8 @@ def get_user_settings(user_id: str | int) -> dict:
 
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
-        "sl_pct":        float(sl),
-        "tsl_pct":       float(tsl),
+        "sl_pct":        float(sl) if sl is not None else None,
+        "tsl_pct":       float(tsl) if tsl is not None else None,
         "breakeven_pct": float(be) if be is not None else None,
         "buy_presets_sol": presets if (isinstance(presets, list) and presets)
                            else list(DEFAULT_BUY_PRESETS_SOL),
@@ -695,6 +701,8 @@ def set_user_settings(
     max_trade_sol: Optional[float] = None,
     clear_max_trade_sol: bool = False,
     clear_breakeven_pct: bool = False,
+    clear_sl_pct: bool = False,
+    clear_tsl_pct: bool = False,
 ):
     """Upsert per-user auto-exit defaults. None values leave the existing
     field untouched (set only what changed)."""
@@ -720,8 +728,12 @@ def set_user_settings(
         merged = {
             "tp_ladder_json": _json.dumps(tp_ladder) if tp_ladder is not None
                               else _e("tp_ladder_json"),
-            "sl_pct":        sl_pct        if sl_pct        is not None else _e("sl_pct"),
-            "tsl_pct":       tsl_pct       if tsl_pct       is not None else _e("tsl_pct"),
+            "sl_pct":        (None if clear_sl_pct
+                              else sl_pct if sl_pct is not None
+                              else _e("sl_pct")),
+            "tsl_pct":       (None if clear_tsl_pct
+                              else tsl_pct if tsl_pct is not None
+                              else _e("tsl_pct")),
             "breakeven_pct": (None if clear_breakeven_pct
                              else breakeven_pct if breakeven_pct is not None
                              else _e("breakeven_pct")),
