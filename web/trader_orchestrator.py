@@ -55,7 +55,12 @@ _USER_FACING: dict[str, str] = {
     "route":    "{detail}",  # rarely reached; kept for future routing rejections
     "blockhash": "Network is slow — try again in a few seconds.",
     "build":    "Couldn't price this trade — Jupiter route may be unavailable. Try again.",
-    "build_too_new": "This mint is too new for Jupiter — try again in 30 seconds.",
+    # Jupiter's TOKEN_NOT_TRADABLE doesn't distinguish "brand new and
+    # not yet indexed" from "old mint with no liquidity / dead pool."
+    # The old copy ("try again in 30 seconds") was misleading on the
+    # dead-pool case — retry never works there. Be honest: surface
+    # the reality without prescribing a useless action.
+    "build_too_new": "No tradable Jupiter route for this mint. Either it just launched (Jupiter usually indexes within a minute) or it has no liquidity. The bot won't auto-retry — manually buy from the alert if you want.",
     "sign":     "Wallet signing failed. Contact support.",
     "submit":   "{detail}",  # detail is already user-friendly (Day 4.51+)
     "position": "{detail}",
