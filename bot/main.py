@@ -60,6 +60,12 @@ WEB_BASE = os.environ.get("WEB_BASE_URL", "http://127.0.0.1:8765").rstrip("/")
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
+# Day 4.54: track when this bot process started. Alerts queued BEFORE
+# this timestamp are backlog from a prior outage / deploy — they get
+# delivered as normal TG messages so users see what they missed, but
+# auto-trade refuses to fire on them. Stale signals never auto-execute.
+_BOT_STARTUP_AT = int(__import__("time").time())
+
 
 # ── Launch-month TG promo ──────────────────────────────────────────────
 # Set TG_FREE_UNTIL (unix timestamp) to make composite_score free for
@@ -1875,11 +1881,32 @@ def _escape_md(s: str) -> str:
 
 async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
                             *, queued_at: int = 0):
-    # Day 4.53 reverted 2026-06-23: had an age guard here (refuse alerts
-    # > 60s old) — killed valid late-but-good catches. Holding the
-    # backlog/staleness problem for a later, smarter fix. For now:
-    # auto-trade fires on every alert that passes the user's own gates.
-    _ = queued_at  # accepted but unused; preserves signature compat
+    # Day 4.54: BACKLOG-AWARE STALENESS GUARD.
+    # If this alert was queued BEFORE the current bot process started,
+    # it's a backlog flush from a prior outage (deploy / crash / Fly
+    # maintenance). The price has moved during the outage; auto-buying
+    # would be chasing a price the user never saw. Skip the auto-trade
+    # but DON'T drop the alert — the TG send still happens upstream
+    # so the user sees what they missed.
+    #
+    # Alerts queued AFTER startup get auto-traded as normal — no
+    # age limit, no price drift check. The user's own gates (tier,
+    # concurrent cap) are the only filters.
+    if queued_at and queued_at < _BOT_STARTUP_AT:
+        try:
+            outage_s = _BOT_STARTUP_AT - queued_at
+            await application.bot.send_message(
+                tg_id,
+                f"🤖 Auto-trade SKIPPED on `{mint[:6]}…{mint[-4:]}` "
+                f"— alert was queued during a {outage_s}s bot outage.\n"
+                f"You're still receiving the signal so you can manually "
+                f"act on it, but the bot won't fire on a stale price.",
+                parse_mode=constants.ParseMode.MARKDOWN,
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            pass
+        return
     """If the user has auto-trade enabled AND this alert's tier meets
     their threshold AND they're under their max-concurrent open cap,
     fire a buy via orchestrator.
