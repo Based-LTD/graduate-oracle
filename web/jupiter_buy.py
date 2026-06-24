@@ -38,9 +38,16 @@ import urllib.request
 from typing import Optional
 
 
-# Both endpoints serve the same data. `lite-api` doesn't require an API key
-# and has higher rate limits for unauthenticated traffic. We default to it.
-JUP_BASE = os.environ.get("JUP_API_BASE", "https://lite-api.jup.ag").rstrip("/")
+# Two Jupiter endpoints exist:
+#   • lite-api.jup.ag   — free, shared rate limit (defaults here)
+#   • api.jup.ag        — paid, requires x-api-key header (~100 req/s)
+# If JUP_API_KEY is set, auto-switch to the paid endpoint AND inject
+# the key on every request. Pay-the-key with no other code change.
+JUP_API_KEY = (os.environ.get("JUP_API_KEY") or "").strip()
+if JUP_API_KEY:
+    JUP_BASE = os.environ.get("JUP_API_BASE", "https://api.jup.ag").rstrip("/")
+else:
+    JUP_BASE = os.environ.get("JUP_API_BASE", "https://lite-api.jup.ag").rstrip("/")
 
 WSOL_MINT = "So11111111111111111111111111111111111111112"
 
@@ -78,12 +85,15 @@ def _http_json(method: str, url: str, *,
             time.sleep(backoff_base_s * (2 ** (attempt - 1)))
         try:
             data = json.dumps(body).encode() if body is not None else None
+            _headers = {
+                "Content-Type": "application/json",
+                "Accept":       "application/json",
+            }
+            if JUP_API_KEY:
+                _headers["x-api-key"] = JUP_API_KEY
             req = urllib.request.Request(
                 url, data=data, method=method,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept":       "application/json",
-                },
+                headers=_headers,
             )
             with urllib.request.urlopen(req, timeout=timeout_s) as r:
                 payload = r.read()
