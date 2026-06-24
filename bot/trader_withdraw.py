@@ -341,9 +341,13 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 def register(app: Application, admin_tg_ids: set) -> bool:
     """Wire the withdraw wizard into the application. Returns True on
     success, False if anything fails — main bot keeps running either way."""
-    if not admin_tg_ids:
-        # Beta: only admins can withdraw. After public, drop this guard.
-        print("[trader_withdraw] no admins set, skipping", flush=True)
+    # Day 4.59: when TRADER_PUBLIC=1, register withdraw even if no
+    # admins set — the wizard becomes available to all users.
+    import os as _os
+    _trader_public = (_os.environ.get("TRADER_PUBLIC", "") or "").strip() == "1"
+    if not admin_tg_ids and not _trader_public:
+        print("[trader_withdraw] no admins set + not public mode, skipping",
+              flush=True)
         return False
 
     # Stash for the wizard's per-user limit decision

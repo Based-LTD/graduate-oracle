@@ -57,6 +57,12 @@ sys.path.insert(0, str(_REPO / "web"))
 
 _admin_ids: set[int] = set()
 
+# Day 4.59: public-mode toggle. When TRADER_PUBLIC=1 in env, ALL
+# admin gates open — any TG user can use the trader. Reversible by
+# unsetting the secret (no redeploy needed).
+import os as _os
+_TRADER_PUBLIC: bool = (_os.environ.get("TRADER_PUBLIC", "") or "").strip() == "1"
+
 
 def is_enabled() -> bool:
     return os.environ.get("TRADER_ENABLED", "").strip() == "1"
@@ -64,7 +70,12 @@ def is_enabled() -> bool:
 
 def _is_admin(update: Update) -> bool:
     u = update.effective_user
-    return bool(u and u.id in _admin_ids)
+    if not u:
+        return False
+    # Day 4.59: public mode → ALL users pass the gate
+    if _TRADER_PUBLIC:
+        return True
+    return u.id in _admin_ids
 
 
 async def _require_admin(update: Update) -> bool:

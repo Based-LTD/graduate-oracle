@@ -115,6 +115,20 @@ def _tg_free_banner() -> str:
 # Comma-separated telegram_ids. Anyone in this list can /grant any tier
 # (Builder/Pro/Free) to themselves or another telegram_id without payment.
 _ADMIN_TG_IDS: set[int] = set()
+
+# Day 4.59: public-mode toggle. TRADER_PUBLIC=1 in env opens every
+# admin gate. Helper used by all the "is this user allowed to trade?"
+# checks so we have one source of truth. Operator-only commands (like
+# /stats) still gate explicitly on _ADMIN_TG_IDS — see those handlers.
+_TRADER_PUBLIC: bool = (os.environ.get("TRADER_PUBLIC", "") or "").strip() == "1"
+
+
+def _user_can_trade(tg_id: int) -> bool:
+    """True if this user can access trader features.
+    Public mode: any user. Otherwise: must be in ADMIN_TG_IDS."""
+    if _TRADER_PUBLIC:
+        return True
+    return tg_id in _ADMIN_TG_IDS
 for _raw in os.environ.get("ADMIN_TG_IDS", "").split(","):
     _raw = _raw.strip()
     if _raw.isdigit():
@@ -899,11 +913,11 @@ async def cmd_unwatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_portfolio(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _upsert_user(update)
     tg_id = update.effective_user.id
-    # Admins (operators using the trader): route /portfolio to the
-    # TRADER portfolio (positions), not the legacy watchlist. The
-    # trader portfolio is what the persistent home keyboard + menu
-    # imply, so the watchlist meaning would surprise them.
-    if tg_id in _ADMIN_TG_IDS:
+    # Trader users: route /portfolio to the TRADER portfolio (positions),
+    # not the legacy watchlist. The trader portfolio is what the
+    # persistent home keyboard + menu imply, so the watchlist meaning
+    # would surprise them.
+    if _user_can_trade(tg_id):
         try:
             import trader_commands as _tc
             return await _tc.cmd_portfolio(update, ctx)
@@ -960,7 +974,7 @@ async def cmd_wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         # Falls through to the old smart-money lookup when an address IS
         # passed (preserves backward compatibility).
         tg_id = update.effective_user.id
-        if tg_id in _ADMIN_TG_IDS:
+        if _user_can_trade(tg_id):
             try:
                 import trader_wallets
                 wallet = trader_wallets.get_or_create_wallet(str(tg_id))
@@ -2668,10 +2682,11 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("Photon", url=f"https://photon-sol.tinyastro.io/en/lp/{mint}"),
                     InlineKeyboardButton("Dex", url=f"https://dexscreener.com/solana/{mint}"),
                 ]]
-                # Trader buy buttons — operator-only. Reads the recipient's
-                # saved buy presets (3 amounts) from trader_user_settings.
-                # Non-admin recipients (current prod users) never see this row.
-                if tg_id in _ADMIN_TG_IDS:
+                # Trader buy buttons — gated by _user_can_trade so beta-mode
+                # only shows them to ADMIN_TG_IDS, public mode shows them to
+                # everyone. Reads the recipient's saved buy presets from
+                # trader_user_settings (defaults if no row yet).
+                if _user_can_trade(tg_id):
                     try:
                         import trader_commands
                         if trader_commands.is_enabled():
@@ -2687,13 +2702,11 @@ async def alert_push_drain_tick(context: ContextTypes.DEFAULT_TYPE):
                 await _send_alert(application, tg_id, msg, reply_markup=kb)
 
                 # ── Auto-trade evaluator ────────────────────────────
-                # If user has opted in AND alert tier meets their threshold
-                # AND they're under their concurrent-open cap → fire a buy.
-                # Operator-only during beta (same gate as buy buttons).
-                # Goes through orchestrator.buy() so all existing safety
-                # (rate limit, balance floor, TOS, max_trade_sol cap) applies.
+                # Same gate as buy buttons. Goes through orchestrator.buy()
+                # so all existing safety (rate limit, balance floor, TOS,
+                # max_trade_sol cap) applies regardless of mode.
                 if (kind == "composite_score"
-                        and tg_id in _ADMIN_TG_IDS):
+                        and _user_can_trade(tg_id)):
                     try:
                         queued_at = int(row.get("queued_at") or 0)
                         await _maybe_auto_trade(application, tg_id, snap, mint,

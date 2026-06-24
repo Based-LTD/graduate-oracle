@@ -77,10 +77,18 @@ sys.path.insert(0, str(_REPO / "web"))
 
 _admin_ids: set[int] = set()
 
+# Day 4.59: TRADER_PUBLIC=1 opens the gate to everyone.
+import os as _os
+_TRADER_PUBLIC: bool = (_os.environ.get("TRADER_PUBLIC", "") or "").strip() == "1"
+
 
 def _is_admin(update: Update) -> bool:
     u = update.effective_user
-    return bool(u and u.id in _admin_ids)
+    if not u:
+        return False
+    if _TRADER_PUBLIC:
+        return True
+    return u.id in _admin_ids
 
 
 def _uid(update: Update) -> str:
