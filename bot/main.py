@@ -1005,6 +1005,90 @@ async def cmd_wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=constants.ParseMode.MARKDOWN)
 
 
+async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only platform stats snapshot. Use post-launch to track
+    user growth + trade activity. Reads both data.sqlite (TG users)
+    and trader.sqlite (positions/wallets)."""
+    tg_id = update.effective_user.id
+    if tg_id not in _ADMIN_TG_IDS:
+        return  # silent — don't advertise
+
+    import contextlib as _cx, sqlite3 as _sq, time as _t
+    now = int(_t.time())
+
+    try:
+        # data.sqlite — TG-side metrics
+        with _cx.closing(_sq.connect(db.DB_PATH, timeout=10)) as c:
+            c.row_factory = _sq.Row
+            tot_users = c.execute("SELECT COUNT(*) AS n FROM tg_users").fetchone()["n"]
+            a24 = c.execute("SELECT COUNT(*) AS n FROM tg_users WHERE last_seen_at > ?",
+                           (now - 86400,)).fetchone()["n"]
+            a7d = c.execute("SELECT COUNT(*) AS n FROM tg_users WHERE last_seen_at > ?",
+                           (now - 7*86400,)).fetchone()["n"]
+            try:
+                tos_n = c.execute("SELECT COUNT(*) AS n FROM tg_tos_acceptance").fetchone()["n"]
+            except Exception:
+                tos_n = 0
+            alerts_24h = c.execute(
+                "SELECT COUNT(DISTINCT telegram_id) AS n FROM pending_alerts "
+                "WHERE queued_at > ?", (now - 86400,)).fetchone()["n"]
+
+        # trader.sqlite — wallet + position metrics
+        import trader_positions
+        tdb = trader_positions._db_path()
+        with _cx.closing(_sq.connect(tdb, timeout=10)) as c:
+            c.row_factory = _sq.Row
+            wallets = c.execute("SELECT COUNT(*) AS n FROM trader_wallets").fetchone()["n"]
+            total_pos = c.execute("SELECT COUNT(*) AS n FROM trader_positions").fetchone()["n"]
+            open_pos = c.execute(
+                "SELECT COUNT(*) AS n FROM trader_positions WHERE status='open'"
+            ).fetchone()["n"]
+            sold_pos = total_pos - open_pos
+            traders = c.execute(
+                "SELECT COUNT(DISTINCT user_id) AS n FROM trader_positions"
+            ).fetchone()["n"]
+            # Cumulative realized PnL across all users
+            r = c.execute(
+                "SELECT COALESCE(SUM(net_pnl_lamports), 0) AS pnl, "
+                "       COALESCE(SUM(buy_fee_lamports + sell_fee_lamports), 0) AS fees "
+                "FROM trader_positions WHERE status='sold'"
+            ).fetchone()
+            total_pnl_sol = (r["pnl"] or 0) / 1e9
+            total_fees_sol = (r["fees"] or 0) / 1e9
+            # 24h trade volume
+            r24 = c.execute(
+                "SELECT COUNT(*) AS n FROM trader_positions WHERE buy_timestamp > ?",
+                (now - 86400,)).fetchone()
+            buys_24h = r24["n"]
+
+        text = (
+            "*📊 GRADUATE Oracle stats*\n\n"
+            "*Users*\n"
+            f"  · `{tot_users}` total\n"
+            f"  · `{a24}` active 24h  ·  `{a7d}` active 7d\n"
+            f"  · `{alerts_24h}` got an alert in last 24h\n\n"
+            "*Traders*\n"
+            f"  · `{tos_n}` TOS-accepted\n"
+            f"  · `{wallets}` wallet(s) provisioned\n"
+            f"  · `{traders}` user(s) have placed a trade\n\n"
+            "*Positions*\n"
+            f"  · `{total_pos}` opened all-time\n"
+            f"  · `{sold_pos}` closed  ·  `{open_pos}` open now\n"
+            f"  · `{buys_24h}` new buys last 24h\n\n"
+            "*Revenue*\n"
+            f"  · Cumulative realized PnL across users: *{total_pnl_sol:+.4f}* SOL\n"
+            f"  · Total fees collected: *{total_fees_sol:.4f}* SOL\n"
+            f"  · Operator share (50%): *{total_fees_sol/2:.4f}* SOL\n"
+            f"  · Burn share (50%): *{total_fees_sol/2:.4f}* SOL"
+        )
+        await update.message.reply_text(
+            text, parse_mode=constants.ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ /stats failed: {str(e)[:200]}")
+
+
 async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _upsert_user(update)
     tg_id = update.effective_user.id
@@ -3055,6 +3139,7 @@ def main():
     app.add_handler(CommandHandler("sample", cmd_sample))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("stats", cmd_stats))  # admin-only platform metrics
     app.add_handler(CommandHandler("upgrade", cmd_upgrade))
     app.add_handler(CommandHandler("plans", cmd_plans))
     app.add_handler(CommandHandler("accuracy", cmd_accuracy))
