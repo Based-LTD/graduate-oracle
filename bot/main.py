@@ -750,11 +750,19 @@ async def cmd_probe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     def pct(v):
         return "—" if v is None else f"{v*100:.0f}%"
 
-    # From-now upside — what the trader actually wants to know:
-    # P(this mint reaches Nx its CURRENT price), not its launch price.
-    p2 = pct(m.get("runner_prob_2x_from_now"))
-    p5 = pct(m.get("runner_prob_5x_from_now"))
-    p10 = pct(m.get("runner_prob_10x_from_now"))
+    # Day 4.66 (2026-06-24): runner-odds lines REMOVED from alert text.
+    # Empirical evidence on the predictions table showed the runner_prob_*
+    # model is inverted vs reality: predictions in the 0-10% bucket actually
+    # hit 5× at 19.6%, while predictions in the 50-100% bucket hit 5× at
+    # only 7.6%. Higher predicted → lower actual.
+    #
+    # Until the model is retrained/recalibrated, displaying its output as
+    # "5× odds: 28%" is dishonest to users (real odds are lower at that
+    # bucket). Per the "honest from signal" + "no calibrated jargon" brand
+    # rules, suppress until fixed.
+    #
+    # expected_upside_from_now is from a related model and may also be
+    # broken — leaving it for now but worth re-validating separately.
     peak_now = m.get("expected_upside_from_now")
     peak_now_s = f"{peak_now:.2f}× from now" if peak_now is not None else "—"
 
@@ -856,8 +864,6 @@ async def cmd_probe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"🎯 *combined odds:* {combined_str}\n"
         f"{breakdown}"
         f"{mc_line}\n\n"
-        f"*runner odds (from current price):*\n"
-        f"  ≥2× → *{p2}*  ·  ≥5× → *{p5}*  ·  ≥10× → *{p10}*\n"
         f"  expected peak: *{peak_now_s}*\n\n"
         f"vSOL *{m['current_vsol_sol']:.1f}*  ·  "
         f"buyers *{m['unique_buyers']}*  ·  "
