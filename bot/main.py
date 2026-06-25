@@ -2103,6 +2103,7 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
     # user with "🤖 Auto-trade FAILED" DMs. Skip silently — the user
     # still got the alert and can manually buy if they really want.
     # Adds ~200ms per auto-trade decision; saves users from noise.
+    _q = None
     try:
         import jupiter_buy
         _q = jupiter_buy.quote(mint=mint, sol_lamports=size_lamports,
@@ -2121,6 +2122,55 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
         # succeed or surface a real error.
         print(f"[auto_trade] pre-check failed unexpectedly ({e}) — "
               f"falling through to orchestrator", flush=True)
+
+    # Day 4.63: PRICE-DRIFT ABORT. Even with a strong signal, if the
+    # price has collapsed catastrophically (>60%) between the signal
+    # firing and our buy quote landing, the wave is over. Smart money
+    # bought, dumped, and we'd be buying the floor. A human looking at
+    # the chart at this moment would refuse.
+    #
+    # Real case (2026-06-24 DyfHYh…): score_ratio 3.70× (STRONG), but
+    # MC collapsed $13.4K → $3.9K (-71%) in the 16s gap between signal
+    # and buy. Position immediately hit -50% SL.
+    #
+    # Threshold: skip only on ≥60% collapse. 0-30% is normal volatility
+    # (SL handles). 30-60% borderline (SL still handles). 60%+ is the
+    # "wave is over" pattern where no human would buy.
+    if _q is not None:
+        try:
+            signal_mc_usd = float((snap or {}).get("mc_at_cross_usd") or 0)
+            token_out_raw = int(_q.get("outAmount") or 0)
+            if signal_mc_usd > 0 and token_out_raw > 0:
+                from jupiter_price import get_sol_usd
+                sol_usd = get_sol_usd()
+                if sol_usd and sol_usd > 0:
+                    # Pump.fun + most launchpad mints: 1B supply, 6 decimals.
+                    # Implied MC = price_per_real_token_sol × 1B × sol_usd.
+                    real_tokens_out = token_out_raw / 1e6
+                    sol_in = size_lamports / 1e9
+                    price_per_token_sol = sol_in / real_tokens_out
+                    current_mc_usd = price_per_token_sol * 1e9 * sol_usd
+                    ratio = current_mc_usd / signal_mc_usd
+                    if ratio < 0.4:
+                        pct_drop = (1.0 - ratio) * 100.0
+                        await application.bot.send_message(
+                            tg_id,
+                            f"🤖 Auto-buy SKIPPED on `{mint[:6]}…{mint[-4:]}` "
+                            f"— price collapsed *{pct_drop:.0f}%* since signal "
+                            f"fired (≈\\${signal_mc_usd:,.0f} → "
+                            f"≈\\${current_mc_usd:,.0f}).\n"
+                            f"Refusing to chase a dump. Manual buy is still "
+                            f"available if you want to take the trade.",
+                            parse_mode=constants.ParseMode.MARKDOWN,
+                            disable_web_page_preview=True,
+                        )
+                        print(f"[auto_trade] price-drift abort: {mint} "
+                              f"signal=${signal_mc_usd:.0f} now=${current_mc_usd:.0f} "
+                              f"ratio={ratio:.2f}", flush=True)
+                        return
+        except Exception as e:
+            print(f"[auto_trade] price-drift check skipped ({e}) — "
+                  f"proceeding to buy", flush=True)
 
     # Run the buy in a try; catch all OrchestratorError shapes so a
     # buy failure becomes a notification instead of a silent miss.
