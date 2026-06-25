@@ -504,11 +504,11 @@ def _star_telemetry(uid: str) -> str:
     lines = []
     if d:
         n, wins, net = d
-        lines.append(f"  Today: *★ {n}* trades · *{wins}* wins · `{net:+.4f}` SOL")
+        lines.append(f"  Today: *★ ALPHA {n}* trades · *{wins}* wins · `{net:+.4f}` SOL")
     if w:
         n, wins, net = w
         wr = (wins/n*100) if n else 0
-        lines.append(f"  Week:  *★ {n}* trades · *{wr:.0f}%* wr · `{net:+.4f}` SOL")
+        lines.append(f"  Week:  *★ ALPHA {n}* trades · *{wr:.0f}%* wr · `{net:+.4f}` SOL")
     return ("\n" + "\n".join(lines)) if lines else ""
 
 
@@ -521,7 +521,7 @@ def _fmt_auto_trade(s: dict, uid: str = "") -> str:
     idle_h = s.get("auto_trade_max_inactive_hours") or 0
     state = "🟢 *ON*" if enabled else "🔴 *OFF*"
     mode_line = (
-        "*★ Starred only* (recommended — proven edge)"
+        "*★ ALPHA only* (recommended — proven edge)"
         if starred_only else
         f"*Legacy tier mode* — `{min_tier}` and stricter"
     )
@@ -535,10 +535,13 @@ def _fmt_auto_trade(s: dict, uid: str = "") -> str:
         f"Size per buy: *{size_sol:.4f}* SOL\n"
         f"Max concurrent: *{cap}*\n"
         f"{idle_line}\n"
-        + (f"\n*📊 Your ★ activity:*{tele}\n" if tele else "")
-        + "\n_★ Starred = WATCH/SCOUT alerts where score_ratio ≥ 3 AND "
-        "smart_money 3-9. The cells that statistically outperform "
-        "average ACT alerts. Backtest: 1.5-2.5× lift over base grad rate._\n\n"
+        + (f"\n*📊 Your ★ ALPHA activity:*{tele}\n" if tele else "")
+        + "\n_★ ALPHA = the algorithm's picks. The intersection of "
+        "three signal features (decisive composite cross, smart money "
+        "sweet spot, market structure) that statistically outperform "
+        "the average free-tier alert. Backtest: 1.5-2.5× lift over "
+        "base graduation rate._\n\n"
+        "_The Oracle predicts (free signals). The Algorithm picks (★ ALPHA)._\n\n"
         "⚠️ _Most pump.fun trades lose money. Auto-trading compounds losses. "
         "Start small and watch closely._"
     )
@@ -561,8 +564,8 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     # ★ Only mode toggle — the headline. (Day 4.69)
     rows.append([
         InlineKeyboardButton(
-            ("✓ ★ Starred only (recommended)" if cur_starred_only
-             else "★ Starred only"),
+            ("✓ ★ ALPHA only (recommended)" if cur_starred_only
+             else "★ ALPHA only"),
             callback_data="s:at:smode:on",
         ),
     ])

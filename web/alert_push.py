@@ -449,9 +449,9 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
                            AND (composite_score/threshold_at_cross) >= 3.0
                            AND smart_money_in BETWEEN 3 AND 9
                     """).fetchone()["n"]
-                star_prefix = f"★ #{today_n + 1} today · "
+                star_prefix = f"★ ALPHA #{today_n + 1} · "
             except Exception:
-                star_prefix = "★ "
+                star_prefix = "★ ALPHA · "
         msg_extra = (f"{tier_emoji} {star_prefix}{tier} — grad_prob {gp_str} · "
                      f"score {composite_score:.1f} ({ratio:.2f}× threshold) · "
                      f"smart_money {smart_money_in} · {max_mult_at_cross:.2f}× · "
