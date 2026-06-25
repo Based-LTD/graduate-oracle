@@ -709,6 +709,7 @@ def set_user_settings(
     slippage_bps: Optional[int] = None,
     jito_tip_mode: Optional[str] = None,
     max_trade_sol: Optional[float] = None,
+    moonshot_mode_enabled: Optional[bool] = None,
     clear_max_trade_sol: bool = False,
     clear_breakeven_pct: bool = False,
     clear_sl_pct: bool = False,
@@ -757,28 +758,32 @@ def set_user_settings(
             "max_trade_sol": (None if clear_max_trade_sol
                               else (max_trade_sol if max_trade_sol is not None
                                     else _e("max_trade_sol"))),
+            "moonshot_mode_enabled": (1 if moonshot_mode_enabled
+                                      else 0 if moonshot_mode_enabled is False
+                                      else _e("moonshot_mode_enabled", 0)),
         }
         c.execute("""
             INSERT INTO trader_user_settings
                 (user_id, tp_ladder_json, sl_pct, tsl_pct, breakeven_pct,
                  buy_presets_sol_json, slippage_bps, jito_tip_mode,
-                 max_trade_sol, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 max_trade_sol, moonshot_mode_enabled, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
-                tp_ladder_json       = excluded.tp_ladder_json,
-                sl_pct               = excluded.sl_pct,
-                tsl_pct              = excluded.tsl_pct,
-                breakeven_pct        = excluded.breakeven_pct,
-                buy_presets_sol_json = excluded.buy_presets_sol_json,
-                slippage_bps         = excluded.slippage_bps,
-                jito_tip_mode        = excluded.jito_tip_mode,
-                max_trade_sol        = excluded.max_trade_sol,
-                updated_at           = excluded.updated_at
+                tp_ladder_json        = excluded.tp_ladder_json,
+                sl_pct                = excluded.sl_pct,
+                tsl_pct               = excluded.tsl_pct,
+                breakeven_pct         = excluded.breakeven_pct,
+                buy_presets_sol_json  = excluded.buy_presets_sol_json,
+                slippage_bps          = excluded.slippage_bps,
+                jito_tip_mode         = excluded.jito_tip_mode,
+                max_trade_sol         = excluded.max_trade_sol,
+                moonshot_mode_enabled = excluded.moonshot_mode_enabled,
+                updated_at            = excluded.updated_at
         """, (str(user_id), merged["tp_ladder_json"], merged["sl_pct"],
               merged["tsl_pct"], merged["breakeven_pct"],
               merged["buy_presets_sol_json"], merged["slippage_bps"],
               merged["jito_tip_mode"], merged["max_trade_sol"],
-              int(_time.time())))
+              merged["moonshot_mode_enabled"], int(_time.time())))
 
 
 def set_position_auto_exit(

@@ -83,6 +83,8 @@ ActionType = dict  # {"kind": ..., ...}
 def evaluate_position(
     pos: dict,
     current_sol_value_lamports: int,
+    *,
+    moonshot_mode: bool = False,
 ) -> Optional[ActionType]:
     """Decide what to do with this position at the current price.
 
@@ -105,6 +107,12 @@ def evaluate_position(
       3. TSL — if HWM > entry AND current < HWM*(1-tsl/100), sell 100%.
          (TSL never fires when underwater — SL handles that.)
       4. TP — if gain >= ladder[next_tp_index].pct, fire that rung.
+
+    moonshot_mode: when True AND a TP rung has already fired (next_tp_index>0),
+      breakeven-arm and trailing-stop evaluations are SKIPPED for this tick.
+      SL still fires (catastrophic protection), remaining TP rungs still fire.
+      Idea: after de-risking via the first TP, let the rest of the position
+      ride for the post-correction second leg without tight stops.
     """
     entry_lamports = pos.get("buy_sol_lamports") or 0
     if entry_lamports <= 0 or current_sol_value_lamports <= 0:
@@ -143,19 +151,28 @@ def evaluate_position(
     if hwm_pp is None or hwm_pp <= 0:
         hwm_pp = entry_pp if entry_pp > 0 else None
 
+    # Moonshot Mode: once any TP rung has fired, suppress BE-arm and TSL.
+    # SL stays active (catastrophic protection). Remaining TP rungs still fire.
+    moonshot_active = bool(moonshot_mode) and int(next_tp_index) > 0
+
     # 1. Breakeven arm — gain crossed the threshold for the first time
-    if (breakeven_pct is not None and not armed
+    if (not moonshot_active and breakeven_pct is not None and not armed
             and gain_pct >= float(breakeven_pct)):
         return {"kind": "breakeven_arm"}
 
-    # 2. Stop loss — armed-at-breakeven flips effective SL to 0%
-    effective_sl = 0.0 if armed else (sl_pct if sl_pct is not None else None)
+    # 2. Stop loss — armed-at-breakeven flips effective SL to 0%.
+    # Under moonshot_active, ignore the breakeven-armed flag so the
+    # SL doesn't sit at entry — fall back to the original sl_pct, which
+    # gives the position room to retrace and recover.
+    if moonshot_active:
+        effective_sl = sl_pct if sl_pct is not None else None
+    else:
+        effective_sl = 0.0 if armed else (sl_pct if sl_pct is not None else None)
     if effective_sl is not None and gain_pct <= float(effective_sl):
         return {"kind": "sl"}
 
-    # 3. Trailing stop — based on price-per-token now. HWM must exceed
-    # entry price first; otherwise the "trail" would be redundant with SL.
-    if (tsl_pct is not None and hwm_pp is not None
+    # 3. Trailing stop — suppressed entirely under moonshot_active.
+    if (not moonshot_active and tsl_pct is not None and hwm_pp is not None
             and current_pp is not None and entry_pp > 0
             and hwm_pp > entry_pp):
         floor_pp = hwm_pp * (1.0 - float(tsl_pct) / 100.0)
@@ -232,6 +249,7 @@ def tick(user_id: str | int, *, live: bool = False,
         _user_cfg = {}
     _stale_timeout_min = int(_user_cfg.get("stale_timeout_minutes") or 0)
     _stale_band_pct    = float(_user_cfg.get("stale_band_pct") or 3.0)
+    _moonshot_mode     = bool(_user_cfg.get("moonshot_mode_enabled"))
     out["n_open"] = len(open_positions)
     now = int(_time.time())
 
@@ -321,7 +339,7 @@ def tick(user_id: str | int, *, live: bool = False,
         trader_positions.update_position_monitor_state(pid, **updates)
 
         # 3. Evaluate action
-        action = evaluate_position(pos, current)
+        action = evaluate_position(pos, current, moonshot_mode=_moonshot_mode)
 
         # 3b. Stagnation check (Day 4.50). Only runs if no TP/SL/TSL fired
         # AND the user enabled it (stale_timeout_minutes > 0). Tracks an

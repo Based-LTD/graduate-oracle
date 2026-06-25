@@ -132,7 +132,8 @@ def _fmt_settings(s: dict) -> str:
         f"*🎯 Take-profit ladder:*\n{ladder}\n\n"
         f"*🛑 Stop loss:* {(format(s['sl_pct'], '+.0f') + '%') if s.get('sl_pct') is not None else '*OFF*'}\n"
         f"*📈 Trailing stop:* {(format(s['tsl_pct'], '.0f') + '% off high') if s.get('tsl_pct') is not None else '*OFF*'}\n"
-        f"*🔒 Breakeven:* {('at +' + format(s['breakeven_pct'], '.0f') + '% gain') if s.get('breakeven_pct') is not None else '*OFF*'}\n\n"
+        f"*🔒 Breakeven:* {('at +' + format(s['breakeven_pct'], '.0f') + '% gain') if s.get('breakeven_pct') is not None else '*OFF*'}\n"
+        f"*🚀 Moonshot Mode:* {'*ON* (BE+TSL off after 1st TP)' if s.get('moonshot_mode_enabled') else '*OFF*'}\n\n"
         f"*⚡ Slippage:* {s['slippage_bps']/100:.1f}%\n"
         f"*💨 Speed (Jito tip):* `{s['jito_tip_mode']}`\n"
         f"*🛡 Max per trade:* {cap_line}"
@@ -149,6 +150,7 @@ def _kb_main() -> InlineKeyboardMarkup:
          InlineKeyboardButton("📈 Trailing",     callback_data="s:p")],
         [InlineKeyboardButton("🔒 Breakeven",    callback_data="s:e"),
          InlineKeyboardButton("⏱ Stale Exit",    callback_data="s:stale")],
+        [InlineKeyboardButton("🚀 Moonshot Mode", callback_data="s:moon")],
         [InlineKeyboardButton("⚡ Slippage",     callback_data="s:slip"),
          InlineKeyboardButton("💨 Speed (Tip)",  callback_data="s:tip")],
         [InlineKeyboardButton("🛡 Max Trade",    callback_data="s:cap")],
@@ -558,6 +560,37 @@ def _fmt_stale(s: dict) -> str:
     )
 
 
+def _fmt_moonshot(s: dict) -> str:
+    on = bool(s.get("moonshot_mode_enabled"))
+    cur = ("Currently: *ON* — after the first TP rung fires, breakeven "
+           "and trailing-stop are disabled for the remaining position."
+           if on else
+           "Currently: *OFF* — BE and TSL stay active across all TPs.")
+    return (
+        "*🚀 MOONSHOT MODE*\n\n"
+        + cur + "\n\n"
+        "*What it does:* After your first TP rung fires (de-risking part "
+        "of the position), BE-arm and trailing-stop are suppressed for "
+        "the remainder. SL stays active. Remaining TP rungs still fire.\n\n"
+        "*Why use it:* Pump.fun coins often pump → correct → pump again. "
+        "A tight TSL on the thinned position catches the correction and "
+        "exits before the second leg. With Moonshot ON, you take partial "
+        "profit early, then let the rest ride for the post-correction move.\n\n"
+        "*Tradeoff:* If the coin just bleeds after TP1, you'll watch "
+        "unrealized profit fade until SL fires. Best for users with high "
+        "conviction in the corrections-recover pattern."
+    )
+
+
+def _kb_moonshot(s: dict) -> InlineKeyboardMarkup:
+    on = bool(s.get("moonshot_mode_enabled"))
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(("✓ ON" if on else "ON"), callback_data="s:moon:on"),
+         InlineKeyboardButton(("OFF" if on else "✓ OFF"), callback_data="s:moon:off")],
+        [InlineKeyboardButton("← Back", callback_data="s:m")],
+    ])
+
+
 def _kb_stale(s: dict) -> InlineKeyboardMarkup:
     cur_t = s.get("stale_timeout_minutes") or 0
     cur_b = s.get("stale_band_pct") or 3.0
@@ -837,6 +870,17 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return await _render(q, uid, "at")
 
         # ── Stale-exit actions ──
+        if screen == "moon" and len(parts) >= 3:
+            sub = parts[2]
+            try:
+                if sub == "on":
+                    trader_positions.set_user_settings(uid, moonshot_mode_enabled=True)
+                elif sub == "off":
+                    trader_positions.set_user_settings(uid, moonshot_mode_enabled=False)
+            except Exception as e:
+                print(f"[trader_setup] moonshot toggle failed: {e}", flush=True)
+            return await _render(q, uid, "moon")
+
         if screen == "stale" and len(parts) >= 3:
             kind = parts[2]
             try:
@@ -896,6 +940,8 @@ async def _render(q, uid: str, screen: str):
         text, kb = _fmt_auto_trade(s), _kb_auto_trade(s)
     elif code == "stale":
         text, kb = _fmt_stale(s), _kb_stale(s)
+    elif code == "moon":
+        text, kb = _fmt_moonshot(s), _kb_moonshot(s)
     else:
         text = "*⚙️ TRADER SETUP*\n\n" + _fmt_settings(s)
         kb = _kb_main()
