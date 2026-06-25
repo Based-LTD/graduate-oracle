@@ -521,24 +521,28 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         stats["below"] += 1
                         continue
 
-                    # Day 4.68 STAR PROMOTION: compute is_starred for
-                    # non-ACT tiers when the composite cross has both
-                    # strong score_ratio (≥3) AND smart_money in the
-                    # 3-9 sweet spot. Observer-data lift on these cells:
-                    #   WATCH starred (sr≥3 × SM 3-9): 22.7% grad (vs ACT
-                    #     base 13.5%) — actually beats ACT-average alerts
-                    #   SCOUT starred (sr≥3 × SM 6-9): 18.4% grad
-                    # These cells were previously hidden in lower tiers
-                    # because the grad_prob ML model under-rated them.
-                    # The star surfaces them without breaking the tier UX.
+                    # Day 4.71 ★ ALPHA refinement — MC band filter added.
+                    # Backtest 2026-06-25 on n=1,301 ★ ALPHA mints across
+                    # 4 exit configs (Daniel's -25 SL / 30 TSL / TP 50,100):
+                    #   ★ ALPHA all:           n=1,301  wr=34%  avg=+4.1%
+                    #   ★ ALPHA + MC $10-20K:  n=  430  wr=43%  avg=+10.1%
+                    # The MC band is the highest-expectancy sub-cohort
+                    # (2.5× current return). Below $10K: too rug-prone, SL
+                    # triggers before TP. Above $20K: late entry, near peak.
+                    #
+                    # Earlier filters (Day 4.68): tier in WATCH/SCOUT, sr≥3,
+                    # SM 3-9. Those stand. This adds the MC band.
                     is_starred = False
                     if tier in ("WATCH", "SCOUT"):
                         try:
                             thr  = float(r["threshold_at_cross"] or 0)
                             comp = float(r["composite_score"] or 0)
                             sm   = r["smart_money_in"]
+                            mc   = r["mc_at_cross_usd"] or 0
                             sr   = (comp / thr) if thr > 0 else 0
-                            if sr >= 3.0 and sm is not None and 3 <= sm <= 9:
+                            if (sr >= 3.0
+                                    and sm is not None and 3 <= sm <= 9
+                                    and 10000 <= mc < 20000):
                                 is_starred = True
                         except Exception:
                             pass

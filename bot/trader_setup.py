@@ -477,7 +477,7 @@ def _star_telemetry(uid: str) -> str:
                 rows = c.execute("""
                     SELECT t.buy_sol_lamports, t.net_pnl_lamports,
                            cp.composite_score, cp.threshold_at_cross,
-                           cp.smart_money_in, cp.tg_tier
+                           cp.smart_money_in, cp.tg_tier, cp.mc_at_cross_usd
                       FROM trader_positions t
                       LEFT JOIN d.composite_predictions cp ON cp.mint = t.mint
                      WHERE t.user_id = ? AND t.buy_timestamp >= ?
@@ -488,7 +488,11 @@ def _star_telemetry(uid: str) -> str:
                     thr = r["threshold_at_cross"] or 0
                     sr  = (r["composite_score"]/thr) if thr > 0 and r["composite_score"] else 0
                     sm  = r["smart_money_in"]
-                    starred = (r["tg_tier"] in ("WATCH","SCOUT") and sr >= 3 and sm is not None and 3 <= sm <= 9)
+                    mc  = r["mc_at_cross_usd"] or 0
+                    starred = (r["tg_tier"] in ("WATCH","SCOUT")
+                               and sr >= 3
+                               and sm is not None and 3 <= sm <= 9
+                               and 10000 <= mc < 20000)
                     if starred:
                         star_rows.append(r)
                 if not star_rows:
