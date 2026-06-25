@@ -456,50 +456,98 @@ _AUTO_CAP_PRESETS      = [1, 3, 5, 10]                      # max concurrent
 _AUTO_IDLE_PRESETS_H   = [1, 4, 6, 12, 24]                  # inactivity pause hrs
 
 
-def _fmt_auto_trade(s: dict) -> str:
+def _star_telemetry(uid: str) -> str:
+    """Day 4.69: render today/week ★ trade stats for the user. Compact,
+    headline-style. Joins trader_positions (trade outcomes) with
+    composite_predictions (signal features) to identify which trades
+    were on ★ starred alerts."""
+    import sqlite3, contextlib, time, os
+    try:
+        import trader_positions as _tp
+        trader_db = _tp._db_path()
+        # composite_predictions lives in data.sqlite — same dir
+        data_db = os.path.join(os.path.dirname(trader_db), "data.sqlite")
+        if not os.path.exists(data_db):
+            return ""
+        with contextlib.closing(sqlite3.connect(trader_db, timeout=3)) as c:
+            c.row_factory = sqlite3.Row
+            c.execute(f"ATTACH DATABASE '{data_db}' AS d")
+            now = int(time.time())
+            def stats(since):
+                rows = c.execute("""
+                    SELECT t.buy_sol_lamports, t.net_pnl_lamports,
+                           cp.composite_score, cp.threshold_at_cross,
+                           cp.smart_money_in, cp.tg_tier
+                      FROM trader_positions t
+                      LEFT JOIN d.composite_predictions cp ON cp.mint = t.mint
+                     WHERE t.user_id = ? AND t.buy_timestamp >= ?
+                       AND t.status='sold' AND t.net_pnl_lamports IS NOT NULL
+                """, (str(uid), since)).fetchall()
+                star_rows = []
+                for r in rows:
+                    thr = r["threshold_at_cross"] or 0
+                    sr  = (r["composite_score"]/thr) if thr > 0 and r["composite_score"] else 0
+                    sm  = r["smart_money_in"]
+                    starred = (r["tg_tier"] in ("WATCH","SCOUT") and sr >= 3 and sm is not None and 3 <= sm <= 9)
+                    if starred:
+                        star_rows.append(r)
+                if not star_rows:
+                    return None
+                wins = sum(1 for r in star_rows if (r["net_pnl_lamports"] or 0) > 0)
+                net  = sum(r["net_pnl_lamports"] for r in star_rows) / 1e9
+                return (len(star_rows), wins, net)
+            d = stats(now - 24*3600)
+            w = stats(now - 7*24*3600)
+    except Exception as e:
+        print(f"[_star_telemetry] failed: {e}", flush=True)
+        return ""
+    lines = []
+    if d:
+        n, wins, net = d
+        lines.append(f"  Today: *★ {n}* trades · *{wins}* wins · `{net:+.4f}` SOL")
+    if w:
+        n, wins, net = w
+        wr = (wins/n*100) if n else 0
+        lines.append(f"  Week:  *★ {n}* trades · *{wr:.0f}%* wr · `{net:+.4f}` SOL")
+    return ("\n" + "\n".join(lines)) if lines else ""
+
+
+def _fmt_auto_trade(s: dict, uid: str = "") -> str:
     enabled = s.get("auto_trade_enabled")
     size_sol = (s.get("auto_trade_size_lamports") or 0) / 1e9
+    starred_only = bool(s.get("auto_trade_starred_only", 1))
     min_tier = s.get("auto_trade_min_tier") or "ACT"
     cap = s.get("auto_trade_max_concurrent") or 3
     idle_h = s.get("auto_trade_max_inactive_hours") or 0
-    starred = bool(s.get("auto_trade_include_starred"))
-    tier_label = {
-        "ACT":   "ACT only (strictest)",
-        "WATCH": "ACT + WATCH",
-        "SCOUT": "ACT + WATCH + SCOUT (all)",
-    }.get(min_tier, min_tier)
     state = "🟢 *ON*" if enabled else "🔴 *OFF*"
+    mode_line = (
+        "*★ Starred only* (recommended — proven edge)"
+        if starred_only else
+        f"*Legacy tier mode* — `{min_tier}` and stricter"
+    )
     idle_line = (f"Pause after: *{idle_h}h* idle" if idle_h > 0
-                 else "Pause after: *OFF* (fires regardless of activity)")
-    star_line = (f"★ Starred WATCH/SCOUT: *ON* (also auto-buys these)"
-                 if starred else
-                 f"★ Starred WATCH/SCOUT: *OFF*")
+                 else "Pause after: *OFF*")
+    tele = _star_telemetry(uid) if uid else ""
     return (
-        "*🤖 AUTO-TRADE*\n\n"
+        "*🤖 ★ AUTO-BUY*\n\n"
         f"State: {state}\n"
+        f"Mode: {mode_line}\n"
         f"Size per buy: *{size_sol:.4f}* SOL\n"
-        f"Tier filter: *{tier_label}*\n"
-        f"{star_line}\n"
-        f"Max concurrent: *{cap}* open positions\n"
-        f"{idle_line}\n\n"
-        "_When ON: bot auto-buys every alert that meets the tier filter. "
-        "Your TP/SL/TSL strategy applies. All rate limits + balance "
-        "checks still enforced. Receipts labeled `🤖 AUTO-BUY`._\n\n"
-        "_★ Starred alerts are WATCH/SCOUT cells (sr≥3 × SM 3-9) that "
-        "outperform the average ACT alert on the observer backtest. "
-        "Opt in to widen reach beyond the tier minimum._\n\n"
-        "_If you haven't interacted with the bot in the idle window, "
-        "auto-buys pause until you send /trader again. Defends against "
-        "set-and-forget wallet drain._\n\n"
-        "⚠️ _Most pump.fun trades lose money. Auto-trading means losses "
-        "compound fast. Start small and watch closely._"
+        f"Max concurrent: *{cap}*\n"
+        f"{idle_line}\n"
+        + (f"\n*📊 Your ★ activity:*{tele}\n" if tele else "")
+        + "\n_★ Starred = WATCH/SCOUT alerts where score_ratio ≥ 3 AND "
+        "smart_money 3-9. The cells that statistically outperform "
+        "average ACT alerts. Backtest: 1.5-2.5× lift over base grad rate._\n\n"
+        "⚠️ _Most pump.fun trades lose money. Auto-trading compounds losses. "
+        "Start small and watch closely._"
     )
 
 
 def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     enabled = bool(s.get("auto_trade_enabled"))
     cur_size = (s.get("auto_trade_size_lamports") or 0) / 1e9
-    cur_tier = s.get("auto_trade_min_tier") or "ACT"
+    cur_starred_only = bool(s.get("auto_trade_starred_only", 1))
     cur_cap = s.get("auto_trade_max_concurrent") or 3
     cur_idle = s.get("auto_trade_max_inactive_hours") or 0
     rows = []
@@ -510,6 +558,21 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     else:
         rows.append([InlineKeyboardButton("✅ Turn ON",
                                           callback_data="s:at:on")])
+    # ★ Only mode toggle — the headline. (Day 4.69)
+    rows.append([
+        InlineKeyboardButton(
+            ("✓ ★ Starred only (recommended)" if cur_starred_only
+             else "★ Starred only"),
+            callback_data="s:at:smode:on",
+        ),
+    ])
+    rows.append([
+        InlineKeyboardButton(
+            ("⚙️ Legacy tier mode" if cur_starred_only
+             else "✓ ⚙️ Legacy tier mode (advanced)"),
+            callback_data="s:at:smode:off",
+        ),
+    ])
     # Size picker — split into 2 rows since we have 8 options now.
     size_buttons = [
         InlineKeyboardButton(
@@ -519,20 +582,21 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     ]
     rows.append(size_buttons[:4])
     rows.append(size_buttons[4:])
-    # Tier
-    rows.append([
-        InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
-                             callback_data=f"s:at:tier:{t}")
-        for t, label in [("ACT", "ACT"), ("WATCH", "+WATCH"), ("SCOUT", "+SCOUT")]
-    ])
-    # ★ Starred toggle (Day 4.68)
-    cur_starred = bool(s.get("auto_trade_include_starred"))
-    rows.append([
-        InlineKeyboardButton(
-            ("✓ ★ Starred: ON" if cur_starred else "★ Starred: OFF"),
-            callback_data=("s:at:star:off" if cur_starred else "s:at:star:on"),
-        ),
-    ])
+    # Legacy tier picker — only show when in legacy mode
+    if not cur_starred_only:
+        cur_tier = s.get("auto_trade_min_tier") or "ACT"
+        rows.append([
+            InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
+                                 callback_data=f"s:at:tier:{t}")
+            for t, label in [("ACT", "ACT"), ("WATCH", "+WATCH"), ("SCOUT", "+SCOUT")]
+        ])
+        cur_inc_starred = bool(s.get("auto_trade_include_starred"))
+        rows.append([
+            InlineKeyboardButton(
+                ("✓ ★ Include starred" if cur_inc_starred else "★ Include starred"),
+                callback_data=("s:at:star:off" if cur_inc_starred else "s:at:star:on"),
+            ),
+        ])
     # Cap
     rows.append([
         InlineKeyboardButton(("✓ " if cur_cap == c else "") + f"{c}",
@@ -884,6 +948,10 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 elif action == "star" and len(parts) >= 4:
                     trader_positions.set_auto_trade_config(
                         uid, include_starred=(parts[3] == "on"))
+                elif action == "smode" and len(parts) >= 4:
+                    # Day 4.69: ★ Only mode toggle
+                    trader_positions.set_auto_trade_config(
+                        uid, starred_only=(parts[3] == "on"))
             except (ValueError, Exception) as e:
                 print(f"[trader_setup] auto-trade action failed: {e}", flush=True)
             return await _render(q, uid, "at")
@@ -956,7 +1024,7 @@ async def _render(q, uid: str, screen: str):
     elif code == "strat":
         text, kb = _fmt_strategy(), _kb_strategy()
     elif code == "at":
-        text, kb = _fmt_auto_trade(s), _kb_auto_trade(s)
+        text, kb = _fmt_auto_trade(s, uid), _kb_auto_trade(s)
     elif code == "stale":
         text, kb = _fmt_stale(s), _kb_stale(s)
     elif code == "moon":

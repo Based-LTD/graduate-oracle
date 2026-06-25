@@ -2017,24 +2017,31 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
     if not cfg.get("auto_trade_enabled"):
         return
 
-    # 2. Tier filter — silent exit if the alert tier doesn't qualify.
-    # Must fire BEFORE the backlog DM to avoid noisy "skipped during
-    # outage" messages for signals the user wouldn't have traded anyway.
+    # 2. Tier / ★ filter — silent exit if the alert doesn't qualify.
+    # Day 4.69 default: ★ ONLY MODE.
+    # When auto_trade_starred_only=1 (default for all users): fire
+    # exclusively on ★ starred alerts. ACT/WATCH/SCOUT non-starred all
+    # skipped. The 8h post-4.68 production data showed ★ +0.32 SOL net
+    # while unstarred (mostly ACT) was -0.45 SOL net.
     #
-    # Day 4.68: ★ STARRED alerts (WATCH/SCOUT cells where sr ≥ 3 AND
-    # SM 3-9) are admitted alongside the user's min_tier when the user
-    # has opted into `auto_trade_include_starred`. These cells beat ACT
-    # base graduation rate per observer data — opting in extends the
-    # auto-trade reach without changing the default UX.
-    alert_tier = (snap or {}).get("tier") or ""
-    is_starred = bool((snap or {}).get("is_starred"))
-    min_tier   = cfg.get("auto_trade_min_tier") or "ACT"
-    include_starred = bool(cfg.get("auto_trade_include_starred"))
-    rank = {"SCOUT": 1, "WATCH": 2, "ACT": 3}
-    tier_passes  = rank.get(alert_tier, 0) >= rank.get(min_tier, 3)
-    star_admits  = include_starred and is_starred and alert_tier in ("WATCH", "SCOUT")
-    if not (tier_passes or star_admits):
-        return
+    # Legacy tier-based mode (auto_trade_starred_only=0): the prior
+    # 4.68 logic — min_tier threshold + optional include_starred.
+    alert_tier  = (snap or {}).get("tier") or ""
+    is_starred  = bool((snap or {}).get("is_starred"))
+    starred_only = bool(cfg.get("auto_trade_starred_only", 1))
+
+    if starred_only:
+        if not is_starred:
+            return
+    else:
+        # Legacy mode — tier + optional star augmentation
+        min_tier   = cfg.get("auto_trade_min_tier") or "ACT"
+        include_starred = bool(cfg.get("auto_trade_include_starred"))
+        rank = {"SCOUT": 1, "WATCH": 2, "ACT": 3}
+        tier_passes  = rank.get(alert_tier, 0) >= rank.get(min_tier, 3)
+        star_admits  = include_starred and is_starred and alert_tier in ("WATCH", "SCOUT")
+        if not (tier_passes or star_admits):
+            return
 
     # 3. Day 4.54: BACKLOG-AWARE STALENESS GUARD.
     # Alert was queued BEFORE this bot process started = a backlog

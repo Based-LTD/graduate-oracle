@@ -434,8 +434,25 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
         snap_json = json.dumps(snapshot, default=str)
         gp_str = f"{grad_prob_60*100:.1f}%" if grad_prob_60 is not None else "—"
         tier_emoji = {"ACT": "⚡", "WATCH": "📊", "SCOUT": "🛰"}.get(tier, "📊")
-        star = "★ " if is_starred else ""
-        msg_extra = (f"{tier_emoji} {star}{tier} — grad_prob {gp_str} · "
+        # Day 4.69: numbered ★ alerts — give starred alerts a sequence
+        # number so users see the rolling cadence ("★ #14 today").
+        # Builds anticipation and rewards engagement.
+        star_prefix = ""
+        if is_starred:
+            try:
+                with _connect(timeout=3) as cc:
+                    today_n = cc.execute("""
+                        SELECT COUNT(*) AS n FROM composite_predictions
+                         WHERE tg_pushed_at >= strftime('%s', 'now', 'start of day')
+                           AND tg_tier IN ('WATCH','SCOUT')
+                           AND threshold_at_cross > 0
+                           AND (composite_score/threshold_at_cross) >= 3.0
+                           AND smart_money_in BETWEEN 3 AND 9
+                    """).fetchone()["n"]
+                star_prefix = f"★ #{today_n + 1} today · "
+            except Exception:
+                star_prefix = "★ "
+        msg_extra = (f"{tier_emoji} {star_prefix}{tier} — grad_prob {gp_str} · "
                      f"score {composite_score:.1f} ({ratio:.2f}× threshold) · "
                      f"smart_money {smart_money_in} · {max_mult_at_cross:.2f}× · "
                      f"age {age_s_at_cross}s · ${mc_at_cross_usd:,.0f} MC")
