@@ -462,6 +462,7 @@ def _fmt_auto_trade(s: dict) -> str:
     min_tier = s.get("auto_trade_min_tier") or "ACT"
     cap = s.get("auto_trade_max_concurrent") or 3
     idle_h = s.get("auto_trade_max_inactive_hours") or 0
+    starred = bool(s.get("auto_trade_include_starred"))
     tier_label = {
         "ACT":   "ACT only (strictest)",
         "WATCH": "ACT + WATCH",
@@ -470,16 +471,23 @@ def _fmt_auto_trade(s: dict) -> str:
     state = "🟢 *ON*" if enabled else "🔴 *OFF*"
     idle_line = (f"Pause after: *{idle_h}h* idle" if idle_h > 0
                  else "Pause after: *OFF* (fires regardless of activity)")
+    star_line = (f"★ Starred WATCH/SCOUT: *ON* (also auto-buys these)"
+                 if starred else
+                 f"★ Starred WATCH/SCOUT: *OFF*")
     return (
         "*🤖 AUTO-TRADE*\n\n"
         f"State: {state}\n"
         f"Size per buy: *{size_sol:.4f}* SOL\n"
         f"Tier filter: *{tier_label}*\n"
+        f"{star_line}\n"
         f"Max concurrent: *{cap}* open positions\n"
         f"{idle_line}\n\n"
         "_When ON: bot auto-buys every alert that meets the tier filter. "
         "Your TP/SL/TSL strategy applies. All rate limits + balance "
         "checks still enforced. Receipts labeled `🤖 AUTO-BUY`._\n\n"
+        "_★ Starred alerts are WATCH/SCOUT cells (sr≥3 × SM 3-9) that "
+        "outperform the average ACT alert on the observer backtest. "
+        "Opt in to widen reach beyond the tier minimum._\n\n"
         "_If you haven't interacted with the bot in the idle window, "
         "auto-buys pause until you send /trader again. Defends against "
         "set-and-forget wallet drain._\n\n"
@@ -516,6 +524,14 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
         InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
                              callback_data=f"s:at:tier:{t}")
         for t, label in [("ACT", "ACT"), ("WATCH", "+WATCH"), ("SCOUT", "+SCOUT")]
+    ])
+    # ★ Starred toggle (Day 4.68)
+    cur_starred = bool(s.get("auto_trade_include_starred"))
+    rows.append([
+        InlineKeyboardButton(
+            ("✓ ★ Starred: ON" if cur_starred else "★ Starred: OFF"),
+            callback_data=("s:at:star:off" if cur_starred else "s:at:star:on"),
+        ),
     ])
     # Cap
     rows.append([
@@ -865,6 +881,9 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 elif action == "idle" and len(parts) >= 4:
                     trader_positions.set_auto_trade_config(
                         uid, max_inactive_hours=int(parts[3]))
+                elif action == "star" and len(parts) >= 4:
+                    trader_positions.set_auto_trade_config(
+                        uid, include_starred=(parts[3] == "on"))
             except (ValueError, Exception) as e:
                 print(f"[trader_setup] auto-trade action failed: {e}", flush=True)
             return await _render(q, uid, "at")

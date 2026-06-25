@@ -2020,10 +2020,20 @@ async def _maybe_auto_trade(application, tg_id: int, snap: dict, mint: str,
     # 2. Tier filter — silent exit if the alert tier doesn't qualify.
     # Must fire BEFORE the backlog DM to avoid noisy "skipped during
     # outage" messages for signals the user wouldn't have traded anyway.
+    #
+    # Day 4.68: ★ STARRED alerts (WATCH/SCOUT cells where sr ≥ 3 AND
+    # SM 3-9) are admitted alongside the user's min_tier when the user
+    # has opted into `auto_trade_include_starred`. These cells beat ACT
+    # base graduation rate per observer data — opting in extends the
+    # auto-trade reach without changing the default UX.
     alert_tier = (snap or {}).get("tier") or ""
+    is_starred = bool((snap or {}).get("is_starred"))
     min_tier   = cfg.get("auto_trade_min_tier") or "ACT"
+    include_starred = bool(cfg.get("auto_trade_include_starred"))
     rank = {"SCOUT": 1, "WATCH": 2, "ACT": 3}
-    if rank.get(alert_tier, 0) < rank.get(min_tier, 3):
+    tier_passes  = rank.get(alert_tier, 0) >= rank.get(min_tier, 3)
+    star_admits  = include_starred and is_starred and alert_tier in ("WATCH", "SCOUT")
+    if not (tier_passes or star_admits):
         return
 
     # 3. Day 4.54: BACKLOG-AWARE STALENESS GUARD.
@@ -2416,7 +2426,8 @@ def _format_alert_basic(m: dict, msg_extra: str) -> str:
     cm = m.get("current_mult") or 0
     age_s = m.get("age_s") or 0
 
-    is_watch = msg_extra.startswith("📊 WATCH")
+    # Day 4.68: accept both plain "📊 WATCH" and starred "📊 ★ WATCH"
+    is_watch = "WATCH" in msg_extra[:20]
     flavor_label = "📊 *WATCH*" if is_watch else "🎯 *ACT*"
 
     if g_cal.get("historical_n") and g_cal["historical_n"] >= 10:
@@ -2498,7 +2509,8 @@ def _format_alert_rich(m: dict, msg_extra: str) -> str:
     rp = m.get("rug_prob") or {}
 
     # ── HEADER: flavor + name + headline value ─────────────────────────
-    is_watch = msg_extra.startswith("📊 WATCH")
+    # Day 4.68: accept both plain "📊 WATCH" and starred "📊 ★ WATCH"
+    is_watch = "WATCH" in msg_extra[:20]
     flavor_label = "📊 *WATCH*" if is_watch else "🎯 *ACT*"
     header = f"{flavor_label} — {title}"
 

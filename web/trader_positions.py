@@ -228,6 +228,11 @@ _MIGRATIONS = [
     # SL remains active so a catastrophic rug still exits.
     ("trader_user_settings", "moonshot_mode_enabled",
         "ALTER TABLE trader_user_settings ADD COLUMN moonshot_mode_enabled INTEGER DEFAULT 0"),
+    # Day 4.68 — Auto-trade on ★ starred WATCH/SCOUT alerts in addition
+    # to user's min_tier. Observer data shows starred non-ACT cells
+    # (sr≥3 × SM 3-9) often beat ACT base graduation rate. Opt-in.
+    ("trader_user_settings", "auto_trade_include_starred",
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_include_starred INTEGER DEFAULT 0"),
     # Day 4.50 — position stagnation timeout. If a coin's price hasn't
     # moved by more than `stale_band_pct` in `stale_timeout_minutes`,
     # auto-close the position. Frees up the concurrent-cap slot for a
@@ -473,6 +478,7 @@ def set_auto_trade_config(
     max_inactive_hours: Optional[int] = None,
     stale_timeout_minutes: Optional[int] = None,
     stale_band_pct: Optional[float] = None,
+    include_starred: Optional[bool] = None,
 ):
     """Update one or more auto-trade fields for a user. None = leave alone."""
     init_schema()
@@ -500,6 +506,9 @@ def set_auto_trade_config(
     if stale_band_pct is not None:
         fields.append("stale_band_pct = ?")
         vals.append(float(stale_band_pct))
+    if include_starred is not None:
+        fields.append("auto_trade_include_starred = ?")
+        vals.append(1 if include_starred else 0)
     if not fields:
         return
     vals.append(str(user_id))
@@ -677,6 +686,7 @@ def get_user_settings(user_id: str | int) -> dict:
     stale_timeout_min = int(_safe_get("stale_timeout_minutes", 20))
     stale_band_pct    = float(_safe_get("stale_band_pct", 3.0))
     moonshot_mode    = bool(_safe_get("moonshot_mode_enabled", 0))
+    at_include_starred = bool(_safe_get("auto_trade_include_starred", 0))
 
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
@@ -693,6 +703,7 @@ def get_user_settings(user_id: str | int) -> dict:
         "auto_trade_min_tier":            at_min_tier,
         "auto_trade_max_concurrent":      at_max_concurrent,
         "auto_trade_max_inactive_hours":  at_max_inactive_h,
+        "auto_trade_include_starred":     at_include_starred,
         "stale_timeout_minutes":          stale_timeout_min,
         "stale_band_pct":                 stale_band_pct,
         "moonshot_mode_enabled":          moonshot_mode,

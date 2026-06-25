@@ -521,6 +521,28 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         stats["below"] += 1
                         continue
 
+                    # Day 4.68 STAR PROMOTION: compute is_starred for
+                    # non-ACT tiers when the composite cross has both
+                    # strong score_ratio (≥3) AND smart_money in the
+                    # 3-9 sweet spot. Observer-data lift on these cells:
+                    #   WATCH starred (sr≥3 × SM 3-9): 22.7% grad (vs ACT
+                    #     base 13.5%) — actually beats ACT-average alerts
+                    #   SCOUT starred (sr≥3 × SM 6-9): 18.4% grad
+                    # These cells were previously hidden in lower tiers
+                    # because the grad_prob ML model under-rated them.
+                    # The star surfaces them without breaking the tier UX.
+                    is_starred = False
+                    if tier in ("WATCH", "SCOUT"):
+                        try:
+                            thr  = float(r["threshold_at_cross"] or 0)
+                            comp = float(r["composite_score"] or 0)
+                            sm   = r["smart_money_in"]
+                            sr   = (comp / thr) if thr > 0 else 0
+                            if sr >= 3.0 and sm is not None and 3 <= sm <= 9:
+                                is_starred = True
+                        except Exception:
+                            pass
+
                     import alert_push
                     alert_push.push_composite_cross(
                         mint=mint,
@@ -533,6 +555,7 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         metadata=None,  # name/symbol fetched lazily by bot if needed
                         tier=tier,
                         grad_prob_60=bestgp,
+                        is_starred=is_starred,
                     )
                     c.execute(
                         "UPDATE composite_predictions SET tg_pushed_at=?, "
