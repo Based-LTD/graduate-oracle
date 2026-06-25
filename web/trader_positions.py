@@ -220,6 +220,14 @@ _MIGRATIONS = [
     # fire). DEFAULT 0 — traders run 24/7 unless they opt into the gate.
     ("trader_user_settings", "auto_trade_max_inactive_hours",
         "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_max_inactive_hours INTEGER DEFAULT 0"),
+    # Day 4.62 — Moonshot Mode. When True AND a TP rung has fired,
+    # the monitor stops evaluating BE and TSL on the remaining position.
+    # Pre-TP everything works as before — full defense. Post-TP the
+    # position rides on the assumption that pump.fun coins often
+    # correct then recover, and tight stops eat the second leg.
+    # SL remains active so a catastrophic rug still exits.
+    ("trader_user_settings", "moonshot_mode_enabled",
+        "ALTER TABLE trader_user_settings ADD COLUMN moonshot_mode_enabled INTEGER DEFAULT 0"),
     # Day 4.50 — position stagnation timeout. If a coin's price hasn't
     # moved by more than `stale_band_pct` in `stale_timeout_minutes`,
     # auto-close the position. Frees up the concurrent-cap slot for a
@@ -668,6 +676,7 @@ def get_user_settings(user_id: str | int) -> dict:
     at_max_inactive_h = int(_safe_get("auto_trade_max_inactive_hours", 0))
     stale_timeout_min = int(_safe_get("stale_timeout_minutes", 20))
     stale_band_pct    = float(_safe_get("stale_band_pct", 3.0))
+    moonshot_mode    = bool(_safe_get("moonshot_mode_enabled", 0))
 
     return {
         "tp_ladder":     ladder if ladder is not None else list(DEFAULT_TP_LADDER),
@@ -686,6 +695,7 @@ def get_user_settings(user_id: str | int) -> dict:
         "auto_trade_max_inactive_hours":  at_max_inactive_h,
         "stale_timeout_minutes":          stale_timeout_min,
         "stale_band_pct":                 stale_band_pct,
+        "moonshot_mode_enabled":          moonshot_mode,
     }
 
 

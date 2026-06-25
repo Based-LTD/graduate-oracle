@@ -686,77 +686,111 @@ def sell(
         except jito_tip_floor.TipFloorError:
             effective_tip = DEFAULT_JITO_TIP_LAMPORTS
 
-    # ── Stage 4: BUILD via Jupiter ─────────────────────────────────────
-    try:
-        built = jupiter_buy.build_sell_tx(
-            user_id=user_id, mint=mint, payer_pubkey=payer,
-            token_amount=tokens_to_sell,
-            slippage_bps=slippage_bps,
-            priority_fee_microlamports=priority_fee_microlamports,
-            jito_tip_lamports=effective_tip,
-        )
-    except jupiter_buy.JupiterError as e:
-        raise OrchestratorError("build", str(e)) from e
+    # ── Stages 4-6: BUILD → SIGN → SUBMIT → CONFIRM with slippage auto-bump
+    # Day 4.62: when a sell tx confirms but reverts with a slippage error
+    # (Jupiter custom 6001, pump.fun custom 6024), retry ONCE with 3×
+    # slippage capped at 3000bps. On pump.fun where the user wants OUT,
+    # slightly worse fill beats a stuck position by a wide margin.
+    #
+    # We don't retry on any other failure class (sign error, RPC reject,
+    # other on-chain errors) — those won't fix themselves with more slip.
+    SLIPPAGE_ERROR_MARKERS = ("Custom': 6001", "Custom': 6024",
+                              "Custom: 6001", "Custom: 6024",
+                              "0x1771", "0x1788")
+    SLIPPAGE_RETRY_MULT = 3
+    SLIPPAGE_RETRY_CAP_BPS = 3000
 
-    unsigned_tx_b64 = built["tx_b64"]
-
-    # ── Stage 5: SIGN ──────────────────────────────────────────────────
-    try:
-        signed_tx_b64 = trader_wallets.sign_transaction(user_id, unsigned_tx_b64)
-    except Exception as e:
-        raise OrchestratorError("sign", str(e)) from e
-
-    # ── Stage 6: SUBMIT ────────────────────────────────────────────────
-    if not live:
-        # Dry-run: don't hit RPC, don't mutate position.
-        return {
-            "phase":                       "dry-run",
-            "position_id":                 int(position_id),
-            "user_id":                     str(user_id),
-            "mint":                        mint,
-            "tokens_sold":                 tokens_to_sell,
-            "sell_pct":                    sell_pct,
-            "expected_sol_out_lamports":   int(built["expected_sol_out_lamports"]),
-            "min_sol_out_lamports":        int(built["min_sol_out_lamports"]),
-            "exit_price_lamports_per_token": float(built["exit_price_lamports_per_token"]),
-            "route":                       built["route"],
-            "would_submit":                False,
-        }
-
+    sell_signature = ""
+    built = None
     rpc_url_eff = (rpc_url or trader_wallets._RPC)
-    rpc_result = rpc_submit.send_via_rpc(signed_tx_b64, rpc_url=rpc_url_eff)
-    if not rpc_result.get("ok"):
-        raise OrchestratorError(
-            "submit", f"RPC sell submit failed: {rpc_result.get('error')}",
-        )
-    sell_signature = rpc_result["signature"]
+    confirm_result = None
+    current_slip_bps = slippage_bps
+    for attempt in (1, 2):
+        # BUILD
+        try:
+            built = jupiter_buy.build_sell_tx(
+                user_id=user_id, mint=mint, payer_pubkey=payer,
+                token_amount=tokens_to_sell,
+                slippage_bps=current_slip_bps,
+                priority_fee_microlamports=priority_fee_microlamports,
+                jito_tip_lamports=effective_tip,
+            )
+        except jupiter_buy.JupiterError as e:
+            raise OrchestratorError("build", str(e)) from e
 
-    # Day 4.51 CRITICAL: confirm + err-check before treating sell as
-    # successful. Without this, a reverted sell tx (Custom 6024 slippage,
-    # insufficient tokens, AMM-side rejection) gets marked as a profit in
-    # the DB and the fee skim transfers run pointlessly. Daniel hit this
-    # at 2026-06-23 12:12 — position #79 reverted but bot DM'd "+13% profit"
-    # and the user's tokens stayed stuck.
-    import jito_confirm as _jc
-    confirm_result = _jc.wait_for_confirmation(
-        signature=sell_signature,
-        rpc_url=rpc_url_eff,
-        bundle_ids=[],
-        timeout_s=45,
-        poll_interval_s=1.0,
-    )
-    if confirm_result.failed:
+        # SIGN
+        try:
+            signed_tx_b64 = trader_wallets.sign_transaction(
+                user_id, built["tx_b64"]
+            )
+        except Exception as e:
+            raise OrchestratorError("sign", str(e)) from e
+
+        # DRY-RUN short-circuit (only relevant on first attempt)
+        if not live:
+            return {
+                "phase":                       "dry-run",
+                "position_id":                 int(position_id),
+                "user_id":                     str(user_id),
+                "mint":                        mint,
+                "tokens_sold":                 tokens_to_sell,
+                "sell_pct":                    sell_pct,
+                "expected_sol_out_lamports":   int(built["expected_sol_out_lamports"]),
+                "min_sol_out_lamports":        int(built["min_sol_out_lamports"]),
+                "exit_price_lamports_per_token": float(built["exit_price_lamports_per_token"]),
+                "route":                       built["route"],
+                "would_submit":                False,
+            }
+
+        # SUBMIT
+        rpc_result = rpc_submit.send_via_rpc(signed_tx_b64, rpc_url=rpc_url_eff)
+        if not rpc_result.get("ok"):
+            raise OrchestratorError(
+                "submit", f"RPC sell submit failed: {rpc_result.get('error')}",
+            )
+        sell_signature = rpc_result["signature"]
+
+        # CONFIRM + err-check (Day 4.51)
+        import jito_confirm as _jc
+        confirm_result = _jc.wait_for_confirmation(
+            signature=sell_signature,
+            rpc_url=rpc_url_eff,
+            bundle_ids=[],
+            timeout_s=45,
+            poll_interval_s=1.0,
+        )
+
+        if confirm_result.landed:
+            break  # success — exit retry loop
+
+        if confirm_result.timed_out:
+            # Don't retry on timeout — tx might still land async, and a
+            # retry could create a phantom duplicate.
+            raise OrchestratorError(
+                "submit",
+                f"SELL tx {sell_signature} did not confirm in 45s. "
+                "Position remains OPEN. Check the explorer.",
+            )
+
+        # Failed on-chain. Is it a slippage error specifically?
+        err_str = str(confirm_result.err or "")
+        is_slippage = any(m in err_str for m in SLIPPAGE_ERROR_MARKERS)
+        if attempt == 1 and is_slippage and current_slip_bps < SLIPPAGE_RETRY_CAP_BPS:
+            new_slip = min(SLIPPAGE_RETRY_CAP_BPS,
+                           current_slip_bps * SLIPPAGE_RETRY_MULT)
+            print(f"[orchestrator] SELL {sell_signature[:16]}… reverted on "
+                  f"slippage ({err_str}). Auto-bumping {current_slip_bps}bps → "
+                  f"{new_slip}bps and retrying.", flush=True)
+            current_slip_bps = new_slip
+            continue
+
+        # Any other failure (non-slippage), OR already retried, OR
+        # slippage already at the cap — surface to user.
         raise OrchestratorError(
             "submit",
             f"SELL tx {sell_signature} reverted on-chain: "
             f"{confirm_result.err}. Position remains OPEN — tokens still "
-            "in your wallet. Try again or sell manually.",
-        )
-    if confirm_result.timed_out:
-        raise OrchestratorError(
-            "submit",
-            f"SELL tx {sell_signature} did not confirm in 45s. "
-            "Position remains OPEN. Check the explorer.",
+            "in your wallet. The bot will try again on the next monitor tick.",
         )
 
     # ── Stage 6.5: collect sell-side fee BEFORE we mark sold ──────────
