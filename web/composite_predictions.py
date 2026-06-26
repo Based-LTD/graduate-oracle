@@ -530,37 +530,23 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                     #
                     # Earlier filters (Day 4.68): tier in WATCH/SCOUT, sr≥3,
                     # SM 3-9. Those stand. This narrows the MC band.
-                    # Day 4.73 — added manufactured_pump=1 filter (joins to
-                    # predictions table for this mint). Within ★ ALPHA 4.72
-                    # cohort (n=359 base), the split was:
-                    #   manufactured_pump=1:  n=241  wr=51%  avg=+19.0%
-                    #   manufactured_pump=0:  n= 57  wr=23%  avg= -7.1% (bleeds)
-                    # The flag NAME is misleading — empirically it's anti-
-                    # correlated with rugs and positively correlated with
-                    # graduation (already in [[manufactured-pump-positive-signal]]).
+                    # Day 4.74 REVERT — back to 4.68 criteria.
+                    # Both 4.72 (MC $10-15K) and 4.73 (manufactured_pump=1)
+                    # were backtest-driven tightenings that produced -33.7%
+                    # avg PnL on n=8 in live 24h validation, vs backtest
+                    # projection of +19%. Reverting to broader criteria.
+                    # Lesson: peak_mult_24h-based backtest doesn't capture
+                    # real trade execution (slippage, MEV, path-dependent
+                    # SL-before-TP). Small-sample iteration chases noise.
                     is_starred = False
                     if tier in ("WATCH", "SCOUT"):
                         try:
                             thr  = float(r["threshold_at_cross"] or 0)
                             comp = float(r["composite_score"] or 0)
                             sm   = r["smart_money_in"]
-                            mc   = r["mc_at_cross_usd"] or 0
                             sr   = (comp / thr) if thr > 0 else 0
-                            base_pass = (sr >= 3.0
-                                         and sm is not None and 3 <= sm <= 9
-                                         and 10000 <= mc < 15000)
-                            if base_pass:
-                                # Look up manufactured_pump from predictions
-                                # at age_bucket=60 (the bucket we have most data for).
-                                mp_row = c.execute(
-                                    "SELECT manufactured_pump FROM predictions "
-                                    "WHERE mint = ? AND age_bucket = 60",
-                                    (mint,)
-                                ).fetchone()
-                                # Day 4.73: require manufactured_pump=1.
-                                # If predictions row missing or flag=0, suppress.
-                                if mp_row and mp_row["manufactured_pump"] == 1:
-                                    is_starred = True
+                            if sr >= 3.0 and sm is not None and 3 <= sm <= 9:
+                                is_starred = True
                         except Exception:
                             pass
 
