@@ -234,12 +234,14 @@ _MIGRATIONS = [
     ("trader_user_settings", "auto_trade_include_starred",
         "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_include_starred INTEGER DEFAULT 0"),
     # Day 4.69 — ★ ONLY MODE: auto-trade fires ONLY on ★ starred alerts,
-    # ignoring tier entirely. ACT/WATCH/SCOUT non-starred all skipped.
-    # The 8h post-4.68 production data showed ★ +0.32 SOL net while
-    # unstarred (mostly ACT) was -0.45 SOL net — gating on ★ alone
-    # would have prevented the entire bleed. Default ON for all users.
+    # ignoring tier entirely.
+    # Day 4.75 — DEFAULT CHANGED TO 0. After 24h of live data showed
+    # ★ ALPHA cohort -33.7% avg while ACT averaged +52% on the same
+    # window, default reverts to tier-based mode. ★ ALPHA stays as an
+    # optional ADDITIVE include via auto_trade_include_starred. New
+    # users get auto_trade_min_tier='ACT' + no star inclusion.
     ("trader_user_settings", "auto_trade_starred_only",
-        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_starred_only INTEGER DEFAULT 1"),
+        "ALTER TABLE trader_user_settings ADD COLUMN auto_trade_starred_only INTEGER DEFAULT 0"),
     # Day 4.50 — position stagnation timeout. If a coin's price hasn't
     # moved by more than `stale_band_pct` in `stale_timeout_minutes`,
     # auto-close the position. Frees up the concurrent-cap slot for a

@@ -517,33 +517,34 @@ def _star_telemetry(uid: str) -> str:
 def _fmt_auto_trade(s: dict, uid: str = "") -> str:
     enabled = s.get("auto_trade_enabled")
     size_sol = (s.get("auto_trade_size_lamports") or 0) / 1e9
-    starred_only = bool(s.get("auto_trade_starred_only", 1))
     min_tier = s.get("auto_trade_min_tier") or "ACT"
+    include_starred = bool(s.get("auto_trade_include_starred"))
     cap = s.get("auto_trade_max_concurrent") or 3
     idle_h = s.get("auto_trade_max_inactive_hours") or 0
     state = "🟢 *ON*" if enabled else "🔴 *OFF*"
-    mode_line = (
-        "*★ ALPHA only* (recommended — proven edge)"
-        if starred_only else
-        f"*Legacy tier mode* — `{min_tier}` and stricter"
-    )
+    tier_label = {
+        "ACT":   "ACT only",
+        "WATCH": "ACT + WATCH",
+        "SCOUT": "ACT + WATCH + SCOUT",
+    }.get(min_tier, min_tier)
+    if include_starred:
+        mode_line = f"*{tier_label} + ★ ALPHA*"
+    else:
+        mode_line = f"*{tier_label}*"
     idle_line = (f"Pause after: *{idle_h}h* idle" if idle_h > 0
                  else "Pause after: *OFF*")
     tele = _star_telemetry(uid) if uid else ""
     return (
-        "*🤖 ★ AUTO-BUY*\n\n"
+        "*🤖 AUTO-BUY*\n\n"
         f"State: {state}\n"
-        f"Mode: {mode_line}\n"
+        f"Fires on: {mode_line}\n"
         f"Size per buy: *{size_sol:.4f}* SOL\n"
         f"Max concurrent: *{cap}*\n"
         f"{idle_line}\n"
         + (f"\n*📊 Your ★ ALPHA activity:*{tele}\n" if tele else "")
-        + "\n_★ ALPHA = the algorithm's picks. The intersection of "
-        "three signal features (decisive composite cross, smart money "
-        "sweet spot, market structure) that statistically outperform "
-        "the average free-tier alert. Backtest: 1.5-2.5× lift over "
-        "base graduation rate._\n\n"
-        "_The Oracle predicts (free signals). The Algorithm picks (★ ALPHA)._\n\n"
+        + "\n_Default is ACT only — highest model conviction signals. "
+        "Toggle ★ ALPHA to ALSO fire on the algorithm's quality-tagged "
+        "WATCH/SCOUT alerts (the cells that beat tier-average in backtest)._\n\n"
         "⚠️ _Most pump.fun trades lose money. Auto-trading compounds losses. "
         "Start small and watch closely._"
     )
@@ -552,9 +553,10 @@ def _fmt_auto_trade(s: dict, uid: str = "") -> str:
 def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     enabled = bool(s.get("auto_trade_enabled"))
     cur_size = (s.get("auto_trade_size_lamports") or 0) / 1e9
-    cur_starred_only = bool(s.get("auto_trade_starred_only", 1))
     cur_cap = s.get("auto_trade_max_concurrent") or 3
     cur_idle = s.get("auto_trade_max_inactive_hours") or 0
+    cur_tier = s.get("auto_trade_min_tier") or "ACT"
+    cur_inc_starred = bool(s.get("auto_trade_include_starred"))
     rows = []
     # Master toggle
     if enabled:
@@ -563,19 +565,18 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     else:
         rows.append([InlineKeyboardButton("✅ Turn ON",
                                           callback_data="s:at:on")])
-    # ★ Only mode toggle — the headline. (Day 4.69)
+    # Tier selector — primary mode picker
     rows.append([
-        InlineKeyboardButton(
-            ("✓ ★ ALPHA only (recommended)" if cur_starred_only
-             else "★ ALPHA only"),
-            callback_data="s:at:smode:on",
-        ),
+        InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
+                             callback_data=f"s:at:tier:{t}")
+        for t, label in [("ACT", "ACT"), ("WATCH", "+WATCH"), ("SCOUT", "+SCOUT")]
     ])
+    # ★ ALPHA additive include toggle (Day 4.75)
     rows.append([
         InlineKeyboardButton(
-            ("⚙️ Legacy tier mode" if cur_starred_only
-             else "✓ ⚙️ Legacy tier mode (advanced)"),
-            callback_data="s:at:smode:off",
+            ("✓ ★ ALPHA: ON (also include starred)" if cur_inc_starred
+             else "★ ALPHA: OFF"),
+            callback_data=("s:at:star:off" if cur_inc_starred else "s:at:star:on"),
         ),
     ])
     # Size picker — split into 2 rows since we have 8 options now.
@@ -587,21 +588,6 @@ def _kb_auto_trade(s: dict) -> InlineKeyboardMarkup:
     ]
     rows.append(size_buttons[:4])
     rows.append(size_buttons[4:])
-    # Legacy tier picker — only show when in legacy mode
-    if not cur_starred_only:
-        cur_tier = s.get("auto_trade_min_tier") or "ACT"
-        rows.append([
-            InlineKeyboardButton(("✓ " if cur_tier == t else "") + label,
-                                 callback_data=f"s:at:tier:{t}")
-            for t, label in [("ACT", "ACT"), ("WATCH", "+WATCH"), ("SCOUT", "+SCOUT")]
-        ])
-        cur_inc_starred = bool(s.get("auto_trade_include_starred"))
-        rows.append([
-            InlineKeyboardButton(
-                ("✓ ★ Include starred" if cur_inc_starred else "★ Include starred"),
-                callback_data=("s:at:star:off" if cur_inc_starred else "s:at:star:on"),
-            ),
-        ])
     # Cap
     rows.append([
         InlineKeyboardButton(("✓ " if cur_cap == c else "") + f"{c}",
@@ -954,9 +940,11 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     trader_positions.set_auto_trade_config(
                         uid, include_starred=(parts[3] == "on"))
                 elif action == "smode" and len(parts) >= 4:
-                    # Day 4.69: ★ Only mode toggle
+                    # Day 4.69 legacy — kept for callback compatibility
+                    # but Day 4.75 reframed this. Users on old callbacks
+                    # get redirected to legacy mode (starred_only=False).
                     trader_positions.set_auto_trade_config(
-                        uid, starred_only=(parts[3] == "on"))
+                        uid, starred_only=False)
             except (ValueError, Exception) as e:
                 print(f"[trader_setup] auto-trade action failed: {e}", flush=True)
             return await _render(q, uid, "at")
