@@ -473,32 +473,16 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         r["smart_money_in"], r["max_mult_at_cross"])
 
                     # Frozen 3-tier + discard (pre-reg AMENDMENT 01).
+                    # Day 4.76 REVERT: removed the Day 4.65 ACT-quality
+                    # floor that was demoting ACT to WATCH based on
+                    # score_ratio and smart_money bounds. The floor was
+                    # designed from observer-data analysis but in
+                    # production it cut ACT volume from ~50/day to ~5-10/day,
+                    # starving the auto-trade pipeline. Reverting restores
+                    # ACT to pure grad_prob criterion. Same family of
+                    # over-tightening that we just reverted in 4.74.
                     if bestgp is not None and bestgp >= TG_TIER_ACT_MIN_GP:
                         tier = "ACT"
-                        # Day 4.65 ACT-QUALITY FLOOR (data-validated on
-                        # 15,109-resolved-mint observer dataset, 2026-06-24).
-                        # Even if grad_prob qualifies for ACT, demote to
-                        # WATCH if EITHER:
-                        #   • score_ratio < 2.0× (marginal cross — score
-                        #     barely above threshold = thin signal)
-                        #   • smart_money_in outside [3, 9] (validated
-                        #     sweet spot; both <3 and >9 underperform base
-                        #     graduation rate by ~2× on the observer set)
-                        #
-                        # Observer-data baseline: grad rate 12.0%, peak 4.5×.
-                        # sr ≥ 3 × SM 3-9 = 22.4% grad (1.87× base).
-                        # sr 2-3 × SM 6-9 = 11.3% (BELOW base — the gate
-                        # rightly demotes this band's weakest cells).
-                        try:
-                            thr  = float(r["threshold_at_cross"] or 0)
-                            comp = float(r["composite_score"] or 0)
-                            sm   = r["smart_money_in"]
-                            sr   = (comp / thr) if thr > 0 else 0
-                            sm_in_band = (sm is not None and 3 <= sm <= 9)
-                            if sr < 2.0 or not sm_in_band:
-                                tier = "WATCH"
-                        except Exception:
-                            pass
                     elif bestgp is not None and bestgp >= TG_TIER_WATCH_MIN_GP:
                         tier = "WATCH"
                     elif (bestgp is not None and bestgp >= TG_TIER_SCOUT_MIN_GP) or comp_strong:
