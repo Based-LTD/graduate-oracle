@@ -442,14 +442,20 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
             try:
                 with _connect(timeout=3) as cc:
                     today_n = cc.execute("""
-                        SELECT COUNT(*) AS n FROM composite_predictions
-                         WHERE tg_pushed_at >= strftime('%s', 'now', 'start of day')
-                           AND tg_tier IN ('WATCH','SCOUT')
-                           AND threshold_at_cross > 0
-                           AND (composite_score/threshold_at_cross) >= 3.0
-                           AND smart_money_in BETWEEN 3 AND 9
-                           AND mc_at_cross_usd >= 10000
-                           AND mc_at_cross_usd < 15000
+                        SELECT COUNT(*) AS n FROM composite_predictions cp
+                         WHERE cp.tg_pushed_at >= strftime('%s', 'now', 'start of day')
+                           AND cp.tg_tier IN ('WATCH','SCOUT')
+                           AND cp.threshold_at_cross > 0
+                           AND (cp.composite_score/cp.threshold_at_cross) >= 3.0
+                           AND cp.smart_money_in BETWEEN 3 AND 9
+                           AND cp.mc_at_cross_usd >= 10000
+                           AND cp.mc_at_cross_usd < 15000
+                           AND EXISTS (
+                             SELECT 1 FROM predictions p
+                              WHERE p.mint = cp.mint
+                                AND p.age_bucket = 60
+                                AND p.manufactured_pump = 1
+                           )
                     """).fetchone()["n"]
                 star_prefix = f"★ ALPHA #{today_n + 1} · "
             except Exception:
