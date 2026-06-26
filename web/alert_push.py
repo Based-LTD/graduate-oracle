@@ -449,7 +449,7 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
                            AND (composite_score/threshold_at_cross) >= 3.0
                            AND smart_money_in BETWEEN 3 AND 9
                            AND mc_at_cross_usd >= 10000
-                           AND mc_at_cross_usd < 20000
+                           AND mc_at_cross_usd < 15000
                     """).fetchone()["n"]
                 star_prefix = f"★ ALPHA #{today_n + 1} · "
             except Exception:

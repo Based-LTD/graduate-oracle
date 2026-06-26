@@ -492,7 +492,7 @@ def _star_telemetry(uid: str) -> str:
                     starred = (r["tg_tier"] in ("WATCH","SCOUT")
                                and sr >= 3
                                and sm is not None and 3 <= sm <= 9
-                               and 10000 <= mc < 20000)
+                               and 10000 <= mc < 15000)
                     if starred:
                         star_rows.append(r)
                 if not star_rows:

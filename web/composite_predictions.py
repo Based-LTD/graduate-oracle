@@ -521,17 +521,15 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         stats["below"] += 1
                         continue
 
-                    # Day 4.71 ★ ALPHA refinement — MC band filter added.
-                    # Backtest 2026-06-25 on n=1,301 ★ ALPHA mints across
-                    # 4 exit configs (Daniel's -25 SL / 30 TSL / TP 50,100):
-                    #   ★ ALPHA all:           n=1,301  wr=34%  avg=+4.1%
-                    #   ★ ALPHA + MC $10-20K:  n=  430  wr=43%  avg=+10.1%
-                    # The MC band is the highest-expectancy sub-cohort
-                    # (2.5× current return). Below $10K: too rug-prone, SL
-                    # triggers before TP. Above $20K: late entry, near peak.
+                    # Day 4.72 ★ ALPHA refinement — MC band tightened
+                    # from $10-20K to $10-15K after deeper per-bucket analysis:
+                    #   MC $10-15K:  n=359  hit_1.5x=40%  hit_2x=25%  (sweet spot)
+                    #   MC $15-20K:  n= 77  hit_1.5x=30%  hit_2x= 1%  (poison)
+                    # The $15-20K bucket was diluting the cohort — only 1%
+                    # of those mints hit 2× from entry, vs 25% in $10-15K.
                     #
                     # Earlier filters (Day 4.68): tier in WATCH/SCOUT, sr≥3,
-                    # SM 3-9. Those stand. This adds the MC band.
+                    # SM 3-9. Those stand. This narrows the MC band.
                     is_starred = False
                     if tier in ("WATCH", "SCOUT"):
                         try:
@@ -542,7 +540,7 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                             sr   = (comp / thr) if thr > 0 else 0
                             if (sr >= 3.0
                                     and sm is not None and 3 <= sm <= 9
-                                    and 10000 <= mc < 20000):
+                                    and 10000 <= mc < 15000):
                                 is_starred = True
                         except Exception:
                             pass
