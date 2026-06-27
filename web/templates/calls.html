@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>$GRADUATE Oracle · Signal Calls</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Public signal log. Search any contract address to see what we called, when. Every alert timestamped and on-chain verifiable.">
+<meta property="og:title" content="$GRADUATE Oracle · Signal Calls">
+<meta property="og:description" content="Search any contract address. See the exact alert we sent, when we sent it.">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .calls-main { max-width: 920px; margin: 50px auto 80px; padding: 0 24px; }
+  .calls-hero { text-align: center; margin-bottom: 32px; }
+  .calls-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .calls-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.4rem; font-weight: 900; letter-spacing: -0.5px;
+    margin: 0 0 16px;
+  }
+  .calls-hero-sub {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); max-width: 600px; margin: 0 auto;
+    font-size: 0.95rem; line-height: 1.65;
+  }
+  .calls-search {
+    max-width: 720px; margin: 40px auto 8px;
+    display: flex; gap: 10px; align-items: stretch;
+  }
+  .calls-search input {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    padding: 14px 18px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 8px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .calls-search input:focus { border-color: rgba(0, 240, 255, 0.85); }
+  .calls-search input::placeholder { color: var(--muted); opacity: 0.7; }
+  .calls-search button {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.85rem; font-weight: 700;
+    letter-spacing: 0.14em;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(80, 200, 120, 0.12));
+    border: 1px solid rgba(0, 240, 255, 0.5);
+    border-radius: 8px;
+    color: var(--cyan);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .calls-search button:hover {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.3), rgba(80, 200, 120, 0.2));
+    border-color: var(--cyan);
+  }
+  .calls-error {
+    text-align: center;
+    color: #ff9090;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    margin: 0 auto 24px;
+    min-height: 18px;
+  }
+  .calls-section-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.85rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin: 36px 0 16px;
+  }
+  .calls-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .call-card {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 16px 18px;
+    background: rgba(0, 0, 0, 0.2);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s, transform 0.15s;
+    display: block;
+  }
+  .call-card:hover {
+    border-color: rgba(0, 240, 255, 0.45);
+    transform: translateY(-1px);
+  }
+  .call-card-head {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .call-tier {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.68rem; letter-spacing: 0.12em;
+    padding: 3px 8px; border-radius: 3px;
+  }
+  .call-tier.ACT   { background: rgba(255, 200, 0, 0.18);   color: #ffd84d; }
+  .call-tier.WATCH { background: rgba(0, 240, 255, 0.15);   color: var(--cyan); }
+  .call-tier.SCOUT { background: rgba(160, 160, 160, 0.15); color: #c0c0c0; }
+  .call-card-mint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; color: var(--text); font-weight: 600;
+  }
+  .call-card-row {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; color: var(--muted);
+    line-height: 1.6;
+  }
+  .call-card-row strong { color: var(--text); }
+  .call-card-outcome {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; font-weight: 700;
+    margin-top: 6px;
+  }
+  .call-card-outcome.win { color: #5ff58b; }
+  .call-card-outcome.pending { color: var(--muted); }
+  .calls-foot {
+    text-align: center; margin-top: 36px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .calls-foot a { color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/calls">CALLS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/bot">TG BOT</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" aria-label="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="calls-main">
+  <section class="calls-hero">
+    <div class="calls-hero-tag">SIGNAL CALLS</div>
+    <h1>What did we call?</h1>
+    <p class="calls-hero-sub">
+      Paste any contract address. See the exact alert we sent, when we sent it, and what happened.
+    </p>
+  </section>
+
+  <form class="calls-search" id="search-form" onsubmit="return doSearch(event)">
+    <input
+      type="text"
+      id="search-input"
+      placeholder="Paste contract address (CA) — e.g. 2evSSArDSU…pump"
+      autocomplete="off"
+      spellcheck="false"
+    >
+    <button type="submit">Look up</button>
+  </form>
+  <div class="calls-error" id="search-error"></div>
+
+  <div class="calls-section-label">Recent Calls</div>
+  <div class="calls-list" id="recent-list">
+    <div style="grid-column:1/-1;text-align:center;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:0.9rem;padding:24px">
+      Loading…
+    </div>
+  </div>
+
+  <div class="calls-foot">
+    Raw JSON · <a href="/api/v1/composite_predictions?limit=20">/api/v1/composite_predictions</a><br>
+    See more: <a href="/bot">TG Trading Bot</a> · <a href="/accuracy">Backtest Receipts</a>
+  </div>
+</main>
+
+<script>
+function doSearch(e) {
+  e.preventDefault();
+  const inp = document.getElementById('search-input');
+  const err = document.getElementById('search-error');
+  err.textContent = '';
+  const raw = inp.value.trim();
+  if (!raw) {
+    err.textContent = 'Paste a contract address.';
+    return false;
+  }
+  if (raw.length < 32 || raw.length > 50 || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(raw)) {
+    err.textContent = "That doesn't look like a valid Solana mint address.";
+    return false;
+  }
+  window.location.href = `/alert/${raw}`;
+  return false;
+}
+
+function fmtMC(n) {
+  if (n === null || n === undefined) return "—";
+  return "$" + Math.round(n).toLocaleString();
+}
+function fmtAgo(ts) {
+  if (!ts) return "—";
+  const sec = Math.floor(Date.now() / 1000) - ts;
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec/60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+  return `${Math.floor(sec/86400)}d ago`;
+}
+
+fetch('/api/v1/composite_predictions?limit=24')
+  .then(r => r.json())
+  .then(d => {
+    const list = document.getElementById('recent-list');
+    const rows = (d.rows || []).filter(r => r.tg_tier === 'ACT' || r.tg_tier === 'WATCH').slice(0, 18);
+    if (!rows.length) {
+      list.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:0.9rem">No recent calls to show.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map(r => {
+      const tier = r.tg_tier || "—";
+      const tierIcon = tier === 'ACT' ? '⚡' : tier === 'WATCH' ? '📊' : '🛰';
+      const mintShort = r.mint.substring(0, 6) + '…' + r.mint.substring(r.mint.length - 4);
+      const sr = r.threshold_at_cross ? (r.composite_score / r.threshold_at_cross).toFixed(2) + '×' : '—';
+      let outcomeStr = `<div class="call-card-outcome pending">Pending</div>`;
+      if (r.peak_mult_24h && r.max_mult_at_cross) {
+        const fwd = r.peak_mult_24h / r.max_mult_at_cross;
+        if (fwd >= 1.5) {
+          outcomeStr = `<div class="call-card-outcome win">Peak: ${fwd.toFixed(1)}× from signal</div>`;
+        }
+      }
+      return `
+        <a href="/alert/${r.mint}" class="call-card">
+          <div class="call-card-head">
+            <span class="call-tier ${tier}">${tierIcon} ${tier}</span>
+            <span class="call-card-mint">${mintShort}</span>
+          </div>
+          <div class="call-card-row">MC: <strong>${fmtMC(r.mc_at_cross_usd)}</strong> · Score: <strong>${sr}</strong></div>
+          <div class="call-card-row">SM: <strong>${r.smart_money_in}</strong> · Age: <strong>${r.age_s_at_cross}s</strong> · ${fmtAgo(r.predicted_at)}</div>
+          ${outcomeStr}
+        </a>
+      `;
+    }).join('');
+  })
+  .catch(err => {
+    document.getElementById('recent-list').innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#ff9090;font-family:'JetBrains Mono',monospace;font-size:0.85rem">Failed to load. <a href="/api/v1/composite_predictions?limit=20" style="color:var(--cyan)">Try raw JSON</a></div>`;
+  });
+</script>
+</body>
+</html>

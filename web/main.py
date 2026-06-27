@@ -2496,6 +2496,12 @@ def accuracy_page():
     return _serve_html("accuracy.html")
 
 
+@app.get("/calls", response_class=HTMLResponse, include_in_schema=False)
+def calls_page():
+    """Public signal-calls index page — paste a CA to look up, browse recent calls."""
+    return _serve_html("calls.html")
+
+
 @app.get("/alert/{mint}", response_class=HTMLResponse, include_in_schema=False)
 def alert_proof_page(mint: str):
     """Public proof page for a single signal. Loads alert_proof.html and
