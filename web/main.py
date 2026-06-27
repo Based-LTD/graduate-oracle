@@ -2496,6 +2496,23 @@ def accuracy_page():
     return _serve_html("accuracy.html")
 
 
+@app.get("/alert/{mint}", response_class=HTMLResponse, include_in_schema=False)
+def alert_proof_page(mint: str):
+    """Public proof page for a single signal. Loads alert_proof.html and
+    hydrates via /api/v1/alert/{mint}. Tweetable receipt URL."""
+    html = (WEB_DIR / "templates" / "alert_proof.html").read_text()
+    # Inject mint into template via JS hydration
+    html = html.replace("{{MINT_PLACEHOLDER}}", mint)
+    try:
+        js_v = int((WEB_DIR / "static" / "app.js").stat().st_mtime)
+        css_v = int((WEB_DIR / "static" / "style.css").stat().st_mtime)
+        html = html.replace("/static/app.js", f"/static/app.js?v={js_v}")
+        html = html.replace("/static/style.css", f"/static/style.css?v={css_v}")
+    except Exception:
+        pass
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
+
+
 @app.get("/perps", response_class=HTMLResponse, include_in_schema=False)
 def perps_page():
     """Perps Observatory — live counters of perp data being collected.

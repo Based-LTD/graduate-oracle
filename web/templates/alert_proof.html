@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>$GRADUATE Oracle · Signal Receipt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Timestamped signal record. Public, on-chain verifiable receipt of what the Oracle alerted on, when.">
+<meta property="og:title" content="$GRADUATE Oracle · Signal Receipt">
+<meta property="og:description" content="Timestamped signal record. Public, on-chain verifiable.">
+<meta property="og:image" content="https://graduateoracle.fun/brand/og-image.png">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .proof-main { max-width: 720px; margin: 50px auto 80px; padding: 0 24px; }
+  .proof-hero { text-align: center; margin-bottom: 36px; }
+  .proof-hero-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem; letter-spacing: 0.16em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .proof-hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.9rem; font-weight: 900; letter-spacing: -0.5px;
+    margin: 0 0 16px;
+  }
+  .proof-card {
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 10px;
+    padding: 28px;
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.04), rgba(80, 200, 120, 0.02));
+    margin-bottom: 24px;
+  }
+  .proof-tier {
+    display: inline-block;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem; letter-spacing: 0.14em;
+    padding: 4px 12px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+  }
+  .proof-tier.ACT   { background: rgba(255, 200, 0, 0.18);   color: #ffd84d; }
+  .proof-tier.WATCH { background: rgba(0, 240, 255, 0.15);   color: var(--cyan); }
+  .proof-tier.SCOUT { background: rgba(160, 160, 160, 0.15); color: #c0c0c0; }
+  .proof-mint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; color: var(--muted);
+    word-break: break-all; margin-bottom: 18px;
+  }
+  .proof-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 24px;
+    margin-bottom: 20px;
+  }
+  .proof-grid dt {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .proof-grid dd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.05rem; font-weight: 600;
+    margin: 0 0 8px;
+  }
+  .proof-ts {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem; color: var(--muted);
+    padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .proof-ts strong { color: var(--cyan); font-weight: 600; }
+  .proof-links {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .proof-links a {
+    display: block;
+    text-align: center;
+    padding: 10px 14px;
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--cyan);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .proof-links a:hover { border-color: var(--cyan); transform: translateY(-1px); }
+  .proof-empty {
+    text-align: center; padding: 60px 20px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .proof-outcome {
+    margin-top: 22px; padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .proof-outcome h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.9rem; letter-spacing: 0.14em;
+    color: var(--cyan); text-transform: uppercase;
+    margin: 0 0 10px;
+  }
+  .proof-foot {
+    text-align: center; margin-top: 28px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .proof-foot a { color: var(--cyan); }
+  @media (max-width: 520px) {
+    .proof-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="proof-main">
+  <div class="proof-hero">
+    <div class="proof-hero-tag">SIGNAL RECEIPT</div>
+    <h1>$GRADUATE Oracle</h1>
+  </div>
+
+  <div id="card" class="proof-card">
+    <div class="proof-empty">Loading signal record…</div>
+  </div>
+
+  <div class="proof-foot">
+    Raw JSON · <a id="json-link" href="">/api/v1/alert/{{MINT_PLACEHOLDER}}</a><br>
+    See more: <a href="/bot">TG Trading Bot</a> · <a href="/accuracy">Receipts</a>
+  </div>
+</div>
+
+<script>
+const MINT = "{{MINT_PLACEHOLDER}}";
+document.getElementById('json-link').href = `/api/v1/alert/${MINT}`;
+
+function fmtNum(n, dp=2) {
+  if (n === null || n === undefined) return "—";
+  if (typeof n !== 'number') return n;
+  return n.toLocaleString(undefined, { maximumFractionDigits: dp });
+}
+function fmtPct(n, dp=0) {
+  if (n === null || n === undefined) return "—";
+  return (n * 100).toFixed(dp) + "%";
+}
+function fmtMC(n) {
+  if (n === null || n === undefined) return "—";
+  return "$" + Math.round(n).toLocaleString();
+}
+function fmtUtc(iso) {
+  if (!iso) return "—";
+  return iso.replace("T", " ").replace(/\.\d+/, "").replace("+00:00", " UTC");
+}
+
+fetch(`/api/v1/alert/${MINT}`)
+  .then(r => r.json())
+  .then(d => {
+    const card = document.getElementById('card');
+    if (!d.found) {
+      card.innerHTML = `<div class="proof-empty">
+        No signal record for this mint.<br><br>
+        <span style="font-size:0.78rem">Mint: ${MINT}</span>
+      </div>`;
+      return;
+    }
+    const tier = d.tier || "—";
+    const scoreRatio = d.score_ratio ? `${d.score_ratio.toFixed(2)}× threshold` : "—";
+    const peakFromEntry = d.outcome.peak_mult_from_entry
+      ? `${d.outcome.peak_mult_from_entry.toFixed(2)}× from signal`
+      : null;
+    const peak24h = d.outcome.peak_mult_24h
+      ? `${d.outcome.peak_mult_24h.toFixed(2)}× from launch`
+      : null;
+
+    let outcomeBlock = "";
+    if (d.outcome.resolved) {
+      outcomeBlock = `
+        <div class="proof-outcome">
+          <h3>Resolved Outcome</h3>
+          <dl class="proof-grid">
+            <div>
+              <dt>Did Graduate</dt>
+              <dd>${d.outcome.did_graduate ? "✅ YES" : "❌ NO"}</dd>
+            </div>
+            <div>
+              <dt>Peak (24h)</dt>
+              <dd>${peak24h || "—"}</dd>
+            </div>
+            ${peakFromEntry ? `
+            <div>
+              <dt>Peak From Entry</dt>
+              <dd>${peakFromEntry}</dd>
+            </div>` : ""}
+          </dl>
+        </div>`;
+    } else {
+      outcomeBlock = `
+        <div class="proof-outcome">
+          <h3>Outcome</h3>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;color:var(--muted)">
+            Pending resolution. Check the chart links for current state.
+          </div>
+        </div>`;
+    }
+
+    card.innerHTML = `
+      <div class="proof-tier ${tier}">${tier === "ACT" ? "⚡" : tier === "WATCH" ? "📊" : "🛰"} ${tier}</div>
+      <div class="proof-mint">${d.mint}</div>
+      <dl class="proof-grid">
+        <div>
+          <dt>Composite Score</dt>
+          <dd>${fmtNum(d.composite_score, 2)}</dd>
+        </div>
+        <div>
+          <dt>Score vs Threshold</dt>
+          <dd>${scoreRatio}</dd>
+        </div>
+        <div>
+          <dt>Smart Money</dt>
+          <dd>${d.smart_money_in} wallets in</dd>
+        </div>
+        <div>
+          <dt>Age at Cross</dt>
+          <dd>${d.age_s_at_cross}s</dd>
+        </div>
+        <div>
+          <dt>Market Cap (at signal)</dt>
+          <dd>${fmtMC(d.mc_at_cross_usd)}</dd>
+        </div>
+        <div>
+          <dt>Price Mult at Cross</dt>
+          <dd>${fmtNum(d.max_mult_at_cross, 2)}×</dd>
+        </div>
+      </dl>
+      <div class="proof-ts">
+        Signal fired: <strong>${fmtUtc(d.predicted_at_iso)}</strong><br>
+        ${d.tg_pushed_at_iso ? `Alert pushed to TG: <strong>${fmtUtc(d.tg_pushed_at_iso)}</strong>` : ""}
+      </div>
+      ${outcomeBlock}
+      <div class="proof-links">
+        <a href="${d.verify_on_chain.dexscreener}" target="_blank">Dexscreener</a>
+        <a href="${d.verify_on_chain.pump_fun}" target="_blank">Pump.fun</a>
+        <a href="${d.verify_on_chain.solscan}" target="_blank">Solscan</a>
+      </div>
+    `;
+  })
+  .catch(err => {
+    document.getElementById('card').innerHTML = `<div class="proof-empty">
+      Error loading signal record.<br>
+      <small>${err.message}</small>
+    </div>`;
+  });
+</script>
+</body>
+</html>
