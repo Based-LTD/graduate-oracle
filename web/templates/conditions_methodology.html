@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Conditions Methodology · Graduate Oracle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Full methodology behind the pump.fun conditions index. Every formula, every assumption, every way we could be wrong.">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.m-main { max-width: 820px; margin: 28px auto 80px; padding: 0 18px; font-family: 'JetBrains Mono', monospace; line-height: 1.7; color: rgba(244, 240, 255, 0.85); }
+.m-main h1 { font-family: 'Orbitron', sans-serif; font-size: clamp(24px, 4vw, 36px); font-weight: 900; color: #fff; letter-spacing: 0.04em; margin: 0 0 8px; }
+.m-main .lede { color: rgba(244, 240, 255, 0.60); font-size: 14px; margin-bottom: 32px; }
+.m-main h2 { font-family: 'Orbitron', sans-serif; font-size: 14px; letter-spacing: 0.18em; text-transform: uppercase; color: #c8a2ff; margin: 32px 0 12px; padding-top: 24px; border-top: 1px dashed rgba(200, 162, 255, 0.20); }
+.m-main h2:first-of-type { border-top: none; padding-top: 0; }
+.m-main p { font-size: 14px; }
+.m-main code, .m-main pre { font-family: 'JetBrains Mono', monospace; background: rgba(200, 162, 255, 0.08); padding: 1px 6px; border-radius: 3px; color: #c8a2ff; font-size: 13px; }
+.m-main pre { padding: 12px 16px; border-radius: 4px; overflow-x: auto; border: 1px solid rgba(200, 162, 255, 0.20); background: rgba(0,0,0,0.4); }
+.m-main pre code { background: none; padding: 0; color: rgba(244, 240, 255, 0.85); }
+.m-main b { color: #fff; }
+.m-main a { color: #c8a2ff; }
+.m-main .warn { border-left: 2px solid #ffb066; padding: 12px 16px; background: rgba(255, 180, 80, 0.04); margin: 16px 0; font-size: 13px; }
+.m-main .warn b { color: #ffb066; }
+.m-main ul { padding-left: 22px; }
+.m-main li { font-size: 14px; margin: 8px 0; }
+.m-main table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }
+.m-main th, .m-main td { padding: 8px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.m-main th { color: #c8a2ff; font-weight: 700; letter-spacing: 0.06em; font-size: 11px; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="bg-ambience" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <a href="/" style="text-decoration:none">
+      <div class="logo"><span class="g">GRADUATE</span></div>
+      <div class="logo-oracle">O R A C L E</div>
+    </a>
+    <div class="tagline">pump<span class="dot-sep">.</span>fun decoded</div>
+  </div>
+  <nav class="head-nav">
+    <a class="head-link" href="/">LIVE</a>
+    <a class="head-link" href="/conditions">CONDITIONS</a>
+    <a class="head-link" href="/perps">PERPS</a>
+    <a class="head-link" href="/calls">CALLS</a>
+    <a class="head-link" href="/accuracy">ACCURACY</a>
+    <a class="head-link" href="/api">API</a>
+    <a class="head-link" href="/docs">DOCS</a>
+  </nav>
+  <a class="head-x-link" href="https://x.com/GraduateOracle" target="_blank" rel="noopener" title="@GraduateOracle on X">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  </a>
+</header>
+
+<main class="m-main">
+  <a href="/conditions" style="color:#c8a2ff; font-size:12px; text-decoration:none; letter-spacing:0.06em;">← back to conditions</a>
+  <h1 style="margin-top:14px;">Methodology</h1>
+  <p class="lede">Every number on <a href="/conditions">/conditions</a> is computed from our own observations. No external assumptions baked in. Self-relative tiering against our own 35-day distribution. This page documents every formula, every constant, every way we could be wrong.</p>
+
+  <h2>What we measure</h2>
+  <p>Five metrics, computed over a <b>7-day rolling window</b> of resolved signals, refreshed every 5 minutes:</p>
+  <ul>
+    <li><b>Rug rate</b> — count of "rugged" outcomes / total resolved signals</li>
+    <li><b>Graduation rate</b> — count of mints that migrated to Raydium / total resolved</li>
+    <li><b>Average peak from cross</b> — mean of (peak_mc / mc_at_signal) across resolved signals</li>
+    <li><b>Median age at cross</b> — median seconds between mint birth and our signal firing</li>
+    <li><b>High-confidence fires</b> — count of signals with grad_prob ≥ 0.5 in the last 7 days</li>
+  </ul>
+
+  <h2>Where the data comes from</h2>
+  <ul>
+    <li><code>composite_predictions</code> — every composite-score cross we logged, with metadata captured at signal time (smart_money_in, max_mult_at_cross, age_s_at_cross, mc_at_cross_usd)</li>
+    <li><code>predictions</code> (age_bucket=60) — the model's calibrated graduation probability at age 60s, joined per mint</li>
+    <li><code>post_grad_outcomes</code> — actual graduation timestamp + price at graduation, for migration MC derivation</li>
+  </ul>
+  <p>We filter to <code>tier_logic_version = 'v2'</code> and <code>outcome_resolved_at IS NOT NULL</code> so we're only counting signals where the outcome has been determined.</p>
+
+  <h2>The "rug" definition (a known limitation)</h2>
+  <div class="warn">
+    <b>Honest limit:</b> we don't directly observe rugs on-chain. A signal is counted as "rugged" if <code>actual_max_mult ≈ 1.0 AND did_graduate != 1</code>. That captures mints whose curves we lost track of, which in practice are almost always collapsed coins — but it could also include mints we simply failed to resolve.
+  </div>
+  <p>This is conservative: it likely <i>overstates</i> the rug count slightly. If our rug rate looks high, the real rug rate is probably a bit lower. We disclose this rather than hide it.</p>
+
+  <h2>Migration MC — derived from curve math, not measurement</h2>
+  <p>Pump.fun migration is deterministic. The bonding curve has fixed math: every mint migrates at the same SOL-denominated MC. The USD value scales only with SOL price.</p>
+  <pre><code>800M tokens sold via curve fills ~85 SOL
+   ~6 SOL migration fee
+   ~79 SOL + 200M tokens → Raydium LP at creation
+
+LP price at creation:  79 SOL / 200M tokens = 0.000000395 SOL/token
+MC at LP creation:     0.000000395 × 1B supply = 395 SOL
+
+Migration MC (USD) = 395 × SOL_USD</code></pre>
+  <p>This is a curve-math constant, not an empirical estimate. Every pump.fun mint migrates at the same MC in SOL terms.</p>
+  <div class="warn">
+    <b>What we got wrong earlier:</b> we previously tried to derive migration MC from <code>grad_price_usd</code> — but that column is the Jupiter price observed 0–30 seconds AFTER migration, which captures sniper buys and immediate dumps. We were showing post-migration trading noise as if it were real variance in migration price. The actual migration MC is a fixed point on the bonding curve. We fixed the display to use the curve constant directly.
+  </div>
+
+  <h2>Self-relative tier placement</h2>
+  <p>For each metric, we compare today's value against our own 35-day distribution of 7-day rolling values and assign a quartile:</p>
+  <table>
+    <tr><th>Quartile</th><th>Position</th><th>Meaning</th></tr>
+    <tr><td>Q1</td><td>BEST 25%</td><td>This metric is in the most favorable quarter of days we've measured</td></tr>
+    <tr><td>Q2</td><td>GOOD</td><td>Above-average favorable</td></tr>
+    <tr><td>Q3</td><td>POOR</td><td>Below-average favorable</td></tr>
+    <tr><td>Q4</td><td>WORST 25%</td><td>Most hostile quartile of days we've measured</td></tr>
+  </table>
+  <p>The <b>composite danger tier</b> is the average of all 5 metric quartiles, mapped to a 4-tier categorical output:</p>
+  <pre><code>composite_avg ≤ 1.5  →  🟢 LOW
+composite_avg ≤ 2.5  →  🟡 MODERATE
+composite_avg ≤ 3.5  →  🟠 ELEVATED
+composite_avg >  3.5  →  🔴 HIGH DANGER</code></pre>
+  <p>We deliberately use self-relative tiers (not fixed thresholds) so the dashboard reads honestly across regime shifts. Saying "today is in the worst quartile of days we've measured" is defensible regardless of absolute conditions.</p>
+
+  <h2>Confidence intervals</h2>
+  <p>Every rate (rug, grad) is shown with a Wilson 95% confidence interval based on sample size. This communicates how much trust you should place in the headline number. A 12% rate computed over 50 signals is much weaker than 12% over 2,000.</p>
+
+  <h2>What this dashboard does NOT do</h2>
+  <ul>
+    <li>It does <b>not</b> predict tomorrow's regime.</li>
+    <li>It does <b>not</b> tell you whether to trade.</li>
+    <li>It does <b>not</b> claim absolute thresholds.</li>
+    <li>It does <b>not</b> claim our signal is broken or healthy — only the environment.</li>
+  </ul>
+  <p>It's a measurement of <i>right now</i> against <i>recent history</i>. Use it as one input. Make your own call.</p>
+
+  <h2>How we could be wrong</h2>
+  <ul>
+    <li>The 35-day distribution is a small window — if conditions never have been this bad/good before, the quartile is unreliable.</li>
+    <li>The rug definition is conservative (likely overcounts). Real rug rate may be lower.</li>
+    <li>Migration MC constant has real variance (IQR shown). Individual mints can graduate at MC far from the median.</li>
+    <li>Sample sizes for some metrics are small. CIs widen accordingly — we show them.</li>
+    <li>SOL price source (CoinGecko daily) lags realtime by hours.</li>
+  </ul>
+
+  <h2>How to verify</h2>
+  <p>The full API returns every datum used in the computation:</p>
+  <pre><code>GET <a href="/api/v1/conditions">/api/v1/conditions</a></code></pre>
+  <p>Anyone with SQL access to a pump.fun observer can independently compute these metrics from the same tables. Disagreement is welcome — we'll show our queries against yours.</p>
+
+  <h2>Receipts</h2>
+  <p>Each reading is SHA-256 hashed before display. The hash appears on the dashboard. We log these daily so anyone can verify the reading was the reading we showed at the time, not a retroactive number.</p>
+
+  <p style="margin-top: 40px; color: rgba(244, 240, 255, 0.40); font-size: 12px; text-align: center;">
+    The discipline is: every number we show is one we'd defend in public.<br>
+    Found a hole? <a href="https://x.com/GraduateOracle" target="_blank" rel="noopener">@GraduateOracle</a>
+  </p>
+</main>
+</body>
+</html>
