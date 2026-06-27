@@ -1,0 +1,2139 @@
+/* ─── $GRADUATE · cyberpunk neon ─────────────────────────────────────────── */
+:root {
+  --bg-0: #050510;
+  --bg-1: #0a0a18;
+  --bg-2: #0f0f24;
+  --panel: #11112a;
+  --panel-2: #181840;
+  --border: #1f1f3d;
+  --grid: rgba(0, 240, 255, 0.04);
+
+  --text: #e6ecff;
+  --muted: #6a7095;
+  --dim: #444b6e;
+
+  --cyan: #00f0ff;
+  --pink: #ff2d92;
+  --magenta: #d500ff;
+  --green: #00ff9d;
+  --yellow: #ffd000;
+  --red: #ff3860;
+  --orange: #ff8800;
+}
+* { box-sizing: border-box; }
+
+@keyframes pulse-glow { 0%,100% { text-shadow: 0 0 6px currentColor, 0 0 12px currentColor; } 50% { text-shadow: 0 0 10px currentColor, 0 0 24px currentColor, 0 0 36px currentColor; } }
+@keyframes scan { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
+@keyframes flicker { 0%,100% { opacity: 1; } 3%,6% { opacity: 0.85; } 4% { opacity: 1; } }
+@keyframes hot-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,255,157,0.0), inset 0 0 24px rgba(0,255,157,0.12); } 50% { box-shadow: 0 0 32px 4px rgba(0,255,157,0.25), inset 0 0 32px rgba(0,255,157,0.18); } }
+@keyframes alert-flash { 0%,100% { background: rgba(255,45,146,0); } 50% { background: rgba(255,45,146,0.10); } }
+@keyframes type-cursor { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes spin-slow { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+html, body {
+  margin: 0; padding: 0;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, Monaco, monospace;
+  background: linear-gradient(180deg, var(--bg-0), var(--bg-1));
+  color: var(--text);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Background ambience — blurred blobs + grid + scan line + subtle noise.
+   Replaces previous radial-gradient backgrounds (which banded visibly on
+   8-bit displays due to low-opacity single-stop transitions). Blobs use
+   CSS filter:blur which renders smoothly without color quantization. */
+body > .bg-ambience {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+}
+body > .bg-ambience::before,
+body > .bg-ambience::after {
+  content: ""; position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.55;
+}
+body > .bg-ambience::before {
+  width: 60vw; height: 60vw;
+  top: -20vw; left: -10vw;
+  background: radial-gradient(circle, rgba(213, 0, 255, 0.45) 0%, rgba(213, 0, 255, 0) 70%);
+}
+body > .bg-ambience::after {
+  width: 65vw; height: 65vw;
+  bottom: -20vw; right: -15vw;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.40) 0%, rgba(0, 240, 255, 0) 70%);
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    /* SVG noise — masks any residual gradient banding without being visible */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 32px 32px, 32px 32px, 200px 200px;
+  pointer-events: none; z-index: 0;
+}
+body::after {
+  content: ""; position: fixed; left: 0; right: 0; height: 80px; top: -100%;
+  background: linear-gradient(180deg, transparent, rgba(0,240,255,0.04), transparent);
+  animation: scan 9s linear infinite;
+  pointer-events: none; z-index: 0;
+}
+header, main, .tabs, footer, #hero { position: relative; z-index: 1; }
+
+/* ─── boot sequence ──────────────────────────────────────────────────── */
+#boot {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg-0);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--cyan);
+  padding: 40px;
+  transition: opacity 0.4s ease;
+}
+#boot.done { opacity: 0; pointer-events: none; }
+#boot pre {
+  margin: 0; font-size: 0.95rem; line-height: 1.55;
+  text-shadow: 0 0 6px var(--cyan);
+  white-space: pre; max-width: 100%; overflow: hidden;
+}
+#boot pre::after {
+  content: "▌"; color: var(--cyan);
+  animation: type-cursor 0.8s infinite;
+}
+
+/* ─── header ─────────────────────────────────────────────────────────── */
+header {
+  padding: 32px 40px 22px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(213,0,255,0.06), transparent);
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+  position: relative;
+}
+.brand { display: flex; flex-direction: column; gap: 0; }
+/* V4 brutalist: $GRADUATE in tight gradient typography over an ORACLE
+   tracked-out white sub-line, separated by a thin rule. Mirrors
+   /brand/iterations/banner-4-brutalist.svg. */
+.logo {
+  font-family: "Orbitron", "JetBrains Mono", monospace;
+  font-size: 2.6rem; font-weight: 900; letter-spacing: -0.03em;
+  background: linear-gradient(90deg, var(--cyan), var(--pink), var(--magenta));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1;
+}
+.logo .g { font-weight: 900; }
+.logo-oracle {
+  font-family: "Orbitron", "JetBrains Mono", monospace;
+  font-size: 0.95rem; font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.6em;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+  /* visually align the right edge of "ORACLE" with the right edge of
+     "$GRADUATE" — the wide tracking pushes letters past the container. */
+  padding-right: 0.6em;
+}
+.tagline {
+  font-size: 0.74rem; letter-spacing: 0.32em; text-transform: uppercase;
+  color: var(--muted); margin-top: 8px;
+}
+.tagline .dot-sep { color: var(--cyan); margin: 0 4px; }
+
+/* Brand pitch line — anchored to the top-right of the header so it sits
+   directly opposite the logo as its visual counterweight. Same gradient
+   as the logo for a paired-set effect. Absolutely positioned so it
+   doesn't disturb the existing nav/meta flex layout. */
+.head-pitch {
+  position: absolute;
+  top: 32px;
+  right: 40px;
+  font-family: 'Orbitron', "JetBrains Mono", sans-serif;
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  background: linear-gradient(90deg, var(--cyan), var(--pink), var(--magenta));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-align: right;
+  white-space: nowrap;
+  line-height: 1;
+}
+@media (max-width: 1100px) {
+  .head-pitch { font-size: 1.15rem; right: 18px; top: 24px; }
+}
+@media (max-width: 760px) {
+  .head-pitch {
+    position: static;
+    white-space: normal; text-align: left;
+    font-size: 1rem;
+    margin-top: 6px;
+    width: 100%;
+  }
+}
+
+/* Hamburger menu button — Day 4.80. Header was getting cramped with 9 nav
+   links + DEX + X icons. Hamburger toggles the nav as a dropdown panel.
+   DEX + X stay exposed (outside the hamburger). */
+.head-hamburger {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 0;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.head-hamburger:hover {
+  border-color: var(--cyan);
+  background: rgba(0,240,255,0.04);
+}
+.head-hamburger span {
+  display: block;
+  width: 18px; height: 2px;
+  background: var(--muted);
+  border-radius: 1px;
+  transition: background 0.15s;
+}
+.head-hamburger:hover span { background: var(--cyan); }
+
+/* shared top-nav (used on dashboard + /api landing).
+   Day 4.80: hidden by default; .open class slides it down as a panel. */
+.head-nav {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  position: absolute;
+  top: calc(100% - 1px);
+  right: 40px;
+  padding: 10px;
+  background: rgba(8, 10, 14, 0.97);
+  border: 1px solid var(--border);
+  border-top-color: var(--cyan);
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4), 0 0 16px rgba(0,240,255,0.12);
+  z-index: 50;
+  min-width: 180px;
+  backdrop-filter: blur(8px);
+}
+.head-nav.open { display: flex; }
+@media (max-width: 760px) {
+  .head-nav { right: 18px; }
+}
+/* Day 4.80: head-link redesigned for dropdown-panel context — full-width
+   rows inside the open menu rather than horizontal pills. */
+.head-link {
+  display: block;
+  color: var(--muted); text-decoration: none;
+  font-size: 0.85rem; letter-spacing: 0.18em;
+  font-weight: 700;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition: all 0.12s;
+}
+.head-link:hover {
+  color: var(--cyan);
+  border-color: rgba(0,240,255,0.3);
+  background: rgba(0,240,255,0.06);
+}
+.head-link.active {
+  color: var(--cyan);
+  border-color: rgba(0,240,255,0.45);
+  background: rgba(0,240,255,0.10);
+  text-shadow: 0 0 6px rgba(0,240,255,0.4);
+}
+
+/* X icon — separated from the main nav, far-right of the header.
+   Same visual weight as a nav button but icon-only. */
+.head-x-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.head-x-link:hover {
+  color: #fff;
+  border-color: #fff;
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 10px rgba(255,255,255,0.15);
+}
+@media (max-width: 760px) {
+  .head-x-link { width: 34px; height: 34px; }
+  .head-x-link svg { width: 16px; height: 16px; }
+}
+
+/* DEX Screener icon — sibling of head-x-link. Same visual weight, same
+   40px square button shape, just an image instead of inline SVG. */
+.head-dex-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-decoration: none;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  background: #000;
+}
+.head-dex-link img {
+  width: 22px; height: 22px;
+  display: block;
+}
+.head-dex-link:hover {
+  border-color: #fff;
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 10px rgba(255,255,255,0.15);
+}
+@media (max-width: 760px) {
+  .head-dex-link { width: 34px; height: 34px; }
+  .head-dex-link img { width: 18px; height: 18px; }
+}
+
+/* Live heartbeat — anchored to the very top-right of the header.
+   Small, subtle, just a "we're alive" indicator. Frees up the flex
+   row below for the bigger, more prominent nav. */
+.meta {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  font-size: 0.62rem;
+  letter-spacing: 0.10em;
+}
+@media (max-width: 1100px) {
+  .meta { right: 12px; }
+}
+#status { color: var(--muted); }
+#status .live { color: var(--green); text-shadow: 0 0 6px var(--green); animation: pulse-glow 1.6s infinite; }
+#status .sep { color: var(--dim); }
+
+
+/* ─── hero card ──────────────────────────────────────────────────────── */
+.hero {
+  /* Hero is inside <main>, which already provides 40px horizontal
+     padding. Use vertical margin only so the card spans the full
+     content width — same as the table below it. */
+  margin: 18px 0 0;
+  padding: 18px 22px;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(0,255,157,0.08), rgba(0,240,255,0.05), rgba(213,0,255,0.06));
+  animation: hot-pulse 2.6s ease-in-out infinite;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.hero-label {
+  font-family: "Orbitron", monospace;
+  font-size: 0.78rem; letter-spacing: 0.32em; color: var(--green);
+  text-shadow: 0 0 6px var(--green);
+}
+.hero-row { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; }
+.hero-mint { flex: 0 0 auto; }
+.hero-mint-cell { font-size: 1.2rem; padding: 8px 14px; }
+.hero-stats {
+  flex: 1; display: flex; gap: 26px; flex-wrap: wrap;
+}
+.hero-stat { display: flex; flex-direction: column; gap: 2px; min-width: 60px; }
+.hero-stat .lab { color: var(--muted); font-size: 0.66rem; letter-spacing: 0.2em; text-transform: uppercase; }
+.hero-stat .val { font-size: 1.05rem; font-weight: 600; color: var(--text); }
+.hero-prob .val { color: var(--green); text-shadow: 0 0 8px var(--green); font-size: 1.4rem; }
+.hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Hero second row — runner badges + creator summary */
+.hero-row-2 {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  align-items: center;
+  justify-content: space-between;
+}
+.hero-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.hero-creator-line {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.hero-creator-line.up { color: var(--green); }
+.hero-creator-line b { color: var(--text); font-weight: 600; }
+
+/* ─── tabs ───────────────────────────────────────────────────────────── */
+.tabs {
+  margin: 48px 40px 0;
+  display: flex; gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  background: transparent; border: 1px solid var(--border); border-bottom: none;
+  color: var(--muted);
+  padding: 11px 22px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem; font-weight: 600;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+  position: relative;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--cyan);
+  background: linear-gradient(180deg, rgba(0,240,255,0.10), transparent);
+  border-color: var(--cyan);
+  text-shadow: 0 0 6px rgba(0,240,255,0.5);
+}
+.tab.active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan);
+}
+.watch-count {
+  display: inline-block; margin-left: 6px;
+  background: var(--pink); color: var(--bg-0);
+  padding: 1px 7px; border-radius: 99px;
+  font-size: 0.7rem; font-weight: 700;
+  text-shadow: none;
+  box-shadow: 0 0 8px var(--pink);
+}
+
+/* ─── main / panels ──────────────────────────────────────────────────── */
+main { padding: 0 40px 100px; }
+.panel { padding: 18px 0 8px; }
+.panel-head { padding: 4px 0 18px; }
+.panel-head h2 {
+  margin: 0;
+  font-family: "Orbitron", monospace;
+  font-size: 1.1rem; letter-spacing: 0.18em;
+  background: linear-gradient(90deg, var(--cyan), var(--pink));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.panel-sub { color: var(--muted); font-size: 0.78rem; margin-top: 6px; letter-spacing: 0.04em; }
+.panel-sub b { color: var(--cyan); }
+
+/* ─── tables ─────────────────────────────────────────────────────────── */
+table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 0.88rem;
+  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: 0 0 32px rgba(0,240,255,0.06), inset 0 0 80px rgba(213,0,255,0.04);
+  overflow: hidden;
+}
+/* Force deterministic column widths for the main board so header text
+   sits exactly above the matching cell content. Without table-layout: fixed,
+   the browser computes column widths from content and the visual alignment
+   between header text and cell text drifts when cells have varying padding
+   or stacked content. */
+table#board { table-layout: fixed; }
+thead th {
+  padding: 10px 8px; text-align: left;
+  color: var(--cyan); font-weight: 600; font-size: 0.66rem;
+  text-transform: uppercase; letter-spacing: 0.16em;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,240,255,0.04);
+  white-space: nowrap;
+}
+/* Specificity bump — `.r` alone was being beaten by `thead th` on some
+   browsers because both have specificity (0,0,2) once the table selector
+   is implied. This explicit selector guarantees right-aligned headers for
+   numeric columns. */
+thead th.r, tbody td.r { text-align: right; }
+tbody td {
+  padding: 8px 8px;
+  border-bottom: 1px solid rgba(31,31,61,0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stacked cell — primary value on top, secondary value below in dim/colored
+   text. Used for combined columns (MC+buyers, vSOL+growth, mult+peak) so
+   horizontal width stays tight. Plain block + inherited text-align so the
+   stacked content aligns the SAME way as the header text (no flex/text-align
+   mismatch where column width shifts). */
+.stacked-cell {
+  display: block;
+  line-height: 1.15;
+}
+.stacked-top { display: block; font-size: 0.88rem; font-weight: 600; }
+.stacked-bot { display: block; font-size: 0.7rem; }
+tbody tr { transition: background 0.15s; }
+tbody tr:hover { background: rgba(0,240,255,0.05); }
+
+/* Token metadata — thumbnail + name above the contract address in
+   each table row. CA stays visible right below; this is supplemental
+   identification, not a replacement. */
+.contract-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.row-thumb {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.row-thumb-blank {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  color: var(--muted); font-size: 0.55rem;
+}
+.row-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+  max-width: 140px;
+  overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-symbol {
+  color: var(--cyan);
+  font-weight: 700;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  margin-left: 4px;
+}
+
+/* Hero card metadata — bigger image + name headline. Sits between
+   the HOTTEST RIGHT NOW label and the stats row. */
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hero-meta:empty { display: none; }
+.hero-thumb {
+  width: 56px; height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(0,255,157,0.40);
+  box-shadow: 0 0 16px rgba(0,255,157,0.18);
+  flex-shrink: 0;
+}
+.hero-meta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.hero-name {
+  font-family: 'Orbitron', "JetBrains Mono", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero-symbol {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.84rem;
+  color: var(--cyan);
+  letter-spacing: 0.10em;
+  font-weight: 700;
+}
+@media (max-width: 760px) {
+  .hero-thumb { width: 44px; height: 44px; }
+  .hero-name { font-size: 1rem; }
+  .row-name { max-width: 140px; font-size: 0.78rem; }
+}
+
+/* Hero EXPAND button — same role as the table-row chevron, opens the
+   detail popup. Styled like a CTA so it reads as actionable. */
+.hero-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid rgba(0,255,157,0.55);
+  border-radius: 4px;
+  background: rgba(0,255,157,0.10);
+  color: var(--green);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.hero-expand:hover {
+  background: rgba(0,255,157,0.18);
+  box-shadow: 0 0 12px rgba(0,255,157,0.30);
+}
+.hero-expand-arrow, .hero-expand-chev { font-size: 0.85rem; }
+.r { text-align: right; }
+.empty {
+  text-align: center; padding: 50px;
+  color: var(--muted); font-style: italic; letter-spacing: 0.04em;
+}
+.empty a { color: var(--cyan); text-decoration: none; border-bottom: 1px dashed var(--cyan); }
+
+/* ─── mint cell — copyable ───────────────────────────────────────────── */
+.mint-cell {
+  cursor: pointer; user-select: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: 3px;
+  border: 1px solid transparent; transition: all 0.15s;
+  font-weight: 500;
+}
+.mint-cell:hover {
+  border-color: var(--cyan);
+  background: rgba(0,240,255,0.08);
+  box-shadow: 0 0 16px rgba(0,240,255,0.2);
+}
+.mint-cell .mint-text { color: var(--cyan); text-shadow: 0 0 4px rgba(0,240,255,0.4); }
+.mint-cell .copy-icon { opacity: 0.5; font-size: 0.85rem; transition: opacity 0.15s; }
+.mint-cell:hover .copy-icon { opacity: 1; }
+.mint-cell.copied .copy-icon { color: var(--green); opacity: 1; }
+.mint-cell.copied .mint-text { color: var(--green); text-shadow: 0 0 6px var(--green); }
+
+/* ─── star (watchlist) ───────────────────────────────────────────────── */
+.star {
+  cursor: pointer; user-select: none;
+  font-size: 1.1rem; color: var(--dim);
+  transition: all 0.15s;
+  display: inline-block; line-height: 1;
+}
+.star:hover { color: var(--yellow); transform: scale(1.15); }
+.star.on { color: var(--yellow); text-shadow: 0 0 8px var(--yellow); }
+
+/* ─── action buttons ─────────────────────────────────────────────────── */
+.actions { display: inline-flex; gap: 4px; }
+.btn {
+  display: inline-block; padding: 4px 9px;
+  background: var(--bg-0); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--muted);
+  text-decoration: none; font-size: 0.7rem;
+  font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.btn:hover { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,240,255,0.25); background: rgba(0,240,255,0.05); }
+.btn.btn-pump:hover { color: var(--green); border-color: var(--green); box-shadow: 0 0 10px rgba(0,255,157,0.25); background: rgba(0,255,157,0.05); }
+.btn.btn-photon:hover { color: var(--pink); border-color: var(--pink); box-shadow: 0 0 10px rgba(255,45,146,0.25); background: rgba(255,45,146,0.05); }
+.btn.btn-axiom:hover { color: var(--magenta); border-color: var(--magenta); box-shadow: 0 0 10px rgba(213,0,255,0.25); background: rgba(213,0,255,0.05); }
+
+/* ─── probability cell ───────────────────────────────────────────────── */
+.prob {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 0.95rem;
+}
+.prob-num { min-width: 44px; text-align: right; }
+.prob-bar {
+  height: 6px; width: 70px;
+  background: var(--bg-0); border: 1px solid var(--border);
+  border-radius: 2px; overflow: hidden; position: relative;
+}
+.prob-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan), var(--pink));
+  box-shadow: 0 0 8px currentColor;
+  transition: width 0.4s ease;
+}
+.prob-high { color: var(--green); }
+.prob-high .prob-bar-fill { background: linear-gradient(90deg, var(--green), var(--cyan)); box-shadow: 0 0 10px var(--green); }
+.prob-mid { color: var(--yellow); }
+.prob-mid .prob-bar-fill { background: linear-gradient(90deg, var(--yellow), var(--pink)); }
+.prob-low { color: var(--muted); }
+.prob-low .prob-bar-fill { background: var(--dim); }
+.prob-na { color: var(--dim); }
+
+/* row alert pulse for newly-arrived high-probability mints */
+tr.alert-pulse { animation: alert-flash 1.4s ease-in-out 2; }
+
+/* probability-jump flashes */
+@keyframes flash-up   { 0%,100% { background: transparent; } 25% { background: rgba(0,255,157,0.18); } }
+@keyframes flash-down { 0%,100% { background: transparent; } 25% { background: rgba(255,56,96,0.18); } }
+tr.flash-up   { animation: flash-up   1.0s ease-in-out 1; }
+tr.flash-down { animation: flash-down 1.0s ease-in-out 1; }
+
+/* ─── trend cell (delta + sparkline + stability) ──────────────────────── */
+.trend-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  padding-right: 8px;       /* breathing room from creator column */
+  box-sizing: border-box;
+}
+.trend {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.84rem;
+  letter-spacing: 0.01em;
+}
+.trend-up   { color: var(--green); text-shadow: 0 0 4px rgba(0,255,157,0.4); }
+.trend-down { color: var(--red);   text-shadow: 0 0 4px rgba(255,56,96,0.4); }
+.trend-flat { color: var(--muted); }
+
+.sparkline {
+  vertical-align: middle;
+  margin: 0 6px;
+  color: var(--cyan);
+  filter: drop-shadow(0 0 4px rgba(0,240,255,0.5));
+}
+tr:has(.trend-up) .sparkline   { color: var(--green); filter: drop-shadow(0 0 4px rgba(0,255,157,0.5)); }
+tr:has(.trend-down) .sparkline { color: var(--red);   filter: drop-shadow(0 0 4px rgba(255,56,96,0.5)); }
+
+.stab {
+  display: inline-block;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+  cursor: help;
+}
+.stab-high { color: var(--green); text-shadow: 0 0 4px rgba(0,255,157,0.4); }
+.stab-mid  { color: var(--yellow); }
+.stab-low  { color: var(--muted); }
+
+/* hero trend pill */
+.hero-trend {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid currentColor;
+}
+.hero-trend.trend-up   { color: var(--green); box-shadow: 0 0 10px rgba(0,255,157,0.3); }
+.hero-trend.trend-down { color: var(--red);   box-shadow: 0 0 10px rgba(255,56,96,0.3); }
+.hero-trend.trend-flat { color: var(--muted); border-color: var(--border); }
+
+/* methodology footnote in panel sub */
+.panel-sub b { color: var(--text); }
+
+/* ─── footer ─────────────────────────────────────────────────────────── */
+footer {
+  margin-top: 24px; padding: 16px 40px;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  font-size: 0.74rem; color: var(--muted); letter-spacing: 0.06em;
+  background: rgba(15,15,36,0.6);
+}
+
+/* ─── toast ──────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 32px; left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  padding: 10px 22px;
+  background: var(--bg-2); border: 1px solid var(--cyan);
+  border-radius: 3px; color: var(--cyan);
+  font-size: 0.85rem; letter-spacing: 0.08em;
+  box-shadow: 0 0 32px rgba(0,240,255,0.45);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  pointer-events: none; z-index: 100;
+  text-transform: uppercase;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ─── helpers ────────────────────────────────────────────────────────── */
+.up { color: var(--green); }
+.down { color: var(--red); }
+.muted { color: var(--muted); }
+
+/* ─── responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  header, main, .tabs, footer { padding-left: 18px; padding-right: 18px; }
+  /* Hero is inside main now; main's reduced padding handles the inset. */
+  .hero { margin-left: 0; margin-right: 0; }
+}
+@media (max-width: 760px) {
+  .logo { font-size: 1.9rem; }
+  .logo-oracle { font-size: 0.72rem; letter-spacing: 0.45em; }
+  table { font-size: 0.76rem; }
+  thead th, tbody td { padding: 7px 6px; }
+  .prob-bar { width: 40px; }
+  .hero-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .hero-stats { gap: 16px; }
+  .tabs { overflow-x: auto; padding-bottom: 0; }
+  .tab { padding: 10px 14px; font-size: 0.68rem; }
+}
+
+/* ─── expandable row · "why this score" ───────────────────────────────── */
+tbody tr.is-expanded { background: rgba(0,240,255,0.05); }
+.expand-chev {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 4px 9px;
+  background: rgba(0,240,255,0.10);
+  border: 1px solid rgba(0,240,255,0.45);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 120ms ease;
+  box-shadow: 0 0 6px rgba(0,240,255,0.10);
+}
+.expand-chev:hover {
+  background: rgba(0,240,255,0.20);
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0,240,255,0.30);
+  transform: translateY(-1px);
+}
+tr.is-expanded .expand-chev {
+  background: rgba(0,240,255,0.22);
+  border-color: var(--cyan);
+}
+.expand-chev-text { font-size: 0.66rem; }
+.expand-chev-arrow { font-size: 0.78rem; }
+@media (max-width: 760px) {
+  .expand-chev-text { display: none; }
+  .expand-chev { padding: 4px 7px; }
+}
+
+tr.row-expanded > td {
+  background: linear-gradient(180deg, rgba(0,240,255,0.04), transparent);
+  border-top: 1px solid rgba(0,240,255,0.18);
+  padding: 18px 20px 22px;
+}
+
+/* Detail popup · top-of-card badges row (smart-money, runner-dev, etc.) */
+/* Token metadata header in the detail popup — image + name + symbol +
+   description. Sits directly under the popup title bar, above the
+   badges row. Empty when the metadata daemon hasn't cached yet. */
+.why-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 0 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.why-thumb {
+  width: 56px; height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.why-meta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.why-meta-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: 'Orbitron', "JetBrains Mono", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.why-name { letter-spacing: 0.02em; }
+.why-symbol {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--cyan);
+  letter-spacing: 0.10em;
+  font-weight: 700;
+}
+.why-description {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 600px;
+}
+
+.why-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 14px 0;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(0,240,255,0.15);
+}
+.why-badges .sig-badge {
+  font-size: 0.72rem;
+  padding: 4px 10px;
+}
+
+/* ─── Detail popup · floats above the live data ────────────────────────
+   Glassy / translucent panel, centered in the viewport. The table behind
+   continues to sort + refresh without affecting the popup's position. */
+.detail-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 3, 18, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+  animation: popup-fade-in 0.18s ease-out;
+}
+.detail-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1100px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(20, 11, 42, 0.94), rgba(10, 5, 26, 0.94));
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6),
+              0 0 60px rgba(0, 240, 255, 0.10);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  padding: 0;
+  animation: popup-pop-in 0.22s cubic-bezier(0.34, 1.30, 0.64, 1);
+}
+.detail-popup-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 22px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.18);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, rgba(20, 11, 42, 0.98), rgba(20, 11, 42, 0.86));
+  backdrop-filter: blur(4px);
+}
+.detail-popup-mint {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.92rem;
+  color: var(--cyan);
+  letter-spacing: 1px;
+}
+.detail-popup-close {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--muted);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.detail-popup-close:hover {
+  border-color: rgba(255, 45, 146, 0.6);
+  color: var(--pink);
+  background: rgba(255, 45, 146, 0.08);
+}
+.detail-popup-body {
+  padding: 18px 22px 22px;
+}
+
+@keyframes popup-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes popup-pop-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px 28px;
+  align-items: start;
+}
+.why-section { min-width: 0; }
+.why-title {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(0,240,255,0.15);
+  padding-bottom: 5px;
+}
+.why-body {
+  font-size: 0.86rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+.why-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 0.8rem;
+  padding: 3px 0;
+}
+.why-k {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+}
+.why-v { color: var(--text); text-align: right; }
+.why-v .ok    { color: var(--green); }
+.why-v .warn  { color: #ffb84d; }
+.why-v .bad   { color: var(--pink); }
+.why-buyers {
+  display: flex; flex-wrap: wrap; gap: 6px 8px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+.why-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.flag-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid rgba(255,45,146,0.45);
+  background: rgba(255,45,146,0.10);
+  color: var(--pink);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.5px;
+  border-radius: 3px;
+}
+
+/* ─── Stacked odds column (grad/5×/10× per row) ──────────────────────── */
+.odds-stack {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.74rem;
+  text-align: right;
+  min-width: 64px;
+}
+.odds-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  line-height: 1.15;
+}
+.odds-k { color: var(--dim); font-size: 0.66rem; letter-spacing: 0.5px; }
+.odds-v { font-weight: 600; }
+.odds-v.up   { color: var(--green); }
+.odds-v.muted{ color: var(--dim); font-weight: 400; }
+
+/* Inline calibration receipt — appears under the grad/2x/5x stack.
+   Tells the trader the historical accuracy at this exact confidence cell.
+   This is the moat: every prediction comes with its own audit trail. */
+.odds-receipt {
+  font-size: 0.62rem;
+  color: var(--green);
+  margin-top: 2px;
+  padding: 1px 4px;
+  background: rgba(80, 200, 120, 0.08);
+  border-left: 2px solid var(--green);
+  letter-spacing: 0.3px;
+  cursor: help;
+}
+
+/* ─── Predictions cell — THE product, dominant on every row.
+   Simple, clear: just label + big number. Background lights up by lift
+   strength. No progress bars, no badges, no inline receipts — those move
+   into the hover tooltip so the cell stays scannable. ──────────────────  */
+.predictions-col {
+  text-align: center;
+  /* width controlled by <colgroup> in the template — keep this purely
+     visual styling so layout stays deterministic. */
+}
+.predictions-td {
+  padding: 4px 6px !important;
+}
+.predictions-cell {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  align-items: stretch;
+}
+.pred-chip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: help;
+  min-width: 0;
+  text-align: center;
+}
+.pred-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--dim);
+  margin-bottom: 1px;
+  white-space: nowrap;
+}
+.pred-value {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--fg);
+  line-height: 1;
+}
+.pred-value-na {
+  color: var(--dim);
+  font-weight: 400;
+  font-size: 0.7rem;
+}
+/* Warming = actively calibrating, not stuck. A slow breathing pulse
+   communicates "computing" — reads as intentional/pro instead of a gap.
+   Same treatment shared by sig-warming + cal-ticker warming below. */
+@keyframes gradWarmPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.pred-value-warming {
+  color: #d3a657;
+  font-weight: 500;
+  font-size: 0.68rem;
+  animation: gradWarmPulse 2.4s ease-in-out infinite;
+}
+.sig-warming { animation: gradWarmPulse 2.4s ease-in-out infinite; }
+.cal-ticker[data-state="warming"] { animation: gradWarmPulse 3s ease-in-out infinite; }
+
+/* Type-specific border color — quiet baseline. Strength escalation below
+   adds the saturated background that makes the chip "light up". */
+.pred-chip-grad { border-color: rgba(80, 200, 120, 0.18); }
+.pred-chip-x    { border-color: rgba(120, 160, 220, 0.20); }
+.pred-chip-rug  { border-color: rgba(220, 100, 100, 0.18); }
+.pred-chip-na   { opacity: 0.45; }
+.pred-chip-warming { border-color: rgba(211, 166, 87, 0.22); background: rgba(211, 166, 87, 0.04); }
+
+/* Strength tiers — strong glows brightly; mid = subtle tint; weak = quiet.
+   This is the entire visual hierarchy: numbers light up when they matter. */
+.pred-chip-grad.lift-strong { background: rgba(80, 200, 120, 0.22); border-color: rgba(80, 200, 120, 0.65); }
+.pred-chip-grad.lift-strong .pred-value { color: #6fdc97; }
+.pred-chip-grad.lift-mid    { background: rgba(80, 200, 120, 0.08); border-color: rgba(80, 200, 120, 0.30); }
+
+/* Tier overrides — independent of lift, based on absolute grad_prob.
+   tier-high (≥70%) is THE actionable band — 60% historical graduation
+   rate per 7d backtest. We make it glow brighter than lift coloring
+   alone and add a subtle pulse so the trader's eye lands there first. */
+.pred-chip-grad.tier-high {
+  background: rgba(80, 200, 120, 0.32);
+  border-color: rgba(80, 200, 120, 0.95);
+  border-width: 2px;
+  box-shadow: 0 0 14px rgba(80, 200, 120, 0.45);
+}
+.pred-chip-grad.tier-high .pred-value {
+  color: #7ef0a3;
+  font-size: 1.1rem;
+}
+.pred-chip-grad.tier-high .pred-label {
+  color: #6fdc97;
+}
+.pred-chip-grad.tier-mid {
+  background: rgba(80, 200, 120, 0.12);
+  border-color: rgba(80, 200, 120, 0.40);
+}
+/* tier-low — visible but clearly de-emphasized. Communicates "the model
+   is calibrated and showing you a low-confidence prediction" rather than
+   masquerading low-confidence as actionable. */
+.pred-chip-grad.tier-low {
+  opacity: 0.55;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.pred-chip-grad.tier-low .pred-value {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+/* Band legend in the API demo callout — three tier chips with explanation
+   text so newcomers see what 30/50/70 means in one glance. */
+.band-legend {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.band-chip {
+  display: inline-block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+  font-weight: 600;
+}
+.band-chip.band-low  { color: var(--dim);  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); }
+.band-chip.band-mid  { color: #d3a657;     background: rgba(211, 166, 87, 0.12);  border: 1px solid rgba(211, 166, 87, 0.4); }
+.band-chip.band-high { color: #7ef0a3;     background: rgba(80, 200, 120, 0.20);  border: 1px solid rgba(80, 200, 120, 0.6); }
+.band-explain {
+  color: var(--dim);
+  font-size: 0.72rem;
+}
+
+/* "Show all" toggle row inside the API demo callout. Sits below the band
+   legend so it reads as part of the demo narrative ("here's what we show
+   and why; here's how to see everything"). */
+.api-demo-toggle-row {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.api-demo-toggle-hint {
+  color: var(--dim);
+  font-size: 0.72rem;
+}
+
+/* Header high-confidence counter — at-a-glance "is now a good time
+   to be watching?" indicator. Renders next to snap-age in the meta row. */
+.hc-badge {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: help;
+}
+.hc-badge.hc-active {
+  background: rgba(80, 200, 120, 0.22);
+  color: #7ef0a3;
+  border: 1px solid rgba(80, 200, 120, 0.6);
+  font-weight: 600;
+}
+.hc-badge.hc-active strong {
+  color: #95ffb8;
+  font-size: 0.92rem;
+}
+.hc-badge.hc-mid {
+  background: rgba(211, 166, 87, 0.12);
+  color: #d3a657;
+  border: 1px solid rgba(211, 166, 87, 0.4);
+}
+.hc-badge.hc-quiet {
+  color: var(--dim);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pred-chip-x.lift-strong    { background: rgba(120, 160, 220, 0.24); border-color: rgba(120, 160, 220, 0.65); }
+.pred-chip-x.lift-strong .pred-value { color: #9bbbe6; }
+.pred-chip-x.lift-mid       { background: rgba(120, 160, 220, 0.10); border-color: rgba(120, 160, 220, 0.35); }
+.pred-chip-rug.rug-elevated { background: rgba(220, 100, 100, 0.22); border-color: rgba(220, 100, 100, 0.65); }
+.pred-chip-rug.rug-elevated .pred-value { color: #f06e6e; }
+.pred-chip-rug.rug-mid      { background: rgba(220, 100, 100, 0.08); border-color: rgba(220, 100, 100, 0.30); }
+.pred-chip-rug.rug-low      { background: rgba(80, 200, 120, 0.06); border-color: rgba(80, 200, 120, 0.20); }
+
+/* Responsive: collapse to vertical on narrow viewports. */
+@media (max-width: 760px) {
+  .predictions-cell {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .predictions-col { min-width: 110px; width: 110px; }
+}
+
+/* Lift badge — inline next to the grad %. Reframes a "weak" looking number
+   like 30% into "30% / 6× base" so the trader reads the SIGNAL, not the
+   absolute value. Color tiers: strong (≥3×), mid (≥1.5×), weak (<1.5×). */
+.lift-badge {
+  display: inline-block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.3px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 2px;
+  cursor: help;
+  white-space: nowrap;
+}
+.lift-strong { color: var(--green);  background: rgba(80, 200, 120, 0.14); border: 1px solid rgba(80, 200, 120, 0.35); }
+.lift-mid    { color: #d3a657;       background: rgba(211, 166, 87, 0.10); border: 1px solid rgba(211, 166, 87, 0.30); }
+.lift-weak   { color: var(--dim);    background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); }
+
+/* Bucket badge — HIGH/MED headline post-2026-05-05 calibrated-cutover.
+   Prepended to the grad row when bucket is set. LOW is hidden so the
+   dashboard stays quiet on the long tail; HIGH/MED is what users act on. */
+.bucket-badge {
+  display: inline-block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: help;
+  white-space: nowrap;
+}
+.bucket-high { color: var(--green); background: rgba(80, 200, 120, 0.18); border: 1px solid rgba(80, 200, 120, 0.55); }
+.bucket-med  { color: #d3a657;      background: rgba(211, 166, 87, 0.14); border: 1px solid rgba(211, 166, 87, 0.45); }
+
+/* X-factor row — visually distinct so it reads as a peer to grad, not a
+   sub-bullet. Slight indent removed; bolder key letter. */
+.odds-xfactor {
+  background: rgba(120, 160, 220, 0.06);
+  border-left: 2px solid rgba(120, 160, 220, 0.5);
+  padding-left: 4px;
+  margin-left: -4px;
+}
+.odds-k-xfactor {
+  color: rgba(120, 160, 220, 0.95);
+  font-weight: 600;
+}
+
+/* Per-tier mini receipt — inline next to the runner_prob value. The * is
+   the observer-derived caveat; tooltip explains. Smaller + dimmer so it
+   doesn't overshadow the grad receipt (which is on-chain-truth). */
+.odds-receipt-mini {
+  font-size: 0.56rem;
+  color: var(--dim);
+  margin-left: 4px;
+  padding: 0 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 2px;
+  cursor: help;
+  letter-spacing: 0.2px;
+}
+
+/* ─── Inline signal badges (creator quality + manufactured pump) ─────── */
+.contract-stack { display: flex; flex-direction: column; gap: 4px; }
+.contract-line { display: flex; align-items: center; gap: 6px; }
+.sig-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.sig-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.4px;
+  border-radius: 3px;
+  border: 1px solid;
+  white-space: nowrap;
+  cursor: help;
+}
+.sig-runner { color: var(--green); border-color: rgba(0,255,157,0.55); background: rgba(0,255,157,0.10); }
+.sig-good   { color: var(--cyan);  border-color: rgba(0,212,255,0.55); background: rgba(0,212,255,0.08); }
+.sig-spam   { color: var(--pink);  border-color: rgba(255,45,146,0.55); background: rgba(255,45,146,0.08); }
+.sig-pump   { color: var(--yellow);border-color: rgba(255,200,0,0.55);  background: rgba(255,200,0,0.08); }
+/* DEX-paid: small green badge — creator has paid for DexScreener Enhanced
+   Token Info ($99-$300). Compact because it's a soft pass/fail signal,
+   not a probability. Shouldn't dominate the row visually. */
+.sig-dex {
+  color: var(--green); border-color: rgba(0,255,157,0.55);
+  background: rgba(0,255,157,0.10);
+  font-size: 0.62rem; padding: 1px 5px;
+  letter-spacing: 0.10em; font-weight: 700;
+}
+/* Live smart-money signal — leaderboard wallets currently positioned in this mint */
+.sig-smart-in {
+  color: var(--green);
+  border-color: rgba(0,255,157,0.85);
+  background: rgba(0,255,157,0.18);
+  box-shadow: 0 0 8px rgba(0,255,157,0.30);
+  font-weight: 700;
+}
+/* Cluster pile-in — coordinated group of smart wallets moving together */
+.sig-cluster {
+  color: #c8a2ff;
+  border-color: rgba(184, 130, 255, 0.65);
+  background: rgba(184, 130, 255, 0.12);
+  font-weight: 600;
+}
+/* Whale-heavy — real money at the top of the buyer list */
+.sig-whale {
+  color: var(--cyan);
+  border-color: rgba(0, 212, 255, 0.65);
+  background: rgba(0, 212, 255, 0.10);
+  font-weight: 600;
+}
+/* Accelerating — vSOL growth is speeding up dramatically */
+.sig-accel {
+  color: var(--yellow, #ffd166);
+  border-color: rgba(255, 209, 102, 0.65);
+  background: rgba(255, 209, 102, 0.10);
+  box-shadow: 0 0 6px rgba(255, 209, 102, 0.25);
+  font-weight: 600;
+}
+
+/* ─── Creator column (track-record stats next to first-buyer wallet) ─── */
+.creator-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  padding-left: 8px;        /* breathing room from trend column */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.creator-cell.up .creator-addr { color: var(--green); }
+.creator-addr { font-weight: 600; }
+.creator-stats { color: var(--dim); font-size: 0.62rem; letter-spacing: 0.3px; }
+
+/* ─── paper P&L panel ─────────────────────────────────────────────────── */
+.paper-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.paper-card {
+  background: linear-gradient(180deg, rgba(0,240,255,0.04), rgba(0,0,0,0.20));
+  border: 1px solid rgba(0,240,255,0.18);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.paper-card-head {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 2.8px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0,240,255,0.18);
+}
+.paper-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.84rem;
+  padding: 3px 0;
+}
+.paper-k {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+}
+.paper-v { color: var(--text); text-align: right; }
+.paper-v.up   { color: var(--green); }
+.paper-v.down { color: var(--pink); }
+.paper-v.muted { color: var(--muted); }
+
+.paper-state {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+}
+.paper-state.up    { background: rgba(0,255,157,0.10); color: var(--green); border:1px solid rgba(0,255,157,0.45); }
+.paper-state.down  { background: rgba(255,45,146,0.10); color: var(--pink);  border:1px solid rgba(255,45,146,0.45); }
+.paper-state.muted { background: rgba(255,255,255,0.04); color: var(--muted); border:1px solid rgba(255,255,255,0.12); }
+.paper-state.open  { background: rgba(0,240,255,0.10); color: var(--cyan); border:1px solid rgba(0,240,255,0.45); }
+
+/* paper bankroll headline */
+.paper-bankroll {
+  margin: -2px 0 12px;
+  padding: 10px 12px;
+  background: rgba(0,255,157,0.04);
+  border: 1px solid rgba(0,255,157,0.18);
+  border-radius: 4px;
+}
+.paper-bankroll-line {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.paper-bankroll-now {
+  text-shadow: 0 0 8px currentColor;
+}
+.paper-bankroll-sub {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+.paper-bankroll-sub.up   { color: var(--green); }
+.paper-bankroll-sub.down { color: var(--pink); }
+
+/* ─── inline details toggle ──────────────────────────────────────────── */
+.details-toggle {
+  margin-left: 8px;
+  background: transparent;
+  border: 1px solid rgba(0,240,255,0.30);
+  color: var(--cyan);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 0.7rem;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.details-toggle:hover {
+  background: rgba(0,240,255,0.08);
+  border-color: rgba(0,240,255,0.6);
+}
+.details-toggle.expanded { background: rgba(0,240,255,0.12); border-color: rgba(0,240,255,0.6); }
+
+.panel-details {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(0,240,255,0.04);
+  border: 1px solid rgba(0,240,255,0.18);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.panel-details p { margin: 0 0 8px; }
+.panel-details p:last-child { margin-bottom: 0; }
+
+.strat-sl-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  vertical-align: 1px;
+}
+.strat-sl-badge.sl-on  { background: rgba(255,45,146,0.10); color: var(--pink); border:1px solid rgba(255,45,146,0.35); }
+.strat-sl-badge.sl-off { background: rgba(255,255,255,0.04); color: var(--muted); border:1px solid rgba(255,255,255,0.15); }
+
+/* ─── meta strip · ticker container ─────────────────────────────────── */
+.meta-strip {
+  margin: 14px 40px 0;
+}
+@media (max-width: 768px) {
+  .meta-strip { margin-left: 18px; margin-right: 18px; }
+}
+
+/* ─── API-demo ALERT · prominent, alert-style block right under the
+       header. Pulsing dot, gradient bg, hardened CTA button. Unmissable
+       framing that "the API is the product, this is just a demo." */
+.api-demo-alert {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin: 18px 40px 16px;
+  padding: 14px 22px;
+  background: linear-gradient(90deg,
+    rgba(255,45,146,0.18) 0%,
+    rgba(213,0,255,0.12) 50%,
+    rgba(0,212,255,0.08) 100%);
+  border: 1px solid rgba(255,45,146,0.45);
+  border-radius: 5px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  flex-wrap: wrap;
+  box-shadow: 0 0 22px rgba(255,45,146,0.10);
+}
+
+/* Acceptance-gates banner (Finding 7/8 chain).
+   Surfaces when an active pre-registered acceptance gate is running.
+   Sits between the header and the hero. Hidden by default; app.js
+   shows it when /api/status.acceptance_gates is non-empty. */
+.acceptance-banner {
+  margin: 12px 16px 0;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 200, 100, 0.32);
+  border-radius: 6px;
+  background: linear-gradient(90deg,
+    rgba(255, 200, 100, 0.08) 0%,
+    rgba(255, 200, 100, 0.02) 100%);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: rgba(255, 220, 170, 0.95);
+}
+.acceptance-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.acceptance-banner-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 200, 100, 0.85);
+  box-shadow: 0 0 8px rgba(255, 200, 100, 0.6);
+  flex-shrink: 0;
+}
+.acceptance-banner-text {
+  flex: 1;
+  min-width: 220px;
+}
+.acceptance-banner-link {
+  color: rgba(0, 240, 255, 0.95);
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.acceptance-banner-link:hover {
+  color: rgba(0, 240, 255, 1);
+  text-decoration: underline;
+}
+
+/* Hero pitch — compact single-row layout. Big stat on the left,
+   tagline + detail beside it, CTAs on the right. Coexists with the
+   "API DEMO" callout below — this is the value prop, that's the
+   product-identity callout. */
+.hero-pitch.hero-pitch-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin: 18px 40px 12px;
+  padding: 18px 26px;
+  background: linear-gradient(135deg,
+    rgba(80, 200, 120, 0.08) 0%,
+    rgba(0, 240, 255, 0.04) 100%);
+  border: 1px solid rgba(80, 200, 120, 0.35);
+  border-radius: 6px;
+  box-shadow: 0 0 24px rgba(80, 200, 120, 0.08);
+}
+.hero-pitch-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1;
+  min-width: 320px;
+}
+.hero-pitch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hero-pitch-tagline {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: 0.05em;
+  color: var(--cyan);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.hero-pitch-stat-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.hero-pitch-stat-tag {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--cyan);
+  opacity: 0.78;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.hero-pitch-stat-num {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 3rem;
+  font-weight: 900;
+  color: #7ef0a3;
+  text-shadow: 0 0 18px rgba(80, 200, 120, 0.4);
+  line-height: 1;
+  flex-shrink: 0;
+}
+/* Warming state — when the live rate isn't publishable yet. Same visual
+   weight as the /accuracy page's warming treatment so users get a
+   consistent answer on both surfaces. */
+.hero-pitch-stat-num[data-mode="warming"] {
+  font-size: 1.9rem;
+  color: #d3a657;
+  text-shadow: none;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.hero-pitch-detail {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.84rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+.hero-pitch-detail strong {
+  color: #7ef0a3;
+  font-weight: 700;
+}
+.hero-pitch-cta-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.hero-pitch-cta {
+  display: inline-block;
+  padding: 8px 14px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: transform 0.1s, box-shadow 0.15s;
+}
+.hero-pitch-cta:hover { transform: translateY(-1px); }
+.hero-pitch-cta-primary {
+  background: rgba(80, 200, 120, 0.85);
+  color: #0a0a0a;
+  border: 1px solid rgba(80, 200, 120, 1);
+  box-shadow: 0 0 18px rgba(80, 200, 120, 0.4);
+}
+.hero-pitch-cta-primary:hover {
+  background: #7ef0a3;
+  box-shadow: 0 0 26px rgba(80, 200, 120, 0.6);
+}
+.hero-pitch-cta-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+}
+.hero-pitch-cta-secondary:hover {
+  background: rgba(0, 240, 255, 0.10);
+  border-color: rgba(0, 240, 255, 0.7);
+}
+
+/* Hero extras — secondary ≥70% HITS surfaced under the featured one.
+   Compact horizontal strips, clickable, opens the same detail popup. */
+.hero-extras {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(80, 200, 120, 0.25);
+}
+.hero-extras-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  color: var(--cyan);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.hero-extra {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: rgba(80, 200, 120, 0.04);
+  border: 1px solid rgba(80, 200, 120, 0.20);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  text-align: left;
+  color: var(--text);
+}
+.hero-extra:hover {
+  background: rgba(80, 200, 120, 0.10);
+  border-color: rgba(80, 200, 120, 0.45);
+}
+.hero-extra-prob {
+  font-weight: 700;
+  color: #7ef0a3;
+  font-size: 0.95rem;
+  min-width: 50px;
+}
+.hero-extra-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero-extra-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* Dash explainer — orientation for the live table below. Tighter than
+   the hero, just tells the user what the colors and bands mean. */
+.dash-explainer {
+  margin: 0 40px 14px;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.dash-explainer-body strong {
+  color: var(--cyan);
+}
+.api-demo-alert-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.api-demo-pulse {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--pink);
+  box-shadow: 0 0 8px var(--pink), 0 0 14px rgba(255,45,146,0.45);
+  animation: api-demo-pulse 1.6s ease-in-out infinite;
+}
+@keyframes api-demo-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.78); }
+}
+.api-demo-alert-tag {
+  font-weight: 800;
+  font-size: 0.74rem;
+  letter-spacing: 0.22em;
+  color: var(--pink);
+  text-transform: uppercase;
+}
+.api-demo-alert-body {
+  flex: 1 1 320px;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.api-demo-alert-body code {
+  background: rgba(0,212,255,0.12);
+  border: 1px solid rgba(0,212,255,0.30);
+  padding: 2px 7px;
+  border-radius: 3px;
+  color: var(--cyan);
+  font-size: 0.84rem;
+}
+.api-demo-alert-cta {
+  display: inline-block;
+  color: #000;
+  background: var(--cyan);
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: all 0.15s;
+  box-shadow: 0 0 14px rgba(0,212,255,0.40);
+}
+.api-demo-alert-cta:hover {
+  background: #fff;
+  box-shadow: 0 0 18px rgba(0,212,255,0.65);
+  transform: translateY(-1px);
+}
+
+/* ─── Global pitch — promoted product-level headline above the tabs ── */
+.global-pitch {
+  margin: 22px 40px 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.global-pitch h2 {
+  font-family: 'Orbitron', system-ui, sans-serif;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  background: linear-gradient(90deg, var(--cyan), var(--pink), var(--magenta));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.global-pitch p {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 880px;
+}
+@media (max-width: 768px) {
+  .api-demo-alert { margin-left: 18px; margin-right: 18px; padding: 12px 14px; flex-direction: column; align-items: stretch; gap: 12px; }
+  .api-demo-alert-cta { width: 100%; text-align: center; }
+  .global-pitch { margin-left: 18px; margin-right: 18px; }
+  .global-pitch h2 { font-size: 1.15rem; }
+}
+
+/* ─── proven-accuracy ticker ─────────────────────────────────────────── */
+.cal-ticker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  margin: 0 0 18px;
+  background: linear-gradient(90deg, rgba(0,255,157,0.06), rgba(0,240,255,0.05), rgba(213,0,255,0.04));
+  border: 1px solid rgba(0,255,157,0.30);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.84rem;
+  position: relative;
+  overflow: hidden;
+}
+.cal-ticker[data-state="warming"] { opacity: 0.55; border-color: var(--border); }
+
+.cal-ticker-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 2.8px;
+  color: var(--green);
+  text-shadow: 0 0 6px rgba(0,255,157,0.40);
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(0,255,157,0.50);
+  border-radius: 2px;
+  background: rgba(0,255,157,0.08);
+}
+.cal-ticker-content {
+  flex: 1;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+.cal-ticker-content .cal-rate {
+  color: var(--green);
+  text-shadow: 0 0 8px rgba(0,255,157,0.45);
+  font-size: 1.05em;
+}
+.cal-ticker-content .cal-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-left: 4px;
+}
+.cal-ticker-content .cal-chip {
+  display: inline-block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  margin-right: 8px;
+  color: var(--cyan);
+  background: rgba(0,212,255,0.10);
+  border: 1px solid rgba(0,212,255,0.45);
+  vertical-align: 1px;
+}
+.cal-ticker-content .cal-chip-runner {
+  color: var(--green);
+  background: rgba(0,255,157,0.10);
+  border-color: rgba(0,255,157,0.55);
+}
+.cal-ticker-method {
+  flex: 0 0 auto;
+  color: var(--cyan);
+  text-decoration: none;
+  font-size: 0.72rem;
+  letter-spacing: 1.2px;
+  padding: 3px 7px;
+  border: 1px solid rgba(0,240,255,0.30);
+  border-radius: 2px;
+  transition: all 120ms;
+}
+.cal-ticker-method:hover {
+  background: rgba(0,240,255,0.10);
+  border-color: rgba(0,240,255,0.55);
+}
+
+@media (max-width: 760px) {
+  .cal-ticker { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 14px; }
+  .api-demo-banner { flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 14px; }
+  .api-demo-cta { width: 100%; text-align: center; }
+  .cal-ticker-content { font-size: 0.78rem; }
+}
+.cal-source {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  border-radius: 2px;
+  background: rgba(0,240,255,0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(0,240,255,0.40);
+  vertical-align: 1px;
+}
+
+/* ─── live board sort + filter controls ───────────────────────────────────
+   Sits above the live feed table. Sort modes affect display only, not the
+   model's per-mint commitments. */
+.board-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  align-items: center;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+.board-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.board-controls-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.board-controls-select {
+  background: rgba(0,0,0,0.4);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.board-controls-select:hover,
+.board-controls-select:focus {
+  border-color: rgba(0,240,255,0.45);
+}
+.board-controls-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  transition: color 120ms ease;
+}
+.board-controls-toggle:hover {
+  color: var(--text);
+}
+.board-controls-toggle input[type="checkbox"] {
+  accent-color: var(--cyan, #00f0ff);
+  cursor: pointer;
+  margin: 0;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   MOBILE OPTIMIZATIONS — 2026-06-13
+   Targets: ≤760px (tablets + phones), ≤480px (small phones).
+   Cleans up: hero pitch crush, nav crowding, big stat overflow, table scroll.
+   Pages w/ inline <style> blocks (/cli, /cli-link) have their own @media
+   inside their own templates — this block does NOT cover those.
+   ════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 760px) {
+  /* ── Header / nav: tighter spacing + smaller font on phones ─────── */
+  header {
+    padding: 10px 14px !important;
+  }
+  .head-nav {
+    flex-wrap: wrap;
+    gap: 6px !important;
+    justify-content: center;
+  }
+  .head-link {
+    font-size: 0.66rem !important;
+    padding: 4px 8px !important;
+    letter-spacing: 0.06em !important;
+  }
+  .head-x-link { display: none !important; }
+  .brand .tagline { display: none; }
+
+  /* ── Hero pitch: stack stat + text vertically on phones ─────────── */
+  .hero-pitch.hero-pitch-compact {
+    margin: 14px 14px 10px !important;
+    padding: 14px 16px !important;
+    gap: 14px !important;
+  }
+  .hero-pitch-left {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    min-width: 0 !important;
+    gap: 10px !important;
+    width: 100%;
+  }
+  .hero-pitch-stat-wrap {
+    width: 100%;
+  }
+  .hero-pitch-stat-num {
+    font-size: 2.4rem !important;
+  }
+  .hero-pitch-stat-num[data-mode="warming"] {
+    font-size: 1.4rem !important;
+  }
+  .hero-pitch-tagline {
+    font-size: 0.82rem !important;
+    line-height: 1.4;
+  }
+  .hero-pitch-detail {
+    font-size: 0.78rem !important;
+    line-height: 1.45;
+  }
+  .hero-pitch-cta-row {
+    width: 100%;
+  }
+  .hero-pitch-cta {
+    flex: 1;
+    text-align: center;
+    font-size: 0.76rem !important;
+  }
+
+  /* ── Tables: horizontal scroll instead of overflow-clip ─────────── */
+  table.simple {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  /* ── Header: ditch tagline + shrink logo on very small phones ───── */
+  .logo {
+    font-size: 1.1rem !important;
+  }
+  .logo-oracle {
+    font-size: 0.5rem !important;
+    letter-spacing: 0.4em !important;
+  }
+  /* Stat numbers a tick smaller again on tiny screens */
+  .hero-pitch-stat-num {
+    font-size: 2rem !important;
+  }
+  .head-nav {
+    gap: 4px !important;
+  }
+  .head-link {
+    font-size: 0.62rem !important;
+    padding: 3px 6px !important;
+  }
+}
