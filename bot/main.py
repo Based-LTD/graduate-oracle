@@ -2388,13 +2388,22 @@ def _format_composite_alert(snap: dict, msg_extra: str) -> str:
     mc = snap.get("mc_at_cross_usd") or 0
     gp_60 = snap.get("grad_prob_60")
     gp_str = f"{gp_60*100:.1f}%" if gp_60 is not None else "—"
+    is_starred = bool(snap.get("is_starred"))
 
     # Tier semantics retuned 2026-05-15 (3-tier, peak≥5× = primary metric).
     # Rates are back-test projections under forward-validation — labelled
     # honestly as such, not stated as proven live numbers (n=7 retraction
     # discipline). SCOUT is the recall tier: surfaced so it's not missed,
     # user's eye is the precision filter.
-    if tier == "ACT":
+    #
+    # Day 4.83 — when starred, header leads with ★ ALPHA so the
+    # premium signal is immediately recognizable. Tier label kept after
+    # for transparency (which underlying tier got promoted).
+    if is_starred:
+        header = f"★ *ALPHA* — {title}"
+        conviction_line = (f"*{gp_str}* chance to graduate  ·  "
+                           f"_algo-picked: 3+ elite smart-money in (1.4× lift)_")
+    elif tier == "ACT":
         header = f"⚡ *ACT* — {title}"
         conviction_line = f"*{gp_str}* chance to graduate  ·  _~71% of these hit 5×_"
     elif tier == "SCOUT":
