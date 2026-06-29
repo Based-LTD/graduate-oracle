@@ -636,15 +636,23 @@ def _enrich_mint(m: dict, rug_features_prefetched: Optional[dict] = None) -> tup
     # are *currently in* a mint, that's a signal competitors can't replicate
     # without our own multi-week wallet index.
     n_smart_in = 0
+    n_elite_in = 0   # Day 4.82 — wallets with smart_score >= 0.70.
+                     # Backtest (n=1444 resolved): n_elite >= 3 cohort
+                     # graduates at 29.6% vs n_elite == 0 at 1.5%. This
+                     # is the new ★ ALPHA gate (replaces smart_money_in 3-9).
     smart_in_examples: list[str] = []
     if top_buyers and WINTEL is not None:
         for w in top_buyers:
             r = WINTEL._wallets.get(w)
             if not r: continue
-            if (r.get("total", 0) or 0) >= 8 and (r.get("smart_score", 0) or 0) >= 0.30:
+            total = r.get("total", 0) or 0
+            score = r.get("smart_score", 0) or 0
+            if total >= 8 and score >= 0.30:
                 n_smart_in += 1
                 if len(smart_in_examples) < 3:
                     smart_in_examples.append(w)
+            if total >= 8 and score >= 0.70:
+                n_elite_in += 1
 
     bot_flags = []
     if last_trade_age >= 15:
@@ -972,6 +980,7 @@ def _enrich_mint(m: dict, rug_features_prefetched: Optional[dict] = None) -> tup
     # (smart_money_in) remains public — that's the signal-layer the
     # receipts trail depends on; the addresses behind it are the moat.
     m_out["smart_money_in"]       = n_smart_in
+    m_out["n_elite_in"]           = n_elite_in
     m_out["smart_money_examples"] = []
     m_out["is_suspect"] = is_suspect
     m_out["bot_flags"] = bot_flags

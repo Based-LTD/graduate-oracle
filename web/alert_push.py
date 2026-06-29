@@ -447,7 +447,7 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
                            AND tg_tier IN ('WATCH','SCOUT')
                            AND threshold_at_cross > 0
                            AND (composite_score/threshold_at_cross) >= 3.0
-                           AND smart_money_in BETWEEN 3 AND 9
+                           AND n_elite_in >= 3
                     """).fetchone()["n"]
                 star_prefix = f"★ ALPHA #{today_n + 1} · "
             except Exception:

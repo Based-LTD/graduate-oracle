@@ -123,6 +123,9 @@ def _ensure_schema(c: sqlite3.Connection) -> None:
             "ALTER TABLE composite_predictions ADD COLUMN tg_pushed_at INTEGER",
             "ALTER TABLE composite_predictions ADD COLUMN tg_tier TEXT",
             "ALTER TABLE composite_predictions ADD COLUMN tier_logic_version TEXT",
+            # Day 4.82 — count of wallets with smart_score >= 0.70 in at cross.
+            # New ★ ALPHA gate. NULL on legacy rows; populated going forward.
+            "ALTER TABLE composite_predictions ADD COLUMN n_elite_in INTEGER",
         ):
             try:
                 c.execute(stmt)
@@ -329,6 +332,7 @@ def maybe_log_crossings(enriched_mints: list[dict]) -> None:
                 float(m.get("max_mult") or 1.0),
                 int(m.get("age_s") or 0),
                 mc_usd_f,
+                int(m.get("n_elite_in") or 0),  # Day 4.82
             ))
         except Exception as e:
             print(f"[composite_predictions] cross-build skipped for "
@@ -348,8 +352,8 @@ def maybe_log_crossings(enriched_mints: list[dict]) -> None:
                     INSERT OR IGNORE INTO composite_predictions
                         (mint, predicted_at, composite_score, threshold_at_cross,
                          smart_money_in, max_mult_at_cross, age_s_at_cross,
-                         mc_at_cross_usd)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         mc_at_cross_usd, n_elite_in)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, row)
                 if cur.rowcount > 0:
                     inserted.append(row)
@@ -434,7 +438,7 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
             rows = c.execute("""
                 SELECT mint, predicted_at, composite_score, threshold_at_cross,
                        smart_money_in, max_mult_at_cross, age_s_at_cross,
-                       mc_at_cross_usd
+                       mc_at_cross_usd, n_elite_in
                   FROM composite_predictions
                  WHERE tg_pushed_at IS NULL
                    AND predicted_at > ?
@@ -514,22 +518,27 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                     #
                     # Earlier filters (Day 4.68): tier in WATCH/SCOUT, sr≥3,
                     # SM 3-9. Those stand. This narrows the MC band.
-                    # Day 4.74 REVERT — back to 4.68 criteria.
-                    # Both 4.72 (MC $10-15K) and 4.73 (manufactured_pump=1)
-                    # were backtest-driven tightenings that produced -33.7%
-                    # avg PnL on n=8 in live 24h validation, vs backtest
-                    # projection of +19%. Reverting to broader criteria.
-                    # Lesson: peak_mult_24h-based backtest doesn't capture
-                    # real trade execution (slippage, MEV, path-dependent
-                    # SL-before-TP). Small-sample iteration chases noise.
+                    # Day 4.82 ★ ALPHA REBUILD on wallet quality.
+                    # New gate: tier in WATCH/SCOUT + sr >= 3 + n_elite_in >= 3
+                    # where elite = wallet with total >= 8 AND smart_score >= 0.70.
+                    #
+                    # Backtest (n=1,444 resolved crosses, observer dataset):
+                    #   n_elite >= 3:  29.6% grad rate, 1.45x avg fwd peak
+                    #   n_elite == 0:   1.5% grad rate (noise)
+                    # 1.42x lift over previous baseline; 19x over n_elite=0 cohort.
+                    #
+                    # Replaces the old `smart_money_in 3-9` count which treated
+                    # marginal (0.30-0.50 smart_score) wallets equal to elite
+                    # (0.70+). Backtest showed 62% of count-qualifying wallets
+                    # were marginal — admitting noise as signal.
                     is_starred = False
                     if tier in ("WATCH", "SCOUT"):
                         try:
                             thr  = float(r["threshold_at_cross"] or 0)
                             comp = float(r["composite_score"] or 0)
-                            sm   = r["smart_money_in"]
+                            elite = r["n_elite_in"]  # NULL on pre-4.82 rows
                             sr   = (comp / thr) if thr > 0 else 0
-                            if sr >= 3.0 and sm is not None and 3 <= sm <= 9:
+                            if sr >= 3.0 and elite is not None and elite >= 3:
                                 is_starred = True
                         except Exception:
                             pass
