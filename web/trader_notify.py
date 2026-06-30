@@ -144,21 +144,42 @@ def notify_position_closed(telegram_id: str | int, position_id: int) -> bool:
         sign       = "🟢" if net >= 0 else "🔴"
         verdict    = "*PROFIT*" if net >= 0 else "*LOSS*"
 
-        # Optional MC delta block
+        # Day 4.86 — show which TP rungs hit. next_tp_index is incremented
+        # each time a TP rung fires, so its final value equals the count of
+        # TPs that executed across the lifetime of this position.
+        n_tp_hit = int(row.get("next_tp_index") or 0)
+        if n_tp_hit > 0:
+            tp_label = " (" + "/".join(f"TP{i+1}" for i in range(n_tp_hit)) + ")"
+        else:
+            tp_label = ""
+
+        # Day 4.86 — MC in USD (matches alert/portfolio convention)
         mc_block = ""
         entry_mc = row.get("entry_mcap_lamports")
         exit_mc  = row.get("exit_mcap_lamports")
         if entry_mc and exit_mc:
             mc_change = (exit_mc - entry_mc) / entry_mc * 100
             mc_arrow  = "📈" if mc_change >= 0 else "📉"
-            mc_block  = (f"\n\n📊 *MC:* {entry_mc/1e9:.1f} SOL → "
-                         f"{exit_mc/1e9:.1f} SOL  {mc_arrow} *{mc_change:+.1f}%*")
+            try:
+                import jupiter_price as _jp
+                sol_usd = _jp.get_sol_usd()
+            except Exception:
+                sol_usd = None
+            if sol_usd:
+                entry_usd = (entry_mc / 1e9) * sol_usd
+                exit_usd  = (exit_mc  / 1e9) * sol_usd
+                mc_block = (f"\n\n📊 *MC:* ${entry_usd:,.0f} → "
+                            f"${exit_usd:,.0f}  {mc_arrow} *{mc_change:+.1f}%*")
+            else:
+                # Fall back to SOL if USD price cache cold
+                mc_block = (f"\n\n📊 *MC:* {entry_mc/1e9:.1f} SOL → "
+                            f"{exit_mc/1e9:.1f} SOL  {mc_arrow} *{mc_change:+.1f}%*")
 
         text = (
             f"✅ *Position #{position_id} closed* — {short_mint}\n\n"
             f"📊 *PnL summary (all legs):*\n"
             f"  Cost basis: *{buy:.4f}* SOL\n"
-            f"  Got back:   *{sell_total:.4f}* SOL\n"
+            f"  Got back:   *{sell_total:.4f}* SOL{tp_label}\n"
             + (f"  Fees:      −*{fees:.5f}* SOL\n" if fees > 0 else "")
             + f"  ───────────────────\n"
             f"  {sign} Net: *{net:+.4f}* SOL  ({net_pct:+.2f}%)  ← {verdict}"
