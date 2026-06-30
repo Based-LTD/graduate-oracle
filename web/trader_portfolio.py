@@ -109,9 +109,30 @@ def value_position(pos: dict, *, slippage_bps: int = 500,
         out["valuation_error"] = "Jupiter quoted zero value"
         return out
 
-    pnl = current - int(buy_lamports)
+    # Day 4.84 — correct PnL math for partial-sell positions.
+    # Before: pnl = quote_for_remaining - original_full_cost. Bug — after a
+    # partial TP fires the position has fewer tokens and the quote shrinks,
+    # while buy_lamports stays at original full cost → position looked
+    # underwater even when realized + remaining > cost.
+    # After: total_value = realized_proceeds + quote_for_remaining;
+    #        pnl = total_value - original_cost. Captures partial-leg wins.
+    realized = int(pos.get("sell_sol_lamports") or 0)
+    total_value = current + realized
+    pnl = total_value - int(buy_lamports)
     pct = pnl / float(buy_lamports)
+
     route = [step["swapInfo"]["label"] for step in q.get("routePlan") or []]
+    # Symbol + entry-MC enrichment for portfolio display (user-requested 2026-06-29)
+    try:
+        import metadata as _meta
+        meta = _meta.enrich(pos["mint"]) or {}
+        out["symbol"] = meta.get("symbol")
+        out["name"]   = meta.get("name")
+    except Exception:
+        out["symbol"] = None
+        out["name"]   = None
+    out["entry_mcap_lamports"]        = pos.get("entry_mcap_lamports")
+    out["realized_sol_lamports"]      = realized
     out["current_sol_value_lamports"] = current
     out["unrealized_pnl_lamports"]    = pnl
     out["unrealized_pnl_pct"]         = pct
@@ -187,12 +208,12 @@ def portfolio_summary(user_id: str | int, *, slippage_bps: int = 500) -> dict:
     n_quoted = len(quoted)
 
     cost = sum(p.get("buy_sol_lamports") or 0 for p in enriched)
+    # Day 4.84 — header totals also include realized proceeds from partial sells.
     value = sum(p["current_sol_value_lamports"] for p in quoted)
-    # Only positions we can value count toward the PnL totals. Positions
-    # with valuation_error contribute nothing — we surface that honestly
-    # rather than hide it behind a "the rest are worth zero" assumption.
-    pnl = value - sum(p["buy_sol_lamports"] for p in quoted)
-    pct = (pnl / sum(p["buy_sol_lamports"] for p in quoted)) if quoted else 0.0
+    realized_total = sum((p.get("realized_sol_lamports") or 0) for p in quoted)
+    total_quoted_cost = sum(p["buy_sol_lamports"] for p in quoted)
+    pnl = (value + realized_total) - total_quoted_cost
+    pct = (pnl / total_quoted_cost) if total_quoted_cost else 0.0
 
     return {
         "n_open":                          n_open,

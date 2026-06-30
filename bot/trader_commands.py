@@ -358,20 +358,32 @@ def _format_portfolio(summary: dict) -> str:
     for p in summary["positions"][:15]:
         mint = p["mint"]
         mint_short = mint[:6] + "…" + mint[-4:]
-        # Clickable Dexscreener link — tap mint to open the chart
-        mint_link = f"[{mint_short}](https://dexscreener.com/solana/{mint})"
+        # Day 4.84 — show symbol if we have it, else the mint shortcode
+        symbol = p.get("symbol")
+        label = f"${symbol}" if symbol else mint_short
+        mint_link = f"[{label}](https://dexscreener.com/solana/{mint})"
         pid = p["id"]
         cost = p["buy_sol_lamports"] / 1e9
+        # Day 4.84 — entry MC sub-line (user-requested)
+        entry_mc_lp = p.get("entry_mcap_lamports")
+        if entry_mc_lp:
+            entry_mc_sol = entry_mc_lp / 1e9
+            entry_mc_line = f" · _entry MC {entry_mc_sol:.1f} SOL_"
+        else:
+            entry_mc_line = ""
         if p["current_sol_value_lamports"] is None:
-            out.append(f"`#{pid}` {mint_link}  ·  *{cost:.4f}* SOL  ·  _no quote_")
+            out.append(f"`#{pid}` {mint_link}  ·  *{cost:.4f}* SOL  ·  _no quote_{entry_mc_line}")
         else:
             now = p["current_sol_value_lamports"] / 1e9
+            realized = (p.get("realized_sol_lamports") or 0) / 1e9
             pnl = p["unrealized_pnl_lamports"] / 1e9
             pct = p["unrealized_pnl_pct"] * 100
             arrow = "📈" if pnl > 0 else "📉"
+            # Show partial-realized in the line if any TPs have fired
+            partial_str = f" + {realized:.3f} realized" if realized > 0 else ""
             out.append(
                 f"`#{pid}` {mint_link}  {arrow} *{pct:+.0f}%*  ·  "
-                f"{cost:.3f}→{now:.3f} SOL ({pnl:+.4f})"
+                f"{cost:.3f}→{now:.3f} SOL{partial_str} ({pnl:+.4f}){entry_mc_line}"
             )
     return "\n".join(out)
 
