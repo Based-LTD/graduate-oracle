@@ -260,7 +260,11 @@ def _kb_tp_rung_editor(s: dict, idx: int) -> InlineKeyboardMarkup:
         tag = " ✓" if g == int(rung["pct"]) else ""
         btn = InlineKeyboardButton(f"+{g}%{tag}",
             callback_data=f"s:trg:{idx}:{g}")
-        (gain_row1 if j < 3 else gain_row2).append(btn)
+        (gain_row1 if j < 4 else gain_row2).append(btn)
+    # Day 4.85 — Custom gain input (user-requested)
+    gain_row2.append(InlineKeyboardButton(
+        "✏️ Custom", callback_data=f"s:tcust:{idx}:gain",
+    ))
     # Sell row
     sell_row = []
     for s_pct in TP_SELL_PRESETS:
@@ -269,6 +273,10 @@ def _kb_tp_rung_editor(s: dict, idx: int) -> InlineKeyboardMarkup:
             f"{s_pct}%{tag}",
             callback_data=f"s:trs:{idx}:{s_pct}",
         ))
+    # Day 4.85 — Custom sell input
+    sell_row.append(InlineKeyboardButton(
+        "✏️", callback_data=f"s:tcust:{idx}:sell",
+    ))
     return InlineKeyboardMarkup([
         gain_row1, gain_row2, sell_row,
         [InlineKeyboardButton("🗑 Remove", callback_data=f"s:tx:{idx}"),
@@ -835,6 +843,34 @@ async def cb_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 ladder.pop(idx)
                 trader_positions.set_user_settings(uid, tp_ladder=ladder)
             return await _render(q, uid, "t")
+
+        # Day 4.85 — custom TP value entry (user-requested 2026-06-29)
+        if screen == "tcust" and len(parts) >= 4:
+            idx = int(parts[2])
+            kind = parts[3]  # "gain" or "sell"
+            if kind not in ("gain", "sell"):
+                return await _render(q, uid, f"tr:{idx}")
+            ctx.user_data["tp_custom_idx"] = idx
+            ctx.user_data["tp_custom_kind"] = kind
+            ctx.user_data["tp_custom_state"] = "awaiting"
+            if kind == "gain":
+                prompt = (
+                    f"✏️ *Custom TP{idx+1} gain target*\n\n"
+                    f"Reply with a number (percent gain).\n"
+                    f"Examples: `75`, `150`, `333`, `2000`\n\n"
+                    f"_Reply `cancel` to abort._"
+                )
+            else:
+                prompt = (
+                    f"✏️ *Custom TP{idx+1} sell percent*\n\n"
+                    f"Reply with what % of REMAINING position to sell.\n"
+                    f"Examples: `15`, `40`, `66`, `90`\n\n"
+                    f"_Reply `cancel` to abort._"
+                )
+            await q.edit_message_text(
+                prompt, parse_mode=constants.ParseMode.MARKDOWN,
+            )
+            return
 
         if screen == "ta":
             s = trader_positions.get_user_settings(uid)
@@ -1556,6 +1592,74 @@ async def cb_hub(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── Registration ────────────────────────────────────────────────────────
 
+async def handle_custom_tp_value(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Day 4.85 — text-input handler for ✏️ Custom TP gain/sell entry.
+    Only fires when user_data['tp_custom_state'] == 'awaiting'."""
+    if not update.message or not update.message.text:
+        return
+    if (ctx.user_data or {}).get("tp_custom_state") != "awaiting":
+        return
+    text = update.message.text.strip()
+    if text.lower() == "cancel":
+        ctx.user_data.pop("tp_custom_state", None)
+        ctx.user_data.pop("tp_custom_idx", None)
+        ctx.user_data.pop("tp_custom_kind", None)
+        await update.message.reply_text("✖️ Cancelled.")
+        raise ApplicationHandlerStop
+
+    kind = ctx.user_data.get("tp_custom_kind")
+    idx  = ctx.user_data.get("tp_custom_idx")
+    try:
+        val = float(text)
+    except ValueError:
+        await update.message.reply_text(
+            "Not a number. Try again or `cancel`.",
+        )
+        raise ApplicationHandlerStop
+
+    # Sanity ranges
+    if kind == "gain":
+        if not (1 <= val <= 100000):
+            await update.message.reply_text(
+                "Out of range. Gain must be 1 to 100000 (percent). Try again or `cancel`.",
+            )
+            raise ApplicationHandlerStop
+    else:  # sell
+        if not (1 <= val <= 100):
+            await update.message.reply_text(
+                "Out of range. Sell percent must be 1 to 100. Try again or `cancel`.",
+            )
+            raise ApplicationHandlerStop
+
+    uid = str(update.effective_user.id)
+    import trader_positions as _tp
+    s = _tp.get_user_settings(uid)
+    ladder = list(s["tp_ladder"])
+    if idx is None or idx >= len(ladder):
+        ctx.user_data.pop("tp_custom_state", None)
+        await update.message.reply_text("That rung no longer exists.")
+        raise ApplicationHandlerStop
+
+    ladder[idx] = dict(ladder[idx])
+    if kind == "gain":
+        ladder[idx]["pct"] = int(val) if val == int(val) else val
+    else:
+        ladder[idx]["sell_pct"] = int(val) if val == int(val) else val
+    _tp.set_user_settings(uid, tp_ladder=ladder)
+
+    ctx.user_data.pop("tp_custom_state", None)
+    ctx.user_data.pop("tp_custom_idx", None)
+    ctx.user_data.pop("tp_custom_kind", None)
+    label = "gain target" if kind == "gain" else "sell percent"
+    unit = "%" if kind == "gain" else "% of remaining"
+    await update.message.reply_text(
+        f"✅ TP{idx+1} {label} set to *{val:g}{unit}*.\n\n"
+        "Open `/trader → ⚙️ Settings → 🎯 TP Ladder` to verify.",
+        parse_mode=constants.ParseMode.MARKDOWN,
+    )
+    raise ApplicationHandlerStop
+
+
 async def handle_custom_buy_amount(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Text-input handler for the ✏️ Custom buy-amount picker.
     Only fires when user_data['bs_state'] == 'awaiting_custom'. Otherwise
@@ -1624,6 +1728,13 @@ def register(app: Application, admin_ids: set[int]):
     # before default handlers, but it's a no-op unless bs_state is set.
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_buy_amount),
+        group=-10,
+    )
+    # Day 4.85 — custom TP value handler (gain or sell %).
+    # Same priority group so it runs before generic text handlers; the
+    # function itself returns silently unless tp_custom_state is set.
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_tp_value),
         group=-10,
     )
     print(f"[trader_setup] hub + settings registered (admin_ids={len(_admin_ids)})", flush=True)
