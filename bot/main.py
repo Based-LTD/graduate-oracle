@@ -2421,8 +2421,50 @@ def _format_composite_alert(snap: dict, msg_extra: str) -> str:
         # signal moment forward (we sell measurement, not window-dressing).
         f"smart-money *{smart}* in  ·  age *{age_s}s*  ·  *${mc:,.0f}* MC",
         f"composite *{score:.1f}* ({ratio:.2f}× threshold)",
-        f"`{mint}`",
     ]
+
+    # Day 4.87 — creator scam-history flag (community-requested)
+    ch = snap.get("creator_summary") or {}
+    if ch and ch.get("n_launches"):
+        n_launches = int(ch.get("n_launches") or 0)
+        grad_rate = float(ch.get("grad_rate") or 0) * 100
+        rate_5x   = float(ch.get("rate_5x") or 0) * 100
+        # Icon selection: ⚠ for repeat-rug creators, ✓ for good, ▲ for runner
+        if ch.get("runner_creator"):
+            tag = "▲ runner dev"
+            icon = "▲"
+        elif ch.get("good_creator"):
+            tag = "verified"
+            icon = "✓"
+        elif n_launches >= 3 and grad_rate < 10:
+            tag = f"⚠ *{n_launches} prior · {grad_rate:.0f}% grad*"
+            icon = "⚠"
+        else:
+            tag = f"{n_launches} prior · {grad_rate:.0f}% grad"
+            icon = "·"
+        lines.append(
+            f"{icon} creator: {tag} · {rate_5x:.0f}% 5×"
+        )
+    elif ch is not None and (snap.get("creator_summary") is not None):
+        # We had a snapshot but no creator history = brand-new dev (no prior)
+        lines.append("· creator: _new (no prior launches)_")
+
+    # Day 4.87 — fresh-wallet share flag
+    n_top = snap.get("n_top_buyers")
+    n_fresh = snap.get("n_fresh_buyers")
+    if n_top and n_top >= 5 and n_fresh is not None:
+        fresh_share = n_fresh / n_top
+        if fresh_share >= 0.60:
+            lines.append(
+                f"⚠ *{int(fresh_share*100)}% new wallets* buying"
+                f"  _(sybil risk)_"
+            )
+        elif fresh_share <= 0.20:
+            lines.append(
+                f"· *{int((1-fresh_share)*100)}% known wallets* buying"
+            )
+
+    lines.append(f"`{mint}`")
     return "\n".join(lines)
 
 

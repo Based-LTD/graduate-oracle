@@ -640,13 +640,20 @@ def _enrich_mint(m: dict, rug_features_prefetched: Optional[dict] = None) -> tup
                      # Backtest (n=1444 resolved): n_elite >= 3 cohort
                      # graduates at 29.6% vs n_elite == 0 at 1.5%. This
                      # is the new ★ ALPHA gate (replaces smart_money_in 3-9).
+    n_fresh_buyers = 0   # Day 4.87 — top buyers with <5 total trades
+                         # or completely unknown to wallet_intel. High
+                         # count = coordinated sybil dump risk.
     smart_in_examples: list[str] = []
     if top_buyers and WINTEL is not None:
         for w in top_buyers:
             r = WINTEL._wallets.get(w)
-            if not r: continue
+            if not r:
+                n_fresh_buyers += 1   # unknown = fresh
+                continue
             total = r.get("total", 0) or 0
             score = r.get("smart_score", 0) or 0
+            if total < 5:
+                n_fresh_buyers += 1
             if total >= 8 and score >= 0.30:
                 n_smart_in += 1
                 if len(smart_in_examples) < 3:
@@ -981,6 +988,8 @@ def _enrich_mint(m: dict, rug_features_prefetched: Optional[dict] = None) -> tup
     # receipts trail depends on; the addresses behind it are the moat.
     m_out["smart_money_in"]       = n_smart_in
     m_out["n_elite_in"]           = n_elite_in
+    m_out["n_fresh_buyers"]       = n_fresh_buyers
+    m_out["n_top_buyers"]         = len(top_buyers)
     m_out["smart_money_examples"] = []
     m_out["is_suspect"] = is_suspect
     m_out["bot_flags"] = bot_flags

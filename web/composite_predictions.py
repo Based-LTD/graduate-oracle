@@ -126,6 +126,12 @@ def _ensure_schema(c: sqlite3.Connection) -> None:
             # Day 4.82 — count of wallets with smart_score >= 0.70 in at cross.
             # New ★ ALPHA gate. NULL on legacy rows; populated going forward.
             "ALTER TABLE composite_predictions ADD COLUMN n_elite_in INTEGER",
+            # Day 4.87 — creator + fresh-buyer context. Surfaces on alerts
+            # so users can see red flags (repeat rug creator, sybil sniper
+            # cluster) directly. NULL on legacy rows.
+            "ALTER TABLE composite_predictions ADD COLUMN creator_summary_json TEXT",
+            "ALTER TABLE composite_predictions ADD COLUMN n_fresh_buyers INTEGER",
+            "ALTER TABLE composite_predictions ADD COLUMN n_top_buyers INTEGER",
         ):
             try:
                 c.execute(stmt)
@@ -326,6 +332,23 @@ def maybe_log_crossings(enriched_mints: list[dict]) -> None:
                 continue
             if mc_usd_f < MC_FLOOR_USD:
                 continue
+            # Day 4.87 — compact creator summary (nullable). Store only
+            # the fields we display; keep JSON small.
+            ch = m.get("creator_history") or {}
+            creator_summary = None
+            if ch:
+                try:
+                    creator_summary = json.dumps({
+                        "creator":        ch.get("creator"),
+                        "n_launches":     ch.get("n_launches"),
+                        "n_graduated":    ch.get("n_graduated"),
+                        "grad_rate":      ch.get("grad_rate"),
+                        "rate_5x":        ch.get("rate_5x"),
+                        "good_creator":   bool(ch.get("good_creator")),
+                        "runner_creator": bool(ch.get("runner_creator")),
+                    })
+                except Exception:
+                    creator_summary = None
             crosses_to_insert.append((
                 mint, now, float(cs), float(threshold),
                 int(m.get("smart_money_in") or 0),
@@ -333,6 +356,9 @@ def maybe_log_crossings(enriched_mints: list[dict]) -> None:
                 int(m.get("age_s") or 0),
                 mc_usd_f,
                 int(m.get("n_elite_in") or 0),  # Day 4.82
+                creator_summary,                # Day 4.87
+                int(m.get("n_fresh_buyers") or 0),
+                int(m.get("n_top_buyers") or 0),
             ))
         except Exception as e:
             print(f"[composite_predictions] cross-build skipped for "
@@ -352,8 +378,9 @@ def maybe_log_crossings(enriched_mints: list[dict]) -> None:
                     INSERT OR IGNORE INTO composite_predictions
                         (mint, predicted_at, composite_score, threshold_at_cross,
                          smart_money_in, max_mult_at_cross, age_s_at_cross,
-                         mc_at_cross_usd, n_elite_in)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         mc_at_cross_usd, n_elite_in,
+                         creator_summary_json, n_fresh_buyers, n_top_buyers)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, row)
                 if cur.rowcount > 0:
                     inserted.append(row)
@@ -438,7 +465,8 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
             rows = c.execute("""
                 SELECT mint, predicted_at, composite_score, threshold_at_cross,
                        smart_money_in, max_mult_at_cross, age_s_at_cross,
-                       mc_at_cross_usd, n_elite_in
+                       mc_at_cross_usd, n_elite_in,
+                       creator_summary_json, n_fresh_buyers, n_top_buyers
                   FROM composite_predictions
                  WHERE tg_pushed_at IS NULL
                    AND predicted_at > ?
@@ -543,6 +571,14 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         except Exception:
                             pass
 
+                    # Day 4.87 — parse creator summary + fresh-buyer stats
+                    creator_summary = None
+                    try:
+                        raw = r["creator_summary_json"]
+                        if raw:
+                            creator_summary = json.loads(raw)
+                    except Exception:
+                        creator_summary = None
                     import alert_push
                     alert_push.push_composite_cross(
                         mint=mint,
@@ -556,6 +592,9 @@ def evaluate_tg_pushes(live_mints_by_mint: dict | None = None) -> dict:
                         tier=tier,
                         grad_prob_60=bestgp,
                         is_starred=is_starred,
+                        creator_summary=creator_summary,
+                        n_fresh_buyers=r["n_fresh_buyers"],
+                        n_top_buyers=r["n_top_buyers"],
                     )
                     c.execute(
                         "UPDATE composite_predictions SET tg_pushed_at=?, "

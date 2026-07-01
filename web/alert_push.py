@@ -389,7 +389,10 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
                          metadata: dict | None = None,
                          tier: str = "ACT",
                          grad_prob_60: float | None = None,
-                         is_starred: bool = False) -> None:
+                         is_starred: bool = False,
+                         creator_summary: dict | None = None,
+                         n_fresh_buyers: int | None = None,
+                         n_top_buyers: int | None = None) -> None:
     """Push helper for composite-receipts crosses. Called from
     composite_predictions.evaluate_tg_pushes after tier classification.
 
@@ -430,6 +433,10 @@ def push_composite_cross(mint: str, composite_score: float, threshold_at_cross: 
             "is_starred": bool(is_starred),
             "grad_prob_60": grad_prob_60,
             "metadata": metadata or {},
+            # Day 4.87 — enrichment context for scam-warning display
+            "creator_summary": creator_summary,
+            "n_fresh_buyers": n_fresh_buyers,
+            "n_top_buyers": n_top_buyers,
         }
         snap_json = json.dumps(snapshot, default=str)
         gp_str = f"{grad_prob_60*100:.1f}%" if grad_prob_60 is not None else "—"
